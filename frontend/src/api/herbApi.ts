@@ -14,6 +14,14 @@ export interface Herb {
   contraindications: string;
 }
 
+export interface PaginatedHerbs {
+  items: Herb[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 const MOCK_HERBS: Herb[] = [
   {
     id: '1',
@@ -73,19 +81,63 @@ const MOCK_HERBS: Herb[] = [
   },
 ];
 
+/** Map backend herb row to frontend Herb interface */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapHerb(row: any): Herb {
+  const props = row.properties ?? {};
+  return {
+    id: row.id ?? '',
+    name: row.name ?? '',
+    category: row.category ?? '',
+    nature: row.nature ?? '',
+    flavor: row.flavor ?? '',
+    meridian: row.meridians ?? row.meridian ?? '',
+    efficacy: row.efficacy ?? '',
+    description: row.description ?? props['描述'] ?? row.indications ?? '',
+    toxicity: row.toxicity ?? '无毒',
+    dosage:
+      row.dosage ??
+      (row.dosage_min_g != null && row.dosage_max_g != null
+        ? `${row.dosage_min_g}-${row.dosage_max_g}g`
+        : ''),
+    contraindications: row.contraindications ?? '',
+  };
+}
+
 export async function getHerbs(params?: {
   category?: string;
   search?: string;
-}): Promise<Herb[]> {
+  page?: number;
+  pageSize?: number;
+}): Promise<PaginatedHerbs> {
   try {
     const query = new URLSearchParams();
     if (params?.category) query.set('category', params.category);
-    if (params?.search) query.set('search', params.search);
+    if (params?.search) query.set('q', params.search);
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.pageSize) query.set('pageSize', String(params.pageSize));
     const qs = query.toString();
-    return request<Herb[]>(`/api/herbs${qs ? `?${qs}` : ''}`);
+
+    // Backend /api/herbs uses search endpoint for text queries
+    const url = params?.search
+      ? `/api/herbs/search?${qs}`
+      : `/api/herbs${qs ? `?${qs}` : ''}`;
+
+    const data = await request<{ items: unknown[]; total?: number; page?: number; pageSize?: number; totalPages?: number }>(url);
+    const items = (data.items ?? []).map(mapHerb);
+    return {
+      items,
+      total: data.total ?? items.length,
+      page: data.page ?? 1,
+      pageSize: data.pageSize ?? 20,
+      totalPages: data.totalPages ?? 1,
+    };
   } catch {
+    // Mock fallback — client-side filtering
     const search = params?.search ?? '';
     const category = params?.category ?? '';
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 20;
     let result = [...MOCK_HERBS];
     if (search) {
       result = result.filter(
@@ -95,13 +147,24 @@ export async function getHerbs(params?: {
     if (category) {
       result = result.filter((h) => h.category === category);
     }
-    return result;
+    const total = result.length;
+    const start = (page - 1) * pageSize;
+    const items = result.slice(start, start + pageSize);
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize) || 1,
+    };
   }
 }
 
 export async function getHerb(id: string): Promise<Herb> {
   try {
-    return request<Herb>(`/api/herbs/${id}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row = await request<any>(`/api/herbs/${id}`);
+    return mapHerb(row);
   } catch {
     const herb = MOCK_HERBS.find((h) => h.id === id);
     if (!herb) throw new Error('药材未找到');

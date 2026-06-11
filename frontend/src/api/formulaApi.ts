@@ -11,6 +11,14 @@ export interface Formula {
   description: string;
 }
 
+export interface PaginatedFormulas {
+  items: Formula[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 const MOCK_FORMULAS: Formula[] = [
   {
     id: '1',
@@ -36,19 +44,71 @@ const MOCK_FORMULAS: Formula[] = [
   },
 ];
 
+/** Map backend formula row to frontend Formula interface */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapFormula(row: any): Formula {
+  const props = row.properties ?? {};
+  // Backend composition is array of objects; stringify for display
+  let compositionStr = '';
+  if (Array.isArray(row.composition)) {
+    compositionStr = row.composition
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((c: any) => (typeof c === 'string' ? c : c.name ?? c.herb ?? JSON.stringify(c)))
+      .join('、');
+  } else if (typeof row.composition === 'string') {
+    compositionStr = row.composition;
+  }
+
+  return {
+    id: row.id ?? '',
+    name: row.name ?? '',
+    category: row.category ?? '',
+    composition: compositionStr,
+    efficacy: row.efficacy ?? '',
+    indication: row.indications ?? row.indication ?? '',
+    usage: row.usage ?? props['用法'] ?? '',
+    description: row.description ?? row.source ?? '',
+  };
+}
+
 export async function getFormulas(params?: {
   category?: string;
   search?: string;
-}): Promise<Formula[]> {
+  page?: number;
+  pageSize?: number;
+}): Promise<PaginatedFormulas> {
   try {
     const query = new URLSearchParams();
     if (params?.category) query.set('category', params.category);
-    if (params?.search) query.set('search', params.search);
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.pageSize) query.set('pageSize', String(params.pageSize));
     const qs = query.toString();
-    return request<Formula[]>(`/api/formulas${qs ? `?${qs}` : ''}`);
+
+    const data = await request<{ items: unknown[]; total?: number; page?: number; pageSize?: number; totalPages?: number }>(
+      `/api/formulas${qs ? `?${qs}` : ''}`,
+    );
+    let items = (data.items ?? []).map(mapFormula);
+
+    // Client-side search filter (backend doesn't have search param for formulas)
+    if (params?.search) {
+      const s = params.search;
+      items = items.filter(
+        (f) => f.name.includes(s) || f.efficacy.includes(s) || f.composition.includes(s),
+      );
+    }
+
+    return {
+      items,
+      total: data.total ?? items.length,
+      page: data.page ?? 1,
+      pageSize: data.pageSize ?? 20,
+      totalPages: data.totalPages ?? 1,
+    };
   } catch {
     const search = params?.search ?? '';
     const category = params?.category ?? '';
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 20;
     let result = [...MOCK_FORMULAS];
     if (search) {
       result = result.filter(
@@ -58,13 +118,24 @@ export async function getFormulas(params?: {
     if (category) {
       result = result.filter((f) => f.category === category);
     }
-    return result;
+    const total = result.length;
+    const start = (page - 1) * pageSize;
+    const items = result.slice(start, start + pageSize);
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize) || 1,
+    };
   }
 }
 
 export async function getFormula(id: string): Promise<Formula> {
   try {
-    return request<Formula>(`/api/formulas/${id}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const row = await request<any>(`/api/formulas/${id}`);
+    return mapFormula(row);
   } catch {
     const formula = MOCK_FORMULAS.find((f) => f.id === id);
     if (!formula) throw new Error('方剂未找到');

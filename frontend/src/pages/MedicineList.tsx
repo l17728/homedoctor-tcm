@@ -20,6 +20,7 @@ import {
   updateMedicine,
   deleteMedicine,
   type Medicine,
+  type PaginatedMedicines,
 } from '../api/medicineApi';
 import { PAGE_SIZE, DRUG_STATUS_COLOR } from '../constants';
 import StatusTag from '../components/StatusTag';
@@ -45,22 +46,32 @@ export default function MedicineList() {
     null,
   );
   const [form] = Form.useForm<FormValues>();
+  const [pagination, setPagination] = useState({ current: 1, pageSize: PAGE_SIZE, total: 0 });
 
-  useEffect(() => {
-    loadMedicines();
-  }, []);
-
-  const loadMedicines = async () => {
+  const loadMedicines = async (page?: number) => {
     setLoading(true);
     try {
-      const data = await getMedicines();
-      setMedicines(data);
+      const data: PaginatedMedicines = await getMedicines({
+        page: page ?? pagination.current,
+        pageSize: pagination.pageSize,
+      });
+      setMedicines(data.items);
+      setPagination({
+        current: data.page,
+        pageSize: data.pageSize,
+        total: data.total,
+      });
     } catch {
       // handled
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadMedicines(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAdd = () => {
     setEditingMedicine(null);
@@ -91,9 +102,12 @@ export default function MedicineList() {
         message.success('添加成功');
       }
       setDrawerOpen(false);
-      loadMedicines();
-    } catch {
+      loadMedicines(pagination.current);
+    } catch (err) {
       // validation error or API error
+      if (err instanceof Error && err.message.includes('未授权')) {
+        message.error('登录已过期，请重新登录');
+      }
     }
   };
 
@@ -101,9 +115,13 @@ export default function MedicineList() {
     try {
       await deleteMedicine(id);
       message.success('删除成功');
-      loadMedicines();
-    } catch {
-      message.error('删除失败');
+      loadMedicines(pagination.current);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('未授权')) {
+        message.error('登录已过期，请重新登录');
+      } else {
+        message.error('删除失败');
+      }
     }
   };
 
@@ -175,7 +193,13 @@ export default function MedicineList() {
           columns={columns}
           rowKey="id"
           size="middle"
-          pagination={{ pageSize: PAGE_SIZE }}
+          pagination={{
+            current: pagination.current,
+            pageSize: pagination.pageSize,
+            total: pagination.total,
+            showSizeChanger: false,
+          }}
+          onChange={(pag) => loadMedicines(pag.current)}
         />
       )}
       <Drawer

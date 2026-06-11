@@ -62,7 +62,7 @@ def create_app() -> FastAPI:
     app.add_middleware(CsrfMiddleware)
     app.add_middleware(AuthMiddleware)
 
-    from app.routers import health, auth, herbs, formulas, medicines, safety
+    from app.routers import health, auth, herbs, formulas, medicines, safety, chat, daily_health, dashboard
 
     app.include_router(health.router)
     app.include_router(auth.router)
@@ -70,6 +70,9 @@ def create_app() -> FastAPI:
     app.include_router(formulas.router)
     app.include_router(medicines.router)
     app.include_router(safety.router)
+    app.include_router(chat.router)
+    app.include_router(daily_health.router)
+    app.include_router(dashboard.router)
 
     return app
 

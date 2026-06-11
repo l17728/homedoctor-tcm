@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Table,
   Input,
@@ -12,7 +12,7 @@ import {
   Space,
 } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
-import { getHerbs, type Herb } from '../api/herbApi';
+import { getHerbs, type Herb, type PaginatedHerbs } from '../api/herbApi';
 import StatusTag from '../components/StatusTag';
 import { TOXICITY_COLOR } from '../constants';
 
@@ -48,34 +48,53 @@ export default function HerbList() {
   const [category, setCategory] = useState<string | undefined>(undefined);
   const [selectedHerb, setSelectedHerb] = useState<Herb | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
+
+  const loadData = async (params?: { page?: number; pageSize?: number; category?: string; search?: string }) => {
+    setLoading(true);
+    try {
+      const data: PaginatedHerbs = await getHerbs({
+        page: params?.page ?? pagination.current,
+        pageSize: params?.pageSize ?? pagination.pageSize,
+        category: params?.category ?? category,
+        search: params?.search ?? search,
+      });
+      setHerbs(data.items);
+      setPagination({
+        current: data.page,
+        pageSize: data.pageSize,
+        total: data.total,
+      });
+    } catch {
+      // error handled by api client
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const data = await getHerbs();
-        setHerbs(data);
-      } catch {
-        // error handled by api client
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+    loadData({ page: 1 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filteredHerbs = useMemo(() => {
-    let result = herbs;
-    if (search) {
-      result = result.filter(
-        (h) => h.name.includes(search) || h.efficacy.includes(search),
-      );
-    }
-    if (category) {
-      result = result.filter((h) => h.category === category);
-    }
-    return result;
-  }, [herbs, search, category]);
+  const handleCategoryChange = (value: string | undefined) => {
+    setCategory(value);
+    loadData({ page: 1, category: value, search });
+  };
+
+  const handleSearch = (value: string) => {
+    setSearch(value);
+    loadData({ page: 1, category, search: value });
+  };
+
+  const handleTableChange = (pag: { current?: number; pageSize?: number }) => {
+    loadData({
+      page: pag.current ?? 1,
+      pageSize: pag.pageSize ?? 20,
+      category,
+      search,
+    });
+  };
 
   const columns = [
     { title: '名称', dataIndex: 'name', key: 'name' },
@@ -118,30 +137,41 @@ export default function HerbList() {
           style={{ width: 200 }}
           allowClear
           value={category}
-          onChange={setCategory}
+          onChange={handleCategoryChange}
           options={CATEGORIES.map((c) => ({ label: c, value: c }))}
         />
         <Input.Search
           placeholder="搜索"
           allowClear
           style={{ width: 300 }}
-          onSearch={setSearch}
+          onSearch={handleSearch}
           onChange={(e) => {
-            if (!e.target.value) setSearch('');
+            if (!e.target.value) {
+              setSearch('');
+              loadData({ page: 1, category, search: '' });
+            }
           }}
         />
       </Space>
       {loading ? (
         <Skeleton active />
-      ) : filteredHerbs.length === 0 ? (
+      ) : herbs.length === 0 ? (
         <Empty description="暂无中药数据" />
       ) : (
         <Table
-          dataSource={filteredHerbs}
+          dataSource={herbs}
           columns={columns}
           rowKey="id"
           size="middle"
-          pagination={{ pageSize: 20 }}
+          pagination={{
+            current: pagination.current,
+            pageSize: pagination.pageSize,
+            total: pagination.total,
+            showSizeChanger: false,
+          }}
+          onChange={(pag) =>
+            handleTableChange({ current: pag.current, pageSize: pag.pageSize })
+          }
           onRow={(record) => ({
             onClick: () => {
               setSelectedHerb(record);

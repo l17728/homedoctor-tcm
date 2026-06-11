@@ -1,48 +1,67 @@
-import { useState } from 'react';
-import { Input, Button, Card, Typography, Space } from 'antd';
+import { useState, useEffect, useRef } from 'react';
+import { Input, Button, Card, Typography, Space, Alert, Spin } from 'antd';
 import { SendOutlined, RobotOutlined, UserOutlined } from '@ant-design/icons';
+import { sendMessage, type ChatMessage } from '../api/chatApi';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 const { TextArea } = Input;
 
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSend = () => {
-    if (!input.trim()) return;
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
-    const userMessage: Message = { role: 'user', content: input.trim() };
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleSend = async () => {
+    if (!input.trim() || loading) return;
+
+    const userMessage: ChatMessage = { role: 'user', content: input.trim() };
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setLoading(true);
 
-    const query = userMessage.content;
-    setTimeout(() => {
-      const aiMessage: Message = {
+    try {
+      const response = await sendMessage(userMessage.content, messages);
+      const aiMessage: ChatMessage = {
         role: 'assistant',
-        content: `您好！我是家庭医生AI助手。您询问的是关于"${query}"的问题。这是一个演示回复，实际使用时将连接到真实的AI服务。`,
+        content: response.reply,
+        warnings: response.warnings,
       };
       setMessages((prev) => [...prev, aiMessage]);
+    } catch {
+      const aiMessage: ChatMessage = {
+        role: 'assistant',
+        content: '抱歉，服务暂时不可用，请稍后再试。',
+      };
+      setMessages((prev) => [...prev, aiMessage]);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
     <div>
-      <Title level={3}>AI 健康助手</Title>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+        <RobotOutlined style={{ fontSize: 24, marginRight: 8, color: '#1890ff' }} />
+        <Title level={3} style={{ margin: 0 }}>AI 健康助手</Title>
+      </div>
+
       <div
         style={{
-          height: 'calc(100vh - 280px)',
+          height: 'calc(100vh - 300px)',
           overflowY: 'auto',
           marginBottom: 16,
           padding: 16,
+          background: '#fafafa',
+          borderRadius: 8,
         }}
       >
         {messages.length === 0 ? (
@@ -57,35 +76,54 @@ export default function ChatPage() {
             size="middle"
           >
             {messages.map((msg, idx) => (
-              <Card
-                key={idx}
-                size="small"
-                style={{
-                  background:
-                    msg.role === 'user' ? '#e6f7ff' : '#f6ffed',
-                  maxWidth: '80%',
-                  marginLeft: msg.role === 'user' ? 'auto' : 0,
-                  marginRight: msg.role === 'user' ? 0 : 'auto',
-                }}
-              >
-                <span style={{ marginRight: 8 }}>
-                  {msg.role === 'assistant' ? (
-                    <RobotOutlined />
-                  ) : (
-                    <UserOutlined />
+              <div key={idx}>
+                <Card
+                  size="small"
+                  style={{
+                    background:
+                      msg.role === 'user' ? '#e6f7ff' : '#f6ffed',
+                    maxWidth: '80%',
+                    marginLeft: msg.role === 'user' ? 'auto' : 0,
+                    marginRight: msg.role === 'user' ? 0 : 'auto',
+                  }}
+                >
+                  <div style={{ marginBottom: msg.warnings && msg.warnings.length > 0 ? 8 : 0 }}>
+                    <span style={{ marginRight: 8 }}>
+                      {msg.role === 'assistant' ? (
+                        <RobotOutlined />
+                      ) : (
+                        <UserOutlined />
+                      )}
+                    </span>
+                    <Text>{msg.content}</Text>
+                  </div>
+                  {msg.warnings && msg.warnings.length > 0 && (
+                    <Alert
+                      type="error"
+                      showIcon
+                      message="安全警告"
+                      description={
+                        <ul style={{ margin: 0, paddingLeft: 20 }}>
+                          {msg.warnings.map((w, wi) => (
+                            <li key={wi}>{w}</li>
+                          ))}
+                        </ul>
+                      }
+                      style={{ marginTop: 8 }}
+                    />
                   )}
-                </span>
-                {msg.content}
-              </Card>
+                </Card>
+              </div>
             ))}
             {loading && (
               <Card
                 size="small"
                 style={{ background: '#f6ffed', maxWidth: '80%' }}
               >
-                <RobotOutlined /> 正在思考...
+                <Spin size="small" /> <RobotOutlined /> 正在思考...
               </Card>
             )}
+            <div ref={messagesEndRef} />
           </Space>
         )}
       </div>
