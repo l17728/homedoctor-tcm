@@ -1,0 +1,238 @@
+from __future__ import annotations
+
+import json
+import uuid
+from datetime import datetime, timezone, timedelta
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from app.auth import get_current_user
+from app.database import DbAdapter, get_db
+from app.models import ReminderCreate, ReminderUpdate
+
+router = APIRouter(prefix="/api/reminders", tags=["reminders"])
+
+CST = timezone(timedelta(hours=8))
+
+
+def _parse_reminder(row: dict[str, Any]) -> dict[str, Any]:
+    result = dict(row)
+    if isinstance(result.get("times"), str):
+        try:
+            result["times"] = json.loads(result["times"])
+        except (json.JSONDecodeError, TypeError):
+            result["times"] = []
+    if "enabled" in result:
+        result["enabled"] = bool(result["enabled"])
+    return result
+
+
+def _compute_slot_status(scheduled_time: str, now: datetime) -> str:
+    sh, sm = scheduled_time.split(":")
+    scheduled = now.replace(hour=int(sh), minute=int(sm), second=0, microsecond=0)
+    delta = now - scheduled
+    if delta > timedelta(hours=2):
+        return "漏服"
+    return "待服"
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+async def create_reminder(
+    body: ReminderCreate,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    reminder_id = str(uuid.uuid4())
+    user_id = current_user["id"]
+    now = datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S")
+    await db.execute(
+        """INSERT INTO reminders
+           (id, user_id, title, herb_name, formula_name, medicine_name, dosage,
+            frequency, times, start_date, end_date, notes, enabled,
+            created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            reminder_id,
+            user_id,
+            body.title,
+            body.herb_name,
+            body.formula_name,
+            body.medicine_name,
+            body.dosage,
+            body.frequency,
+            json.dumps(body.times, ensure_ascii=False),
+            body.start_date,
+            body.end_date,
+            body.notes,
+            1 if body.enabled else 0,
+            now,
+            now,
+        ),
+    )
+    row = await db.query_one("SELECT * FROM reminders WHERE id = ?", (reminder_id,))
+    return _parse_reminder(row)
+
+
+@router.get("")
+async def list_reminders(
+    enabled: bool | None = Query(None),
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = current_user["id"]
+    sql = "SELECT * FROM reminders WHERE user_id = ?"
+    params: list[Any] = [user_id]
+    if enabled is not None:
+        sql += " AND enabled = ?"
+        params.append(1 if enabled else 0)
+    sql += " ORDER BY created_at DESC"
+    rows = await db.query(sql, tuple(params))
+    return {"items": [_parse_reminder(r) for r in rows], "total": len(rows)}
+
+
+@router.get("/today")
+async def get_today_reminders(
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = current_user["id"]
+    now = datetime.now(CST)
+    today = now.strftime("%Y-%m-%d")
+    rows = await db.query(
+        """SELECT * FROM reminders
+           WHERE user_id = ? AND enabled = 1
+             AND start_date <= ?
+             AND (end_date IS NULL OR end_date >= ?)
+           ORDER BY created_at DESC""",
+        (user_id, today, today),
+    )
+    slots: list[dict[str, Any]] = []
+    for row in rows:
+        reminder = _parse_reminder(row)
+        for t in reminder.get("times", []):
+            slots.append({
+                "reminder_id": reminder["id"],
+                "title": reminder["title"],
+                "herb_name": reminder.get("herb_name"),
+                "formula_name": reminder.get("formula_name"),
+                "medicine_name": reminder.get("medicine_name"),
+                "dosage": reminder.get("dosage"),
+                "notes": reminder.get("notes"),
+                "time": t,
+                "status": _compute_slot_status(t, now),
+            })
+    slots.sort(key=lambda s: s["time"])
+    return {"date": today, "items": slots, "total": len(slots)}
+
+
+@router.get("/{reminder_id}")
+async def get_reminder(
+    reminder_id: str,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = current_user["id"]
+    row = await db.query_one(
+        "SELECT * FROM reminders WHERE id = ? AND user_id = ?",
+        (reminder_id, user_id),
+    )
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到该提醒",
+        )
+    return _parse_reminder(row)
+
+
+@router.put("/{reminder_id}")
+async def update_reminder(
+    reminder_id: str,
+    body: ReminderUpdate,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = current_user["id"]
+    existing = await db.query_one(
+        "SELECT * FROM reminders WHERE id = ? AND user_id = ?",
+        (reminder_id, user_id),
+    )
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到该提醒",
+        )
+    set_parts: list[str] = []
+    values: list[Any] = []
+    update_data = body.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        if key == "times" and value is not None:
+            set_parts.append("times = ?")
+            values.append(json.dumps(value, ensure_ascii=False))
+        elif key == "enabled" and value is not None:
+            set_parts.append("enabled = ?")
+            values.append(1 if value else 0)
+        elif value is not None:
+            set_parts.append(f"{key} = ?")
+            values.append(value)
+    if set_parts:
+        now = datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S")
+        set_parts.append("updated_at = ?")
+        values.append(now)
+        values.append(reminder_id)
+        values.append(user_id)
+        await db.execute(
+            f"UPDATE reminders SET {', '.join(set_parts)} WHERE id = ? AND user_id = ?",
+            tuple(values),
+        )
+    row = await db.query_one("SELECT * FROM reminders WHERE id = ?", (reminder_id,))
+    return _parse_reminder(row)
+
+
+@router.put("/{reminder_id}/toggle")
+async def toggle_reminder(
+    reminder_id: str,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = current_user["id"]
+    existing = await db.query_one(
+        "SELECT * FROM reminders WHERE id = ? AND user_id = ?",
+        (reminder_id, user_id),
+    )
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到该提醒",
+        )
+    new_val = 0 if existing["enabled"] else 1
+    now = datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S")
+    await db.execute(
+        "UPDATE reminders SET enabled = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+        (new_val, now, reminder_id, user_id),
+    )
+    row = await db.query_one("SELECT * FROM reminders WHERE id = ?", (reminder_id,))
+    return _parse_reminder(row)
+
+
+@router.delete("/{reminder_id}")
+async def delete_reminder(
+    reminder_id: str,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = current_user["id"]
+    existing = await db.query_one(
+        "SELECT * FROM reminders WHERE id = ? AND user_id = ?",
+        (reminder_id, user_id),
+    )
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到该提醒",
+        )
+    await db.execute(
+        "DELETE FROM reminders WHERE id = ? AND user_id = ?",
+        (reminder_id, user_id),
+    )
+    return {"detail": "已删除"}

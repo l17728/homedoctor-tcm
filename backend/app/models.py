@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -215,3 +215,124 @@ class SafetyCheckResponseV2(BaseModel):
     checked_medicines: list[str] = Field(default_factory=list)
     unknown_herbs: list[str] = Field(default_factory=list)
     unknown_medicines: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Constitution Assessment (spec §2.3 / §4.2)
+# ---------------------------------------------------------------------------
+
+class ConstitutionAssessRequest(BaseModel):
+    answers: dict[str, int] = Field(
+        description='Mapping of question_id → score (0-4). e.g. {"q1": 3}',
+    )
+
+
+class UserProfileUpdate(BaseModel):
+    display_name: str | None = None
+    birth_year: int | None = None
+    gender: str | None = None
+    height_cm: float | None = None
+    weight_kg: float | None = None
+    allergies: list[str] | None = None
+    health_conditions: list[str] | None = None
+    is_pregnant: bool | None = None
+    blood_type: str | None = None
+    notes: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Reminders (吃药提醒, spec §20)
+# ---------------------------------------------------------------------------
+
+VALID_FREQUENCIES = {"daily", "weekly", "custom"}
+
+
+def _validate_time_str(value: str) -> str:
+    parts = value.split(":")
+    if len(parts) != 2:
+        raise ValueError(f"时间格式应为 HH:MM，收到 {value!r}")
+    hh, mm = parts
+    if not (hh.isdigit() and mm.isdigit()):
+        raise ValueError(f"时间格式应为 HH:MM，收到 {value!r}")
+    h, m = int(hh), int(mm)
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        raise ValueError(f"时间超出有效范围 (00:00-23:59)，收到 {value!r}")
+    return f"{h:02d}:{m:02d}"
+
+
+class ReminderCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    herb_name: str | None = None
+    formula_name: str | None = None
+    medicine_name: str | None = None
+    dosage: str | None = None
+    frequency: str = "daily"
+    times: list[str]
+    start_date: str
+    end_date: str | None = None
+    notes: str | None = None
+    enabled: bool = True
+
+    @field_validator("frequency")
+    @classmethod
+    def validate_frequency(cls, v: str) -> str:
+        if v not in VALID_FREQUENCIES:
+            raise ValueError(f"频率必须是 {VALID_FREQUENCIES} 之一，收到 {v!r}")
+        return v
+
+    @field_validator("times")
+    @classmethod
+    def validate_times(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("至少需要一个提醒时间")
+        return [_validate_time_str(t) for t in v]
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.end_date is not None and self.end_date < self.start_date:
+            raise ValueError("结束日期不能早于开始日期")
+        return self
+
+
+class ReminderUpdate(BaseModel):
+    title: str | None = None
+    dosage: str | None = None
+    frequency: str | None = None
+    times: list[str] | None = None
+    end_date: str | None = None
+    notes: str | None = None
+    enabled: bool | None = None
+
+    @field_validator("frequency")
+    @classmethod
+    def validate_frequency(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_FREQUENCIES:
+            raise ValueError(f"频率必须是 {VALID_FREQUENCIES} 之一，收到 {v!r}")
+        return v
+
+    @field_validator("times")
+    @classmethod
+    def validate_times(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None:
+            if not v:
+                raise ValueError("至少需要一个提醒时间")
+            return [_validate_time_str(t) for t in v]
+        return v
+
+
+class ReminderResponse(BaseModel):
+    id: str
+    user_id: str
+    title: str
+    herb_name: str | None = None
+    formula_name: str | None = None
+    medicine_name: str | None = None
+    dosage: str | None = None
+    frequency: str
+    times: list[str]
+    start_date: str
+    end_date: str | None = None
+    notes: str | None = None
+    enabled: bool
+    created_at: str
+    updated_at: str

@@ -158,6 +158,54 @@ DDL_STATEMENTS = [
         skipped_reason TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )""",
+    # -- 体质自测评估记录 (spec §2.3 / §4.2)
+    """CREATE TABLE IF NOT EXISTS constitution_assessments (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        assessed_at TEXT NOT NULL DEFAULT (datetime('now')),
+        results TEXT NOT NULL DEFAULT '{}',
+        primary_type TEXT NOT NULL,
+        secondary_types TEXT DEFAULT '[]',
+        raw_answers TEXT NOT NULL DEFAULT '{}',
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )""",
+    # -- 用户体质档案 (spec §4.2)
+    """CREATE TABLE IF NOT EXISTS user_profiles (
+        user_id TEXT PRIMARY KEY,
+        display_name TEXT,
+        birth_year INTEGER,
+        gender TEXT,
+        height_cm REAL,
+        weight_kg REAL,
+        constitution_type TEXT,
+        constitution_secondary TEXT DEFAULT '[]',
+        allergies TEXT DEFAULT '[]',
+        health_conditions TEXT DEFAULT '[]',
+        is_pregnant INTEGER DEFAULT 0,
+        blood_type TEXT,
+        notes TEXT,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )""",
+    # -- 吃药提醒 (spec §20)
+    """CREATE TABLE IF NOT EXISTS reminders (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        herb_name TEXT,
+        formula_name TEXT,
+        medicine_name TEXT,
+        dosage TEXT,
+        frequency TEXT NOT NULL DEFAULT 'daily',
+        times TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        end_date TEXT,
+        notes TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )""",
 ]
 
 FTS_STATEMENTS = [
