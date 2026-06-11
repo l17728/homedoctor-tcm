@@ -178,3 +178,40 @@ class SafetyCheckResponse(BaseModel):
         "⚠️ 以上安全检查结果由系统硬编码规则匹配生成，仅供参考。"
         "请务必在调整任何用药方案前咨询执业医师或药师。"
     )
+
+
+# ---------------------------------------------------------------------------
+# Safety V2 — Five-layer safety check (spec §15.3)
+# ---------------------------------------------------------------------------
+
+class SafetyCheckRequestV2(BaseModel):
+    herbs: list[str] = Field(default_factory=list, description="List of herb names")
+    medicines: list[str] = Field(default_factory=list, description="List of medicine/drug names")
+    user_profile: dict[str, Any] | None = Field(
+        default=None,
+        description="User profile: is_pregnant, age, weight_kg, constitution",
+    )
+    dosages: dict[str, float] | None = Field(
+        default=None,
+        description="Map of herb_name → dosage in grams",
+    )
+
+
+class SafetyWarningV2(BaseModel):
+    layer: int = Field(description="Safety check layer 1-5")
+    severity: str = Field(description="critical | high | medium | low")
+    title: str
+    detail: str
+    herbs: list[str] = Field(default_factory=list)
+    action: str = Field(description="禁止 | 谨慎 | 告知医生")
+    source: str
+
+
+class SafetyCheckResponseV2(BaseModel):
+    safe: bool
+    warnings: list[SafetyWarningV2]
+    disclaimer: str
+    checked_herbs: list[str] = Field(default_factory=list)
+    checked_medicines: list[str] = Field(default_factory=list)
+    unknown_herbs: list[str] = Field(default_factory=list)
+    unknown_medicines: list[str] = Field(default_factory=list)
