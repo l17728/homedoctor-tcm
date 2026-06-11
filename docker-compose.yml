@@ -10,11 +10,14 @@ services:
     volumes:
       - app-data:/app/data
     environment:
+      # Seed scripts read DATABASE_URL
       - DATABASE_URL=sqlite:///data/family-doctor.db
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      # FastAPI app reads HOMEDOCTOR_DATABASE_URL (pydantic-settings env_prefix)
+      - HOMEDOCTOR_DATABASE_URL=data/family-doctor.db
+      - HOMEDOCTOR_SECRET_KEY=${SECRET_KEY:-change-me-in-production}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
