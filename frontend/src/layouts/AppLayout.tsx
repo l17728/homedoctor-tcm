@@ -11,6 +11,8 @@ import {
   UserOutlined,
   LogoutOutlined,
   BulbOutlined,
+  ClockCircleOutlined,
+  HeartOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -47,9 +49,23 @@ export default function AppLayout() {
       label: '药箱',
     },
     {
+      key: '/reminders',
+      icon: <ClockCircleOutlined />,
+      label: '提醒',
+    },
+    {
       key: '/chat',
       icon: <MessageOutlined />,
       label: 'AI 助手',
+    },
+    {
+      key: 'health',
+      icon: <HeartOutlined />,
+      label: '健康',
+      children: [
+        { key: '/constitution', label: '体质自测' },
+        { key: '/profile', label: '健康档案' },
+      ],
     },
     {
       key: '/settings',
@@ -59,7 +75,7 @@ export default function AppLayout() {
   ];
 
   const handleMenuClick = ({ key }: { key: string }) => {
-    if (key !== 'knowledge') {
+    if (key !== 'knowledge' && key !== 'health') {
       navigate(key);
     }
   };
@@ -83,6 +99,12 @@ export default function AppLayout() {
       location.pathname.startsWith('/formulas')
     ) {
       return ['knowledge'];
+    }
+    if (
+      location.pathname.startsWith('/constitution') ||
+      location.pathname.startsWith('/profile')
+    ) {
+      return ['health'];
     }
     return [];
   });

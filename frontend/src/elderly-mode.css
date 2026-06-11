@@ -1,0 +1,101 @@
+/* Elderly mode global styles */
+.elderly-mode {
+  font-size: 18px;
+}
+
+.elderly-mode .ant-btn {
+  font-size: 18px;
+  height: 48px;
+  padding: 8px 20px;
+}
+
+.elderly-mode .ant-btn-lg {
+  font-size: 20px;
+  height: 56px;
+}
+
+.elderly-mode .ant-card {
+  font-size: 18px;
+}
+
+.elderly-mode .ant-card-head-title {
+  font-size: 20px;
+}
+
+.elderly-mode .ant-input,
+.elderly-mode .ant-input-affix-wrapper {
+  font-size: 18px;
+  min-height: 48px;
+}
+
+.elderly-mode .ant-select-selector {
+  font-size: 18px;
+  min-height: 48px !important;
+}
+
+.elderly-mode .ant-select-selection-item {
+  line-height: 46px;
+}
+
+.elderly-mode .ant-table {
+  font-size: 18px;
+}
+
+.elderly-mode .ant-table-thead > tr > th {
+  font-size: 18px;
+}
+
+.elderly-mode .ant-tabs-tab {
+  font-size: 18px;
+  padding: 16px 24px;
+}
+
+.elderly-mode .ant-form-item-label > label {
+  font-size: 18px;
+}
+
+.elderly-mode .ant-typography {
+  font-size: 18px;
+}
+
+.elderly-mode .ant-typography h3 {
+  font-size: 24px;
+}
+
+.elderly-mode .ant-typography h4 {
+  font-size: 22px;
+}
+
+.elderly-mode .ant-radio-wrapper {
+  font-size: 18px;
+  padding: 4px 0;
+}
+
+.elderly-mode .ant-checkbox-wrapper {
+  font-size: 18px;
+}
+
+.elderly-mode .ant-alert {
+  font-size: 18px;
+}
+
+.elderly-mode .ant-message {
+  font-size: 18px;
+}
+
+.elderly-mode .ant-modal-body {
+  font-size: 18px;
+}
+
+.elderly-mode .ant-tag {
+  font-size: 16px;
+  padding: 4px 12px;
+}
+
+.elderly-mode .ant-empty-description {
+  font-size: 18px;
+}
+
+.elderly-mode .ant-progress-text {
+  font-size: 18px;
+}
