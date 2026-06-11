@@ -1,0 +1,22 @@
+{
+  "nodeType": "medicine",
+  "label": "药品",
+  "fields": [
+    {"id": "name", "name": "通用名", "type": "string", "label": "通用名", "required": true, "group": "基础信息", "order": 1},
+    {"id": "brand", "name": "品牌", "type": "string", "label": "品牌", "group": "基础信息", "order": 2},
+    {"id": "type", "name": "类型", "type": "enum", "label": "类型", "enumValues": ["western","chinese_patent","supplement","herbal_tea","herbal"], "required": true, "group": "基础信息", "order": 3},
+    {"id": "category", "name": "分类标签", "type": "string", "label": "分类标签", "group": "基础信息", "order": 4},
+    {"id": "drug_class", "name": "药理分类", "type": "string", "label": "药理分类", "group": "基础信息", "order": 5},
+    {"id": "specification", "name": "规格", "type": "string", "label": "规格", "group": "规格与数量", "order": 6},
+    {"id": "unit", "name": "单位", "type": "string", "label": "单位", "group": "规格与数量", "order": 7},
+    {"id": "quantity", "name": "库存数量", "type": "number", "label": "库存数量", "group": "规格与数量", "order": 8},
+    {"id": "production_date", "name": "生产日期", "type": "string", "label": "生产日期", "group": "有效期管理", "order": 9},
+    {"id": "expiry_date", "name": "有效期至", "type": "string", "label": "有效期至", "group": "有效期管理", "order": 10},
+    {"id": "opened_date", "name": "开封日期", "type": "string", "label": "开封日期", "group": "有效期管理", "order": 11},
+    {"id": "shelf_life_after_open", "name": "开封后保质期", "type": "string", "label": "开封后保质期", "group": "有效期管理", "order": 12},
+    {"id": "dosage_instructions", "name": "服用说明", "type": "string", "label": "服用说明", "group": "服用信息", "order": 13},
+    {"id": "contraindications", "name": "禁忌", "type": "string", "label": "禁忌", "group": "服用信息", "order": 14},
+    {"id": "active_ingredients", "name": "有效成分", "type": "array", "label": "有效成分", "group": "服用信息", "order": 15},
+    {"id": "barcode", "name": "条码", "type": "string", "label": "条码", "group": "其他", "order": 16}
+  ]
+}

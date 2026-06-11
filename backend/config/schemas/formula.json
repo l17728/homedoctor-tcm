@@ -1,0 +1,16 @@
+{
+  "nodeType": "formula",
+  "label": "方剂",
+  "fields": [
+    {"id": "name", "name": "方名", "type": "string", "label": "方名", "required": true, "group": "基础信息", "order": 1},
+    {"id": "source", "name": "出处", "type": "string", "label": "出处", "group": "基础信息", "order": 2},
+    {"id": "category", "name": "分类", "type": "enum", "label": "分类", "enumValues": ["解表剂","泻下剂","和解剂","清热剂","祛暑剂","温里剂","表里双解剂","补益剂","安神剂","开窍剂","固涩剂","理气剂","理血剂","治风剂","治燥剂","祛湿剂","消食剂","祛痰剂","治痈剂"], "group": "基础信息", "order": 3},
+    {"id": "composition", "name": "组成", "type": "array", "label": "组成", "group": "组成配伍", "order": 4},
+    {"id": "efficacy", "name": "功用", "type": "string", "label": "功用", "group": "功能主治", "order": 5},
+    {"id": "indications", "name": "主治", "type": "string", "label": "主治", "group": "功能主治", "order": 6},
+    {"id": "modifications", "name": "加减", "type": "array", "label": "加减", "group": "加减变化", "order": 7},
+    {"id": "modifications_structured", "name": "结构化加减", "type": "array", "label": "结构化加减", "group": "加减变化", "order": 8},
+    {"id": "derived_from_id", "name": "衍生自", "type": "string", "label": "衍生自", "group": "加减变化", "order": 9},
+    {"id": "contraindications", "name": "禁忌", "type": "string", "label": "禁忌", "group": "安全信息", "order": 10}
+  ]
+}
