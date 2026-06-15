@@ -24,6 +24,7 @@ import {
   EditOutlined,
   DeleteOutlined,
   ClockCircleOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
@@ -33,6 +34,7 @@ import {
   updateReminder,
   deleteReminder,
   toggleReminder,
+  checkInReminder,
   type Reminder,
   type TodayReminderSlot,
   type ReminderCreate,
@@ -174,6 +176,24 @@ export default function RemindersPage() {
     }
   };
 
+  const handleCheckIn = async (reminderId: string, time: string) => {
+    try {
+      await checkInReminder(reminderId, time, true);
+      const remaining = todaySlots.filter(
+        (s) => s.status === '待服' && s.time !== time
+      );
+      if (remaining.length > 0) {
+        const next = remaining[0]!;
+        message.success(`已打卡 ✓ 下次：${next.time} ${next.title}`);
+      } else {
+        message.success('已打卡 ✓ 今日药品已全部服用完');
+      }
+      loadData();
+    } catch {
+      message.error('打卡失败');
+    }
+  };
+
   const columns = [
     { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true },
     {
@@ -249,13 +269,25 @@ export default function RemindersPage() {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <Tag color="blue" style={{ fontSize: 14, padding: '2px 8px' }}>
-                        {slot.time}
-                      </Tag>
-                      <span style={{ fontSize: 16 }}>{slot.title}</span>
-                      {slot.dosage && <span style={{ color: '#888' }}>{slot.dosage}</span>}
-                    </div>
-                    <StatusTag status={slot.status} colorMap={REMINDER_STATUS_COLOR} />
+                       <Tag color="blue" style={{ fontSize: 14, padding: '2px 8px' }}>
+                         {slot.time}
+                       </Tag>
+                       <span style={{ fontSize: 16 }}>{slot.title}</span>
+                       {slot.dosage && <span style={{ color: '#888' }}>{slot.dosage}</span>}
+                     </div>
+                     <Space>
+                       {slot.status === '待服' && (
+                         <Button
+                           type="primary"
+                           size="small"
+                           icon={<CheckCircleOutlined />}
+                           onClick={() => handleCheckIn(slot.reminder_id, slot.time)}
+                         >
+                           打卡
+                         </Button>
+                       )}
+                       <StatusTag status={slot.status} colorMap={REMINDER_STATUS_COLOR} />
+                     </Space>
                   </div>
                 ))}
               </Space>

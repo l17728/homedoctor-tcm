@@ -13,6 +13,9 @@ import {
   BulbOutlined,
   ClockCircleOutlined,
   HeartOutlined,
+  StarOutlined,
+  CalendarOutlined,
+  SafetyOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -52,6 +55,21 @@ export default function AppLayout() {
       key: '/reminders',
       icon: <ClockCircleOutlined />,
       label: '提醒',
+    },
+    {
+      key: '/favorites',
+      icon: <StarOutlined />,
+      label: '收藏',
+    },
+    {
+      key: '/seasonal',
+      icon: <CalendarOutlined />,
+      label: '季节养生',
+    },
+    {
+      key: '/safety',
+      icon: <SafetyOutlined />,
+      label: '安全检查',
     },
     {
       key: '/chat',
@@ -105,6 +123,9 @@ export default function AppLayout() {
       location.pathname.startsWith('/profile')
     ) {
       return ['health'];
+    }
+    if (location.pathname.startsWith('/favorites')) {
+      return [];
     }
     return [];
   });

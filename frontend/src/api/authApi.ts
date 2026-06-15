@@ -10,24 +10,36 @@ export interface AuthResponse {
   user: User;
 }
 
+interface BackendAuthResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
+function mapAuthResponse(raw: BackendAuthResponse): AuthResponse {
+  return { token: raw.access_token, user: raw.user };
+}
+
 export async function loginApi(
   username: string,
   password: string,
 ): Promise<AuthResponse> {
-  return request<AuthResponse>('/api/auth/login', {
+  const raw = await request<BackendAuthResponse>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({ username, password }),
   });
+  return mapAuthResponse(raw);
 }
 
 export async function registerApi(
   username: string,
   password: string,
 ): Promise<AuthResponse> {
-  return request<AuthResponse>('/api/auth/register', {
+  const raw = await request<BackendAuthResponse>('/api/auth/register', {
     method: 'POST',
     body: JSON.stringify({ username, password }),
   });
+  return mapAuthResponse(raw);
 }
 
 export async function getMe(): Promise<User> {

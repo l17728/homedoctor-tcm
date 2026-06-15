@@ -1,5 +1,5 @@
 import { Layout } from 'antd';
-import { HomeOutlined, MessageOutlined, UserOutlined } from '@ant-design/icons';
+import { HomeOutlined, MessageOutlined, UserOutlined, MedicineBoxOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 
@@ -17,17 +17,20 @@ export default function ElderlyLayout() {
 
   const tabs: TabItem[] = [
     { key: '/', label: '首页', icon: <HomeOutlined /> },
-    { key: '/chat', label: 'AI问答', icon: <MessageOutlined /> },
+    { key: '/reminders', label: '吃药', icon: <ClockCircleOutlined /> },
+    { key: '/medicines', label: '药箱', icon: <MedicineBoxOutlined /> },
+    { key: '/chat', label: '问答', icon: <MessageOutlined /> },
     { key: '/profile', label: '我的', icon: <UserOutlined /> },
   ];
 
   const activeTab = (() => {
     if (location.pathname === '/' || location.pathname === '/dashboard') return '/';
+    if (location.pathname.startsWith('/reminders')) return '/reminders';
+    if (location.pathname.startsWith('/medicines')) return '/medicines';
     if (location.pathname.startsWith('/chat')) return '/chat';
     if (
       location.pathname.startsWith('/profile') ||
-      location.pathname.startsWith('/constitution') ||
-      location.pathname.startsWith('/reminders')
+      location.pathname.startsWith('/constitution')
     )
       return '/profile';
     return '/';

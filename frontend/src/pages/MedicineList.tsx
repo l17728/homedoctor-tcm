@@ -6,14 +6,18 @@ import {
   Form,
   Input,
   Select,
+  InputNumber,
+  DatePicker,
   Popconfirm,
   message,
   Empty,
   Skeleton,
   Typography,
   Space,
+  Tag,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import {
   getMedicines,
   createMedicine,
@@ -36,6 +40,8 @@ interface FormValues {
   status?: string;
   dosage?: string;
   notes?: string;
+  quantity?: number;
+  expiry_date?: dayjs.Dayjs;
 }
 
 export default function MedicineList() {
@@ -87,6 +93,8 @@ export default function MedicineList() {
       status: record.status,
       dosage: record.dosage,
       notes: record.notes,
+      quantity: record.quantity,
+      expiry_date: record.expiry_date ? dayjs(record.expiry_date) : undefined,
     });
     setDrawerOpen(true);
   };
@@ -95,10 +103,16 @@ export default function MedicineList() {
     try {
       const values = await form.validateFields();
       if (editingMedicine) {
-        await updateMedicine(editingMedicine.id, values);
+        await updateMedicine(editingMedicine.id, {
+          ...values,
+          expiry_date: values.expiry_date?.format('YYYY-MM-DD'),
+        });
         message.success('更新成功');
       } else {
-        await createMedicine(values);
+        await createMedicine({
+          ...values,
+          expiry_date: values.expiry_date?.format('YYYY-MM-DD'),
+        });
         message.success('添加成功');
       }
       setDrawerOpen(false);
@@ -128,6 +142,33 @@ export default function MedicineList() {
   const columns = [
     { title: '名称', dataIndex: 'name', key: 'name' },
     { title: '类型', dataIndex: 'type', key: 'type' },
+    {
+      title: '数量',
+      dataIndex: 'quantity',
+      key: 'quantity',
+      width: 80,
+      render: (qty: number | undefined) => {
+        if (qty == null) return '—';
+        return (
+          <Tag color={qty <= 5 ? 'orange' : 'green'}>
+            {qty <= 5 ? `低库存 ${qty}` : qty}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: '过期日期',
+      dataIndex: 'expiry_date',
+      key: 'expiry_date',
+      width: 130,
+      render: (date: string | undefined) => {
+        if (!date) return '—';
+        const daysLeft = dayjs(date).diff(dayjs(), 'day');
+        if (daysLeft < 0) return <Tag color="red">已过期</Tag>;
+        if (daysLeft <= 30) return <Tag color="orange">{daysLeft}天后过期</Tag>;
+        return <span>{date}</span>;
+      },
+    },
     {
       title: '状态',
       dataIndex: 'status',
@@ -241,6 +282,12 @@ export default function MedicineList() {
           </Form.Item>
           <Form.Item label="用量" name="dosage">
             <Input placeholder="如：每次1片，每日3次" />
+          </Form.Item>
+          <Form.Item label="库存数量" name="quantity">
+            <InputNumber min={0} placeholder="如：30" style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item label="过期日期" name="expiry_date">
+            <DatePicker style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item label="备注" name="notes">
             <Input.TextArea rows={3} />

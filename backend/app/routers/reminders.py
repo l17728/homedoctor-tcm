@@ -107,10 +107,26 @@ async def get_today_reminders(
            ORDER BY created_at DESC""",
         (user_id, today, today),
     )
+    # Fetch today's medication logs to determine actual status
+    logs = await db.query(
+        """SELECT * FROM medication_logs
+           WHERE family_member_id = ? AND date = ?""",
+        (user_id, today),
+    )
+    taken_set: set[str] = set()
+    for log in logs:
+        # Key by medicine_id (which stores the reminder_id) to track taken status
+        taken_set.add(log["medicine_id"])
+
     slots: list[dict[str, Any]] = []
     for row in rows:
         reminder = _parse_reminder(row)
         for t in reminder.get("times", []):
+            # If logged as taken, override computed status
+            if reminder["id"] in taken_set:
+                slot_status = "已服"
+            else:
+                slot_status = _compute_slot_status(t, now)
             slots.append({
                 "reminder_id": reminder["id"],
                 "title": reminder["title"],
@@ -120,7 +136,7 @@ async def get_today_reminders(
                 "dosage": reminder.get("dosage"),
                 "notes": reminder.get("notes"),
                 "time": t,
-                "status": _compute_slot_status(t, now),
+                "status": slot_status,
             })
     slots.sort(key=lambda s: s["time"])
     return {"date": today, "items": slots, "total": len(slots)}
@@ -236,3 +252,49 @@ async def delete_reminder(
         (reminder_id, user_id),
     )
     return {"detail": "已删除"}
+
+
+@router.post("/{reminder_id}/check-in", status_code=status.HTTP_201_CREATED)
+async def check_in_reminder(
+    reminder_id: str,
+    body: dict,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Mark a reminder slot as taken/skipped by inserting into medication_logs."""
+    user_id = current_user["id"]
+    reminder = await db.query_one(
+        "SELECT * FROM reminders WHERE id = ? AND user_id = ?",
+        (reminder_id, user_id),
+    )
+    if not reminder:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到该提醒",
+        )
+
+    now = datetime.now(CST)
+    today = now.strftime("%Y-%m-%d")
+    log_id = str(uuid.uuid4())
+    taken = 1 if body.get("taken", True) else 0
+    date_val = body.get("date", today)
+
+    await db.execute(
+        """INSERT INTO medication_logs (id, family_member_id, date, medicine_id, taken, skipped_reason, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (
+            log_id,
+            user_id,
+            date_val,
+            reminder_id,
+            taken,
+            body.get("skipped_reason"),
+            now.strftime("%Y-%m-%d %H:%M:%S"),
+        ),
+    )
+
+    row = await db.query_one("SELECT * FROM medication_logs WHERE id = ?", (log_id,))
+    result = dict(row)
+    if "taken" in result:
+        result["taken"] = bool(result["taken"])
+    return result

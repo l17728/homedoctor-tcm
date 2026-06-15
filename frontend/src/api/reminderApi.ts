@@ -66,14 +66,18 @@ function mapReminder(row: any): Reminder {
 }
 
 export async function getReminders(): Promise<Reminder[]> {
-  const data = await request<unknown[]>('/api/reminders');
-  return data.map(mapReminder);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = await request<any>('/api/reminders');
+  const items = Array.isArray(data) ? data : data.items ?? [];
+  return items.map(mapReminder);
 }
 
 export async function getTodayReminders(): Promise<TodayReminderSlot[]> {
-  const data = await request<unknown[]>('/api/reminders/today');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return data.map((row: any) => ({
+  const data = await request<any>('/api/reminders/today');
+  const items = Array.isArray(data) ? data : data.items ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return items.map((row: any) => ({
     reminder_id: row.reminder_id ?? row.id ?? '',
     title: row.title ?? '',
     time: row.time ?? '',
@@ -117,4 +121,15 @@ export async function toggleReminder(id: string): Promise<Reminder> {
     method: 'PUT',
   });
   return mapReminder(row);
+}
+
+export async function checkInReminder(
+  reminderId: string,
+  time: string,
+  taken: boolean,
+): Promise<void> {
+  await request<void>(`/api/reminders/${reminderId}/check-in`, {
+    method: 'POST',
+    body: JSON.stringify({ time, taken }),
+  });
 }

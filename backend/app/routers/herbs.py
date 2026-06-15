@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 
 from app.database import DbAdapter, get_db
+from app.pinyin_data import to_pinyin, to_pinyin_abbrev
 from app.repository import HerbRepository
 
 router = APIRouter(prefix="/api/herbs", tags=["herbs"])
@@ -22,6 +23,30 @@ def _parse_herb(row: dict[str, Any]) -> dict[str, Any]:
         except (json.JSONDecodeError, TypeError):
             result["properties"] = {}
     return result
+
+
+async def _pinyin_search(db: DbAdapter, q: str) -> list[dict[str, Any]]:
+    """Search herbs by pinyin (full match or abbreviation).
+
+    Used when the query is ASCII (pinyin input). Matches against both
+    full pinyin and first-letter abbreviations of herb names and aliases.
+    """
+    q_lower = q.lower()
+    rows = await db.query("SELECT * FROM herbs ORDER BY name")
+    matches: list[dict[str, Any]] = []
+    for row in rows:
+        name = row.get("name", "")
+        aliases_raw = row.get("aliases", "") or ""
+        aliases = [a.strip() for a in aliases_raw.split(",") if a.strip()]
+
+        candidates = [name] + aliases
+        for candidate in candidates:
+            full = to_pinyin(candidate).lower()
+            abbrev = to_pinyin_abbrev(candidate).lower()
+            if q_lower in full or q_lower in abbrev:
+                matches.append(row)
+                break
+    return matches
 
 
 @router.get("")
@@ -50,7 +75,16 @@ async def search_herbs(
     q: str = Query(..., min_length=1),
     db: DbAdapter = Depends(get_db),
 ):
-    """Full-text search across herbs."""
+    """Full-text search across herbs, with pinyin support (spec §2.4).
+
+    - Chinese query: uses FTS5 full-text search
+    - ASCII (pinyin) query: matches full pinyin or abbreviations
+    """
+    if q.isascii():
+        pinyin_rows = await _pinyin_search(db, q)
+        herbs = [_parse_herb(r) for r in pinyin_rows]
+        return {"items": herbs, "total": len(herbs)}
+
     repo = HerbRepository(db)
     rows = await repo.search_herbs(q)
     herbs = [_parse_herb(r) for r in rows]

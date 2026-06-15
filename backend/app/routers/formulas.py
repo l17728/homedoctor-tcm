@@ -17,6 +17,10 @@ from app.safety_engine import run_safety_check
 router = APIRouter(prefix="/api/formulas", tags=["formulas"])
 
 
+# Herbs that serve as 使药 (envoy/guide) — harmonize or guide to meridians
+ENVOY_HERBS = {"甘草", "大枣", "生姜", "薄荷"}
+
+
 # Leading run of CJK chars (BMP + Ext-A) = herb name. Stops before dosage/digits.
 _CJK_RUN = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf]+")
 # Dosage tokens glued to herb names in free text: 30g / 10克 / 三钱 / 2枚 ...
@@ -106,6 +110,123 @@ def _parse_formula(row: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _parse_dose_num(dose: Any) -> float:
+    """Extract a numeric dosage value from a dose string like '9g', '12克', '3枚'.
+
+    Returns 0.0 if no number can be extracted.
+    """
+    if isinstance(dose, (int, float)):
+        return float(dose)
+    if not isinstance(dose, str):
+        return 0.0
+    m = re.search(r"\d+(?:\.\d+)?", dose)
+    return float(m.group(0)) if m else 0.0
+
+
+def _extract_herbs_with_dosage(parsed: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract herbs with name + dosage info from a parsed formula row.
+
+    Checks composition list (with dose field) and properties fallback.
+    Returns list of {"name", "dosage", "dosage_num"} dicts.
+    """
+    herbs: list[dict[str, Any]] = []
+
+    composition = parsed.get("composition")
+    if isinstance(composition, list):
+        for item in composition:
+            if isinstance(item, dict):
+                name = item.get("name")
+                dose = item.get("dose") or item.get("dosage") or ""
+                if isinstance(name, str) and name.strip():
+                    herbs.append({
+                        "name": name.strip(),
+                        "dosage": str(dose),
+                        "dosage_num": _parse_dose_num(dose),
+                    })
+            elif isinstance(item, str) and item.strip():
+                herbs.append({
+                    "name": item.strip(),
+                    "dosage": "",
+                    "dosage_num": 0.0,
+                })
+
+    if not herbs:
+        props = parsed.get("properties")
+        if isinstance(props, str):
+            try:
+                props = json.loads(props)
+            except (json.JSONDecodeError, TypeError):
+                props = {}
+        if isinstance(props, dict):
+            herbs_field = props.get("herbs")
+            if isinstance(herbs_field, list):
+                for item in herbs_field:
+                    if isinstance(item, dict):
+                        name = item.get("name", "")
+                        dose = item.get("dosage") or item.get("dose", "")
+                        if name:
+                            herbs.append({
+                                "name": name,
+                                "dosage": str(dose),
+                                "dosage_num": _parse_dose_num(dose),
+                            })
+                    elif isinstance(item, str) and item.strip():
+                        herbs.append({
+                            "name": item.strip(),
+                            "dosage": "",
+                            "dosage_num": 0.0,
+                        })
+
+    return herbs
+
+
+def classify_herb_roles(herbs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Classify herbs as 君/臣/佐/使 based on dosage ratio (spec §2.2).
+
+    MVP heuristic:
+    - Highest dosage = 君药 (sovereign)
+    - Second tier (≥80% of max) = 君药
+    - ≥40% of max = 臣药 (minister)
+    - Lower = 佐药 (assistant)
+    - Specific herbs (甘草/大枣/生姜/薄荷) = 使药 (envoy)
+
+    Returns: list of {"name", "role", "dosage", "rationale"} sorted by dosage desc.
+    """
+    if not herbs:
+        return []
+
+    sorted_herbs = sorted(herbs, key=lambda h: h.get("dosage_num", 0), reverse=True)
+    max_dosage = sorted_herbs[0].get("dosage_num", 0) or 1
+
+    result: list[dict[str, Any]] = []
+    for i, herb in enumerate(sorted_herbs):
+        name = herb.get("name", "")
+        dosage = herb.get("dosage", "")
+        dosage_num = herb.get("dosage_num", 0)
+
+        if name in ENVOY_HERBS:
+            role = "使药"
+            rationale = f"{name}为引经药或调和药"
+        elif i == 0 or dosage_num >= max_dosage * 0.8:
+            role = "君药"
+            rationale = "主药，用量最大，针对主证"
+        elif dosage_num >= max_dosage * 0.4:
+            role = "臣药"
+            rationale = "辅助君药，加强治疗作用"
+        else:
+            role = "佐药"
+            rationale = "辅助治疗，或制约君药偏性"
+
+        result.append({
+            "name": name,
+            "role": role,
+            "dosage": dosage,
+            "rationale": rationale,
+        })
+
+    return result
+
+
 @router.get("")
 async def list_formulas(
     page: int = Query(1, ge=1),
@@ -129,7 +250,11 @@ async def list_formulas(
 
 @router.get("/{formula_id}")
 async def get_formula(formula_id: str, db: DbAdapter = Depends(get_db)):
-    """Get formula detail by ID."""
+    """Get formula detail by ID.
+
+    The response includes a ``herb_roles`` field with best-effort 君臣佐使
+    classification (spec §2.2).
+    """
     repo = FormulaRepository(db)
     row = await repo.get_formula(formula_id)
     if not row:
@@ -137,7 +262,28 @@ async def get_formula(formula_id: str, db: DbAdapter = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="未找到该方剂",
         )
-    return _parse_formula(row)
+    parsed = _parse_formula(row)
+    herbs_with_dosage = _extract_herbs_with_dosage(parsed)
+    parsed["herb_roles"] = classify_herb_roles(herbs_with_dosage)
+    return parsed
+
+
+@router.get("/{formula_id}/roles")
+async def get_formula_herb_roles(
+    formula_id: str, db: DbAdapter = Depends(get_db)
+):
+    """Return the 君臣佐使 role classification for a formula's herbs (spec §2.2)."""
+    repo = FormulaRepository(db)
+    row = await repo.get_formula(formula_id)
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到该方剂",
+        )
+    parsed = _parse_formula(row)
+    herbs_with_dosage = _extract_herbs_with_dosage(parsed)
+    roles = classify_herb_roles(herbs_with_dosage)
+    return {"formula_id": formula_id, "name": parsed.get("name", ""), "herb_roles": roles}
 
 
 @router.get("/{formula_id}/safety-check", response_model=SafetyCheckResponseV2)

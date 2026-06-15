@@ -336,3 +336,25 @@ class ReminderResponse(BaseModel):
     enabled: bool
     created_at: str
     updated_at: str
+
+
+# ---------------------------------------------------------------------------
+# Favorites / 知识收藏
+# ---------------------------------------------------------------------------
+
+class FavoriteCreate(BaseModel):
+    entry_type: str
+    title: str
+    content: str | None = None
+    summary: str | None = None
+    tags: list[str] = []
+    source_type: str | None = None
+    source_url: str | None = None
+
+
+class FavoriteUpdate(BaseModel):
+    title: str | None = None
+    content: str | None = None
+    summary: str | None = None
+    tags: list[str] | None = None
+    is_starred: bool | None = None

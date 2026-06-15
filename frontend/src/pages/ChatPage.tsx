@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Input, Button, Card, Typography, Space, Alert, Spin, Switch, Tooltip } from 'antd';
+import { Input, Button, Card, Typography, Space, Alert, Spin, Switch, Tooltip, message } from 'antd';
 import {
   SendOutlined,
   RobotOutlined,
@@ -7,8 +7,10 @@ import {
   AudioOutlined,
   AudioMutedOutlined,
   SoundOutlined,
+  SaveOutlined,
 } from '@ant-design/icons';
 import { sendMessage, type ChatMessage } from '../api/chatApi';
+import { saveKnowledgeCard } from '../api/favoriteApi';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis';
 
@@ -20,6 +22,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [savedCards, setSavedCards] = useState<Set<number>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { isListening, transcript, startListening, stopListening, isSupported: micSupported, error: micError } =
@@ -99,6 +102,17 @@ export default function ChatPage() {
     }
   };
 
+  const handleSaveCard = async (idx: number, content: string) => {
+    const title = content.slice(0, 20) + (content.length > 20 ? '...' : '');
+    try {
+      await saveKnowledgeCard({ title, content });
+      setSavedCards((prev) => new Set(prev).add(idx));
+      message.success('已保存为知识卡片');
+    } catch {
+      message.error('保存失败');
+    }
+  };
+
   return (
     <div>
       <div
@@ -159,6 +173,26 @@ export default function ChatPage() {
                     </span>
                     <Text>{msg.content}</Text>
                   </div>
+                  {msg.role === 'assistant' && idx > 0 && (
+                    <div style={{ marginTop: 4, textAlign: 'right' }}>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<SaveOutlined />}
+                        disabled={savedCards.has(idx)}
+                        onClick={() => handleSaveCard(idx, msg.content)}
+                      >
+                        {savedCards.has(idx) ? '已保存' : '存为卡片'}
+                      </Button>
+                    </div>
+                  )}
+                  {msg.role === 'assistant' && (
+                    <div style={{ marginTop: 4 }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        ⚠ 以上建议仅供参考，不能替代专业医疗诊断。用药请遵医嘱。
+                      </Text>
+                    </div>
+                  )}
                   {msg.warnings && msg.warnings.length > 0 && (
                     <Alert
                       type="error"

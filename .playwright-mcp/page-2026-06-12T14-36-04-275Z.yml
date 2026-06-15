@@ -1,0 +1,94 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: 家庭医生
+      - menu [ref=e7]:
+        - menuitem "home 首页" [ref=e8] [cursor=pointer]:
+          - img "home" [ref=e9]:
+            - img [ref=e10]
+          - generic [ref=e12]: 首页
+        - menuitem "book 知识库" [ref=e13] [cursor=pointer]:
+          - img "book" [ref=e14]:
+            - img [ref=e15]
+          - generic [ref=e17]: 知识库
+        - menuitem "medicine-box 药箱" [ref=e18] [cursor=pointer]:
+          - img "medicine-box" [ref=e19]:
+            - img [ref=e20]
+          - generic [ref=e22]: 药箱
+        - menuitem "clock-circle 提醒" [ref=e23] [cursor=pointer]:
+          - img "clock-circle" [ref=e24]:
+            - img [ref=e25]
+          - generic [ref=e28]: 提醒
+        - menuitem "star 收藏" [ref=e29] [cursor=pointer]:
+          - img "star" [ref=e30]:
+            - img [ref=e31]
+          - generic [ref=e33]: 收藏
+        - menuitem "calendar 季节养生" [ref=e34] [cursor=pointer]:
+          - img "calendar" [ref=e35]:
+            - img [ref=e36]
+          - generic [ref=e38]: 季节养生
+        - menuitem "message AI 助手" [ref=e39] [cursor=pointer]:
+          - img "message" [ref=e40]:
+            - img [ref=e41]
+          - generic [ref=e43]: AI 助手
+        - menuitem "heart 健康" [ref=e44] [cursor=pointer]:
+          - img "heart" [ref=e45]:
+            - img [ref=e46]
+          - generic [ref=e48]: 健康
+        - menuitem "setting 设置" [ref=e49] [cursor=pointer]:
+          - img "setting" [ref=e50]:
+            - img [ref=e51]
+          - generic [ref=e53]: 设置
+    - img "left" [ref=e55] [cursor=pointer]:
+      - img [ref=e56]
+  - generic [ref=e58]:
+    - banner [ref=e59]:
+      - button "menu-fold" [ref=e60] [cursor=pointer]:
+        - img "menu-fold" [ref=e62]:
+          - img [ref=e63]
+      - generic [ref=e65]:
+        - button "bulb 深色" [ref=e66] [cursor=pointer]:
+          - img "bulb" [ref=e68]:
+            - img [ref=e69]
+          - generic [ref=e71]: 深色
+        - button "user 用户 uitest1" [ref=e72] [cursor=pointer]:
+          - img "user" [ref=e74]:
+            - img [ref=e75]
+          - generic [ref=e77]: 用户 uitest1
+    - main [ref=e78]:
+      - generic [ref=e80]:
+        - generic [ref=e82]:
+          - heading [level=3] [ref=e83]
+          - list [ref=e84]:
+            - listitem [ref=e85]
+            - listitem [ref=e86]
+            - listitem [ref=e87]
+        - generic [ref=e89]:
+          - generic [ref=e94]:
+            - heading [level=3] [ref=e95]
+            - list [ref=e96]:
+              - listitem [ref=e97]
+              - listitem [ref=e98]
+              - listitem [ref=e99]
+              - listitem [ref=e100]
+          - generic [ref=e105]:
+            - heading [level=3] [ref=e106]
+            - list [ref=e107]:
+              - listitem [ref=e108]
+              - listitem [ref=e109]
+              - listitem [ref=e110]
+              - listitem [ref=e111]
+          - generic [ref=e116]:
+            - heading [level=3] [ref=e117]
+            - list [ref=e118]:
+              - listitem [ref=e119]
+              - listitem [ref=e120]
+              - listitem [ref=e121]
+              - listitem [ref=e122]
+          - generic [ref=e127]:
+            - heading [level=3] [ref=e128]
+            - list [ref=e129]:
+              - listitem [ref=e130]
+              - listitem [ref=e131]
+              - listitem [ref=e132]
+              - listitem [ref=e133]

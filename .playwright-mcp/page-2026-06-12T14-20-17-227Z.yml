@@ -1,0 +1,27 @@
+- generic [ref=e5]:
+  - heading "家庭医生" [level=3] [ref=e6]
+  - generic [ref=e7]:
+    - tablist [ref=e8]:
+      - generic [ref=e10]:
+        - tab "登录" [ref=e12] [cursor=pointer]
+        - tab "注册" [active] [selected] [ref=e14] [cursor=pointer]
+    - tabpanel "注册" [ref=e53]:
+      - generic [ref=e54]:
+        - generic [ref=e60]:
+          - img "user" [ref=e62]:
+            - img [ref=e63]
+          - textbox "用户名" [ref=e65]
+        - generic [ref=e71]:
+          - img "lock" [ref=e73]:
+            - img [ref=e74]
+          - textbox "密码" [ref=e76]
+          - img "eye-invisible" [ref=e78] [cursor=pointer]:
+            - img [ref=e79]
+        - generic [ref=e87]:
+          - img "lock" [ref=e89]:
+            - img [ref=e90]
+          - textbox "确认密码" [ref=e92]
+          - img "eye-invisible" [ref=e94] [cursor=pointer]:
+            - img [ref=e95]
+        - button "注 册" [ref=e103] [cursor=pointer]:
+          - generic [ref=e104]: 注 册

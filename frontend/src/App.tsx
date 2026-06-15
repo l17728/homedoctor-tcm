@@ -4,6 +4,7 @@ import { ConfigProvider } from 'antd';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ThemeProvider, useTheme } from './hooks/useTheme';
 import { ElderlyModeProvider, useElderlyMode } from './contexts/ElderlyModeContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { lightTheme, darkTheme } from './theme';
 import AppLayout from './layouts/AppLayout';
 import ElderlyLayout from './layouts/ElderlyLayout';
@@ -19,6 +20,9 @@ import SettingsPage from './pages/SettingsPage';
 import RemindersPage from './pages/RemindersPage';
 import ConstitutionPage from './pages/ConstitutionPage';
 import ProfilePage from './pages/ProfilePage';
+import FavoritesPage from './pages/FavoritesPage';
+import SeasonalHealthPage from './pages/SeasonalHealthPage';
+import SafetyCheckPage from './pages/SafetyCheckPage';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -63,6 +67,9 @@ function ThemedApp() {
           <Route path="reminders" element={<RemindersPage />} />
           <Route path="constitution" element={<ConstitutionPage />} />
           <Route path="profile" element={<ProfilePage />} />
+          <Route path="favorites" element={<FavoritesPage />} />
+          <Route path="seasonal" element={<SeasonalHealthPage />} />
+          <Route path="safety" element={<SafetyCheckPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -77,7 +84,9 @@ export default function App() {
       <AuthProvider>
         <ThemeProvider>
           <ElderlyModeProvider>
-            <ThemedApp />
+            <ErrorBoundary>
+              <ThemedApp />
+            </ErrorBoundary>
           </ElderlyModeProvider>
         </ThemeProvider>
       </AuthProvider>

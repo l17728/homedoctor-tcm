@@ -1,0 +1,116 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e53]:
+    - complementary [ref=e54]:
+      - generic [ref=e55]:
+        - generic [ref=e56]: 家庭医生
+        - menu [ref=e57]:
+          - menuitem "home 首页" [ref=e58] [cursor=pointer]:
+            - img "home" [ref=e59]:
+              - img [ref=e60]
+            - generic [ref=e62]: 首页
+          - menuitem "book 知识库" [ref=e63] [cursor=pointer]:
+            - img "book" [ref=e64]:
+              - img [ref=e65]
+            - generic [ref=e67]: 知识库
+          - menuitem "medicine-box 药箱" [ref=e68] [cursor=pointer]:
+            - img "medicine-box" [ref=e69]:
+              - img [ref=e70]
+            - generic [ref=e72]: 药箱
+          - menuitem "clock-circle 提醒" [ref=e73] [cursor=pointer]:
+            - img "clock-circle" [ref=e74]:
+              - img [ref=e75]
+            - generic [ref=e78]: 提醒
+          - menuitem "star 收藏" [ref=e79] [cursor=pointer]:
+            - img "star" [ref=e80]:
+              - img [ref=e81]
+            - generic [ref=e83]: 收藏
+          - menuitem "calendar 季节养生" [ref=e84] [cursor=pointer]:
+            - img "calendar" [ref=e85]:
+              - img [ref=e86]
+            - generic [ref=e88]: 季节养生
+          - menuitem "message AI 助手" [ref=e89] [cursor=pointer]:
+            - img "message" [ref=e90]:
+              - img [ref=e91]
+            - generic [ref=e93]: AI 助手
+          - menuitem "heart 健康" [ref=e94] [cursor=pointer]:
+            - img "heart" [ref=e95]:
+              - img [ref=e96]
+            - generic [ref=e98]: 健康
+          - menuitem "setting 设置" [ref=e99] [cursor=pointer]:
+            - img "setting" [ref=e100]:
+              - img [ref=e101]
+            - generic [ref=e103]: 设置
+      - img "left" [ref=e105] [cursor=pointer]:
+        - img [ref=e106]
+    - generic [ref=e108]:
+      - banner [ref=e109]:
+        - button "menu-fold" [ref=e110] [cursor=pointer]:
+          - img "menu-fold" [ref=e112]:
+            - img [ref=e113]
+        - generic [ref=e115]:
+          - button "bulb 深色" [ref=e116] [cursor=pointer]:
+            - img "bulb" [ref=e118]:
+              - img [ref=e119]
+            - generic [ref=e121]: 深色
+          - button "user 用户 uitest1" [ref=e122] [cursor=pointer]:
+            - img "user" [ref=e124]:
+              - img [ref=e125]
+            - generic [ref=e127]: 用户 uitest1
+      - main [ref=e128]:
+        - generic [ref=e130]:
+          - heading "今日健康" [level=3] [ref=e131]
+          - generic [ref=e132]:
+            - generic [ref=e136]:
+              - generic [ref=e137]: 中药数
+              - generic [ref=e138]:
+                - img "book" [ref=e140]:
+                  - img [ref=e141]
+                - generic [ref=e143]: "203"
+            - generic [ref=e147]:
+              - generic [ref=e148]: 方剂数
+              - generic [ref=e149]:
+                - img "book" [ref=e151]:
+                  - img [ref=e152]
+                - generic [ref=e154]: "82"
+            - generic [ref=e158]:
+              - generic [ref=e159]: 药箱数
+              - generic [ref=e160]:
+                - img "medicine-box" [ref=e162]:
+                  - img [ref=e163]
+                - generic [ref=e165]: "0"
+            - generic [ref=e169]:
+              - generic [ref=e170]: 今日提醒
+              - generic [ref=e171]:
+                - img "bell" [ref=e173]:
+                  - img [ref=e174]
+                - generic [ref=e176]: "0"
+          - generic [ref=e177]:
+            - generic [ref=e181]:
+              - img "sun" [ref=e182]:
+                - img [ref=e183]
+              - text: 芒种 · 2026-06-12
+            - generic [ref=e185]:
+              - generic [ref=e186]: 夏季养生重在养心，宜清心祛暑；避免正午高温时段外出；多饮水，适量食用苦味食物清热；不宜过度贪凉，避免损伤脾胃
+              - generic [ref=e187]:
+                - strong [ref=e189]: 健康提示：
+                - list [ref=e190]:
+                  - listitem [ref=e191]: 饮食均衡，不偏食
+                  - listitem [ref=e192]: 适度运动，保持规律作息
+                  - listitem [ref=e193]: 四季均可进行户外活动
+                  - listitem [ref=e194]: 夏季养生重在养心，宜清心祛暑
+                  - listitem [ref=e195]: 避免正午高温时段外出
+                  - listitem [ref=e196]: 多饮水，适量食用苦味食物清热
+                  - listitem [ref=e197]: 不宜过度贪凉，避免损伤脾胃
+          - generic [ref=e198]:
+            - button "plus 添加药品" [ref=e200] [cursor=pointer]:
+              - img "plus" [ref=e202]:
+                - img [ref=e203]
+              - generic [ref=e206]: 添加药品
+            - button "book 浏览中药" [ref=e208] [cursor=pointer]:
+              - img "book" [ref=e210]:
+                - img [ref=e211]
+              - generic [ref=e213]: 浏览中药
+  - generic [ref=e215]:
+    - img "check-circle" [ref=e216]:
+      - img [ref=e217]
+    - generic [ref=e219]: 登录成功

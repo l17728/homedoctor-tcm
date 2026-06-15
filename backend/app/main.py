@@ -43,16 +43,25 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    import os
+
+    _cors_origins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8000",
+    ]
+    _extra = os.environ.get("EXTRA_ALLOWED_ORIGINS", "")
+    if _extra:
+        _cors_origins.extend(
+            o.strip() for o in _extra.split(",") if o.strip()
+        )
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://localhost:8000",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:8000",
-        ],
+        allow_origins=_cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -62,7 +71,7 @@ def create_app() -> FastAPI:
     app.add_middleware(CsrfMiddleware)
     app.add_middleware(AuthMiddleware)
 
-    from app.routers import health, auth, herbs, formulas, medicines, safety, chat, daily_health, dashboard, reminders, constitution, profile
+    from app.routers import health, auth, herbs, formulas, medicines, safety, chat, daily_health, dashboard, reminders, constitution, profile, favorites, seasonal_health
 
     app.include_router(health.router)
     app.include_router(auth.router)
@@ -76,6 +85,8 @@ def create_app() -> FastAPI:
     app.include_router(reminders.router)
     app.include_router(constitution.router)
     app.include_router(profile.router)
+    app.include_router(favorites.router)
+    app.include_router(seasonal_health.router)
 
     return app
 

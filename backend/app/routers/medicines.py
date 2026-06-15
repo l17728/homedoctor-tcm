@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -13,6 +14,8 @@ from app.models import MedicineCreate, MedicineUpdate
 from app.repository import MedicineRepository
 
 router = APIRouter(prefix="/api/medicines", tags=["medicines"])
+
+CST = timezone(timedelta(hours=8))
 
 
 def _parse_medicine(row: dict[str, Any]) -> dict[str, Any]:
@@ -114,3 +117,44 @@ async def delete_medicine(
             detail="未找到该药品",
         )
     return {"detail": "已删除"}
+
+
+@router.get("/alerts/expiring")
+async def get_medicine_alerts(
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get medicines needing attention: expired, expiring soon (≤30 days), low stock (≤5)."""
+    repo = MedicineRepository(db)
+    tid = repo._tenant_id()
+    now = datetime.now(CST)
+    today = now.strftime("%Y-%m-%d")
+    soon_date = (now + timedelta(days=30)).strftime("%Y-%m-%d")
+
+    expired = await db.query(
+        """SELECT * FROM medicines
+           WHERE tenant_id = ? AND expiry_date IS NOT NULL AND expiry_date < ? AND expiry_date != ''
+           ORDER BY expiry_date ASC""",
+        (tid, today),
+    )
+
+    expiring_soon = await db.query(
+        """SELECT * FROM medicines
+           WHERE tenant_id = ? AND expiry_date IS NOT NULL
+             AND expiry_date >= ? AND expiry_date <= ? AND expiry_date != ''
+           ORDER BY expiry_date ASC""",
+        (tid, today, soon_date),
+    )
+
+    low_stock = await db.query(
+        """SELECT * FROM medicines
+           WHERE tenant_id = ? AND quantity <= 5
+           ORDER BY quantity ASC""",
+        (tid,),
+    )
+
+    return {
+        "expired": [_parse_medicine(r) for r in expired],
+        "expiring_soon": [_parse_medicine(r) for r in expiring_soon],
+        "low_stock": [_parse_medicine(r) for r in low_stock],
+    }

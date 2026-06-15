@@ -1,15 +1,21 @@
 import { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Button, Typography, Skeleton } from 'antd';
+import { Card, Row, Col, Statistic, Button, Typography, Skeleton, Alert, Space, Empty } from 'antd';
 import {
   MedicineBoxOutlined,
   BookOutlined,
   BellOutlined,
   PlusOutlined,
   SunOutlined,
+  WarningOutlined,
+  ExclamationCircleOutlined,
+  SafetyOutlined,
+  CalendarOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { getDashboardStats, type DashboardStats } from '../api/dashboardApi';
 import { getDailyHealth, type DailyHealth } from '../api/dailyHealthApi';
+import { request } from '../api/client';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -18,6 +24,11 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [dailyHealth, setDailyHealth] = useState<DailyHealth | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expiryAlerts, setExpiryAlerts] = useState<{
+    expired: { id: string; name: string; expiry_date: string }[];
+    expiring_soon: { id: string; name: string; expiry_date: string }[];
+    low_stock: { id: string; name: string; quantity: number }[];
+  }>({ expired: [], expiring_soon: [], low_stock: [] });
 
   useEffect(() => {
     const load = async () => {
@@ -29,6 +40,14 @@ export default function Dashboard() {
         ]);
         setStats(s);
         setDailyHealth(dh);
+        try {
+          const alerts = await request<typeof expiryAlerts>(
+            '/api/medicines/alerts/expiring',
+          );
+          setExpiryAlerts(alerts);
+        } catch {
+          // non-critical
+        }
       } catch {
         // handled by fallback in API
       } finally {
@@ -96,6 +115,48 @@ export default function Dashboard() {
         </Col>
       </Row>
 
+      {(expiryAlerts.expired.length > 0 ||
+        expiryAlerts.expiring_soon.length > 0 ||
+        expiryAlerts.low_stock.length > 0) && (
+        <Card
+          style={{ marginBottom: 24 }}
+          title={
+            <span>
+              <WarningOutlined style={{ marginRight: 8, color: '#faad14' }} />
+              药箱提醒
+            </span>
+          }
+        >
+          <Space direction="vertical" style={{ width: '100%' }} size="small">
+            {expiryAlerts.expired.map((m) => (
+              <Alert
+                key={m.id}
+                type="error"
+                showIcon
+                icon={<ExclamationCircleOutlined />}
+                message={`${m.name} 已过期（${m.expiry_date}）`}
+              />
+            ))}
+            {expiryAlerts.expiring_soon.map((m) => (
+              <Alert
+                key={m.id}
+                type="warning"
+                showIcon
+                message={`${m.name} 即将过期（${m.expiry_date}）`}
+              />
+            ))}
+            {expiryAlerts.low_stock.map((m) => (
+              <Alert
+                key={m.id}
+                type="info"
+                showIcon
+                message={`${m.name} 库存不足（剩余 ${m.quantity}）`}
+              />
+            ))}
+          </Space>
+        </Card>
+      )}
+
       {dailyHealth && (
         <Card
           style={{ marginBottom: 24 }}
@@ -107,7 +168,7 @@ export default function Dashboard() {
           }
         >
           <Paragraph>{dailyHealth.season_advice}</Paragraph>
-          {dailyHealth.health_tips.length > 0 && (
+          {Array.isArray(dailyHealth.health_tips) && dailyHealth.health_tips.length > 0 && (
             <div>
               <Text strong>健康提示：</Text>
               <ul style={{ marginTop: 8, paddingLeft: 20 }}>
@@ -140,7 +201,50 @@ export default function Dashboard() {
             浏览中药
           </Button>
         </Col>
+        <Col>
+          <Button
+            icon={<SafetyOutlined />}
+            onClick={() => navigate('/safety')}
+          >
+            安全检查
+          </Button>
+        </Col>
+        <Col>
+          <Button
+            icon={<CalendarOutlined />}
+            onClick={() => navigate('/seasonal')}
+          >
+            季节养生
+          </Button>
+        </Col>
+        <Col>
+          <Button
+            icon={<MessageOutlined />}
+            onClick={() => navigate('/chat')}
+          >
+            AI问答
+          </Button>
+        </Col>
       </Row>
+
+      {stats && stats.medicine_count === 0 && stats.reminder_count === 0 && (
+        <Card style={{ marginTop: 24 }}>
+          <Empty description="欢迎使用家庭医生！开始您的健康管理之旅">
+            <Space direction="vertical" size="small" style={{ alignItems: 'center' }}>
+              <Text type="secondary">建议您先完成以下步骤：</Text>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/medicines')}>
+                1. 添加您的常用药品
+              </Button>
+              <Button icon={<BellOutlined />} onClick={() => navigate('/reminders')}>
+                2. 设置吃药提醒
+              </Button>
+              <Button icon={<BookOutlined />} onClick={() => navigate('/herbs')}>
+                3. 浏览中药知识库
+              </Button>
+            </Space>
+          </Empty>
+        </Card>
+      )}
     </div>
   );
 }

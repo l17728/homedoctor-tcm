@@ -72,9 +72,11 @@ export async function login(
   password: string = DEFAULT_PASSWORD,
 ): Promise<void> {
   await page.goto('/login');
-  await page.getByPlaceholder('用户名').fill(username);
-  await page.getByPlaceholder('密码').fill(password);
-  await page.getByRole('button', { name: chineseText('登录') }).click();
+  // Scope to active tab pane — AntD keeps both login/register forms in DOM
+  const activePane = page.locator('.ant-tabs-tabpane-active');
+  await activePane.getByPlaceholder('用户名').fill(username);
+  await activePane.getByPlaceholder('密码').fill(password);
+  await activePane.getByRole('button', { name: chineseText('登录') }).click();
   await page.waitForURL('/');
 }
 
@@ -89,11 +91,14 @@ export async function register(
 ): Promise<void> {
   await page.goto('/login');
   // Switch to register tab (AntD Tabs component)
-  await page.getByText(chineseText('注册')).click();
-  await page.getByPlaceholder('用户名').fill(username);
-  await page.getByPlaceholder('密码').fill(password);
-  await page.getByPlaceholder('确认密码').fill(password);
-  await page.getByRole('button', { name: chineseText('注册') }).click();
+  await page.getByRole('tab', { name: chineseText('注册') }).click();
+  await page.waitForTimeout(300);
+  // Scope to active tab pane — AntD keeps both login/register forms in DOM
+  const activePane = page.locator('.ant-tabs-tabpane-active');
+  await activePane.getByPlaceholder('用户名').fill(username);
+  await activePane.getByPlaceholder('密码', { exact: true }).fill(password);
+  await activePane.getByPlaceholder('确认密码').fill(password);
+  await activePane.getByRole('button', { name: chineseText('注册') }).click();
   await page.waitForURL('/');
 }
 

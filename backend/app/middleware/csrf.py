@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+import os
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
 
-class CsrfMiddleware(BaseHTTPMiddleware):
-    """Check Origin header for write operations (POST/PUT/DELETE/PATCH)."""
-
-    # Allowed origins for local deployment
-    ALLOWED_ORIGINS = {
+def _build_allowed_origins() -> set[str]:
+    """Build allowed origins from defaults + env var EXTRA_ALLOWED_ORIGINS."""
+    defaults = {
         "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:8000",
@@ -19,6 +19,19 @@ class CsrfMiddleware(BaseHTTPMiddleware):
         "http://127.0.0.1:5173",
         "http://127.0.0.1:8000",
     }
+    extra = os.environ.get("EXTRA_ALLOWED_ORIGINS", "")
+    if extra:
+        for origin in extra.split(","):
+            origin = origin.strip()
+            if origin:
+                defaults.add(origin)
+    return defaults
+
+
+class CsrfMiddleware(BaseHTTPMiddleware):
+    """Check Origin header for write operations (POST/PUT/DELETE/PATCH)."""
+
+    ALLOWED_ORIGINS = _build_allowed_origins()
 
     async def dispatch(self, request: Request, call_next):
         # Only check write operations

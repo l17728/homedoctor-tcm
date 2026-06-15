@@ -5,6 +5,9 @@ export interface DashboardStats {
   formula_count: number;
   medicine_count: number;
   reminder_count: number;
+  safety_alert_count?: number;
+  stock_alerts?: unknown[];
+  recent_searches?: unknown[];
 }
 
 const MOCK_STATS: DashboardStats = {

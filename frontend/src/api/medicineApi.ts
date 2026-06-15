@@ -7,6 +7,8 @@ export interface Medicine {
   status: string;
   dosage: string;
   notes: string;
+  quantity?: number;
+  expiry_date?: string;
 }
 
 export interface PaginatedMedicines {
@@ -43,12 +45,16 @@ function mapMedicine(row: any): Medicine {
     name: row.name ?? '',
     type: row.type ?? '',
     status: row.quantity != null
-      ? row.quantity > 0
+      ? row.quantity > 5
         ? '充足'
-        : '低库存'
+        : row.quantity > 0
+          ? '低库存'
+          : '已过期'
       : '充足',
     dosage: row.dosage_instructions ?? row.dosage ?? '',
     notes: row.contraindications ?? row.notes ?? '',
+    quantity: row.quantity,
+    expiry_date: row.expiry_date,
   };
 }
 
@@ -96,6 +102,8 @@ export async function createMedicine(data: {
   status?: string;
   dosage?: string;
   notes?: string;
+  quantity?: number;
+  expiry_date?: string;
 }): Promise<Medicine> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -106,6 +114,8 @@ export async function createMedicine(data: {
         type: data.type,
         dosage_instructions: data.dosage,
         contraindications: data.notes,
+        quantity: data.quantity,
+        expiry_date: data.expiry_date,
       }),
     });
     return mapMedicine(row);
@@ -138,6 +148,8 @@ export async function updateMedicine(
         type: data.type,
         dosage_instructions: data.dosage,
         contraindications: data.notes,
+        quantity: data.quantity,
+        expiry_date: data.expiry_date,
       }),
     });
     return mapMedicine(row);

@@ -1,0 +1,220 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: 家庭医生
+      - menu [ref=e7]:
+        - menuitem "home 首页" [ref=e8] [cursor=pointer]:
+          - img "home" [ref=e9]:
+            - img [ref=e10]
+          - generic [ref=e12]: 首页
+        - menuitem "book 知识库" [ref=e13] [cursor=pointer]:
+          - img "book" [ref=e14]:
+            - img [ref=e15]
+          - generic [ref=e17]: 知识库
+        - menuitem "medicine-box 药箱" [ref=e18] [cursor=pointer]:
+          - img "medicine-box" [ref=e19]:
+            - img [ref=e20]
+          - generic [ref=e22]: 药箱
+        - menuitem "clock-circle 提醒" [ref=e23] [cursor=pointer]:
+          - img "clock-circle" [ref=e24]:
+            - img [ref=e25]
+          - generic [ref=e28]: 提醒
+        - menuitem "star 收藏" [ref=e29] [cursor=pointer]:
+          - img "star" [ref=e30]:
+            - img [ref=e31]
+          - generic [ref=e33]: 收藏
+        - menuitem "calendar 季节养生" [ref=e34] [cursor=pointer]:
+          - img "calendar" [ref=e35]:
+            - img [ref=e36]
+          - generic [ref=e38]: 季节养生
+        - menuitem "message AI 助手" [ref=e39] [cursor=pointer]:
+          - img "message" [ref=e40]:
+            - img [ref=e41]
+          - generic [ref=e43]: AI 助手
+        - menuitem "heart 健康" [ref=e44] [cursor=pointer]:
+          - img "heart" [ref=e45]:
+            - img [ref=e46]
+          - generic [ref=e48]: 健康
+        - menuitem "setting 设置" [ref=e49] [cursor=pointer]:
+          - img "setting" [ref=e50]:
+            - img [ref=e51]
+          - generic [ref=e53]: 设置
+    - img "left" [ref=e55] [cursor=pointer]:
+      - img [ref=e56]
+  - generic [ref=e58]:
+    - banner [ref=e59]:
+      - button "menu-fold" [ref=e60] [cursor=pointer]:
+        - img "menu-fold" [ref=e62]:
+          - img [ref=e63]
+      - generic [ref=e65]:
+        - button "bulb 深色" [ref=e66] [cursor=pointer]:
+          - img "bulb" [ref=e68]:
+            - img [ref=e69]
+          - generic [ref=e71]: 深色
+        - button "user 用户 uitest1" [ref=e72] [cursor=pointer]:
+          - img "user" [ref=e74]:
+            - img [ref=e75]
+          - generic [ref=e77]: 用户 uitest1
+    - main [ref=e78]:
+      - generic [ref=e80]:
+        - generic [ref=e355]:
+          - generic [ref=e356]:
+            - generic [ref=e357]: 🌱
+            - generic [ref=e358]:
+              - generic [ref=e359]: 春分
+              - generic [ref=e360]: 春季
+            - generic [ref=e361]: 阴阳平衡，调和气血
+            - generic [ref=e362]:
+              - text: 距夏至还有
+              - strong [ref=e364]: "9"
+              - text: 天
+          - button "reload 回到当前节气" [ref=e366] [cursor=pointer]:
+            - img "reload" [ref=e368]:
+              - img [ref=e369]
+            - generic [ref=e371]: 回到当前节气
+        - generic [ref=e372]:
+          - generic [ref=e375]: 二十四节气
+          - generic [ref=e377]:
+            - generic [ref=e378] [cursor=pointer]:
+              - generic [ref=e379]: 小寒
+              - generic [ref=e380]: 冬
+            - generic [ref=e381] [cursor=pointer]:
+              - generic [ref=e382]: 大寒
+              - generic [ref=e383]: 冬
+            - generic [ref=e384] [cursor=pointer]:
+              - generic [ref=e385]: 立春
+              - generic [ref=e386]: 春
+            - generic [ref=e387] [cursor=pointer]:
+              - generic [ref=e388]: 雨水
+              - generic [ref=e389]: 春
+            - generic [ref=e390] [cursor=pointer]:
+              - generic [ref=e391]: 惊蛰
+              - generic [ref=e392]: 春
+            - generic [ref=e393] [cursor=pointer]:
+              - generic [ref=e394]: 春分
+              - generic [ref=e395]: 春
+              - generic [ref=e396]: 当前
+            - generic [ref=e397] [cursor=pointer]:
+              - generic [ref=e398]: 清明
+              - generic [ref=e399]: 春
+            - generic [ref=e400] [cursor=pointer]:
+              - generic [ref=e401]: 谷雨
+              - generic [ref=e402]: 春
+            - generic [ref=e403] [cursor=pointer]:
+              - generic [ref=e404]: 立夏
+              - generic [ref=e405]: 夏
+            - generic [ref=e406] [cursor=pointer]:
+              - generic [ref=e407]: 小满
+              - generic [ref=e408]: 夏
+            - generic [ref=e409] [cursor=pointer]:
+              - generic [ref=e410]: 芒种
+              - generic [ref=e411]: 夏
+            - generic [ref=e412] [cursor=pointer]:
+              - generic [ref=e413]: 夏至
+              - generic [ref=e414]: 夏
+            - generic [ref=e415] [cursor=pointer]:
+              - generic [ref=e416]: 小暑
+              - generic [ref=e417]: 夏
+            - generic [ref=e418] [cursor=pointer]:
+              - generic [ref=e419]: 大暑
+              - generic [ref=e420]: 夏
+            - generic [ref=e421] [cursor=pointer]:
+              - generic [ref=e422]: 立秋
+              - generic [ref=e423]: 秋
+            - generic [ref=e424] [cursor=pointer]:
+              - generic [ref=e425]: 处暑
+              - generic [ref=e426]: 秋
+            - generic [ref=e427] [cursor=pointer]:
+              - generic [ref=e428]: 白露
+              - generic [ref=e429]: 秋
+            - generic [ref=e430] [cursor=pointer]:
+              - generic [ref=e431]: 秋分
+              - generic [ref=e432]: 秋
+            - generic [ref=e433] [cursor=pointer]:
+              - generic [ref=e434]: 寒露
+              - generic [ref=e435]: 秋
+            - generic [ref=e436] [cursor=pointer]:
+              - generic [ref=e437]: 霜降
+              - generic [ref=e438]: 秋
+            - generic [ref=e439] [cursor=pointer]:
+              - generic [ref=e440]: 立冬
+              - generic [ref=e441]: 冬
+            - generic [ref=e442] [cursor=pointer]:
+              - generic [ref=e443]: 小雪
+              - generic [ref=e444]: 冬
+            - generic [ref=e445] [cursor=pointer]:
+              - generic [ref=e446]: 大雪
+              - generic [ref=e447]: 冬
+            - generic [ref=e448] [cursor=pointer]:
+              - generic [ref=e449]: 冬至
+              - generic [ref=e450]: 冬
+        - generic [ref=e89]:
+          - generic [ref=e452]:
+            - generic [ref=e456]:
+              - img "coffee" [ref=e458]:
+                - img [ref=e459]
+              - generic [ref=e461]: 饮食建议
+            - list [ref=e463]:
+              - listitem [ref=e464]: 饮食均衡不偏食
+              - listitem [ref=e465]: 多吃芽菜助升发
+              - listitem [ref=e466]: 忌大寒大热
+          - generic [ref=e468]:
+            - generic [ref=e472]:
+              - img "fire" [ref=e474]:
+                - img [ref=e475]
+              - generic [ref=e477]: 起居建议
+            - list [ref=e479]:
+              - listitem [ref=e480]: 起居有常
+              - listitem [ref=e481]: 保持心态平和
+              - listitem [ref=e482]: 春游赏花
+          - generic [ref=e484]:
+            - generic [ref=e488]:
+              - img "thunderbolt" [ref=e490]:
+                - img [ref=e491]
+              - generic [ref=e493]: 运动建议
+            - list [ref=e495]:
+              - listitem [ref=e496]: 广播体操
+              - listitem [ref=e497]: 快步走
+              - listitem [ref=e498]: 骑行
+          - generic [ref=e500]:
+            - generic [ref=e504]:
+              - img "aim" [ref=e506]:
+                - img [ref=e507]
+              - generic [ref=e510]: 穴位按摩
+            - generic [ref=e513]:
+              - generic [ref=e515]: 足三里
+              - generic [ref=e516]: 📍 外膝眼下四横指
+              - generic [ref=e517]: 功效：调理脾胃，强身健体
+        - generic [ref=e518]:
+          - generic [ref=e520]:
+            - generic [ref=e524]:
+              - img "experiment" [ref=e525]:
+                - img [ref=e526]
+              - generic [ref=e528]: 当季推荐药材
+            - generic [ref=e530]:
+              - generic [ref=e534] [cursor=pointer]:
+                - generic [ref=e535]:
+                  - strong [ref=e537]: 黄芪
+                  - generic [ref=e538]: 补气固表
+                - img "right" [ref=e539]:
+                  - img [ref=e540]
+              - generic [ref=e545] [cursor=pointer]:
+                - generic [ref=e546]:
+                  - strong [ref=e548]: 当归
+                  - generic [ref=e549]: 补血活血
+                - img "right" [ref=e550]:
+                  - img [ref=e551]
+          - generic [ref=e554]:
+            - generic [ref=e558]:
+              - img "coffee" [ref=e559]:
+                - img [ref=e560]
+              - generic [ref=e562]: 推荐方剂
+            - generic [ref=e564]:
+              - button "四君子汤 right" [ref=e565] [cursor=pointer]:
+                - generic [ref=e566]: 四君子汤
+                - img "right" [ref=e567]:
+                  - img [ref=e568]
+              - button "四物汤 right" [ref=e570] [cursor=pointer]:
+                - generic [ref=e571]: 四物汤
+                - img "right" [ref=e572]:
+                  - img [ref=e573]
