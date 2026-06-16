@@ -17,7 +17,6 @@ async def db():
     await init_db(adapter)
     await seed_safety_rules(adapter)
     await seed_test_data(adapter)
-    await adapter.execute("COMMIT")
     yield adapter
     await adapter.close()
 

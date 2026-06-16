@@ -383,7 +383,20 @@ class SqliteAdapter(DbAdapter):
 
     async def execute(self, sql: str, params: tuple[Any, ...] = ()) -> sqlite3.Cursor:
         conn = self._ensure_conn()
+        stripped = sql.strip().upper()
+
+        if stripped in ("COMMIT", "ROLLBACK"):
+            try:
+                return await conn.execute(sql, params)
+            except sqlite3.OperationalError:
+                return None  # type: ignore[return-value]
+
         cursor = await conn.execute(sql, params)
+        if stripped.startswith(("INSERT", "UPDATE", "DELETE", "REPLACE")):
+            try:
+                await conn.commit()
+            except sqlite3.OperationalError:
+                pass
         return cursor
 
     @asynccontextmanager

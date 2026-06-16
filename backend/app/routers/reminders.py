@@ -8,8 +8,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.auth import get_current_user
+from app.audit import log_audit
 from app.database import DbAdapter, get_db
 from app.models import ReminderCreate, ReminderUpdate
+from app.repository import current_tenant_id
 
 router = APIRouter(prefix="/api/reminders", tags=["reminders"])
 
@@ -71,6 +73,9 @@ async def create_reminder(
         ),
     )
     row = await db.query_one("SELECT * FROM reminders WHERE id = ?", (reminder_id,))
+    await log_audit(db, tenant_id=current_tenant_id.get(), user_id=user_id,
+                    action="create", entity_type="reminder", entity_id=reminder_id,
+                    changes={"title": body.title, "times": body.times})
     return _parse_reminder(row)
 
 
@@ -242,6 +247,8 @@ async def update_reminder(
             tuple(values),
         )
     row = await db.query_one("SELECT * FROM reminders WHERE id = ?", (reminder_id,))
+    await log_audit(db, tenant_id=current_tenant_id.get(), user_id=user_id,
+                    action="update", entity_type="reminder", entity_id=reminder_id, changes=update_data)
     return _parse_reminder(row)
 
 
@@ -268,6 +275,9 @@ async def toggle_reminder(
         (new_val, now, reminder_id, user_id),
     )
     row = await db.query_one("SELECT * FROM reminders WHERE id = ?", (reminder_id,))
+    await log_audit(db, tenant_id=current_tenant_id.get(), user_id=user_id,
+                    action="toggle", entity_type="reminder", entity_id=reminder_id,
+                    changes={"enabled": bool(new_val)})
     return _parse_reminder(row)
 
 
@@ -291,6 +301,8 @@ async def delete_reminder(
         "DELETE FROM reminders WHERE id = ? AND user_id = ?",
         (reminder_id, user_id),
     )
+    await log_audit(db, tenant_id=current_tenant_id.get(), user_id=user_id,
+                    action="delete", entity_type="reminder", entity_id=reminder_id)
     return {"detail": "已删除"}
 
 
@@ -337,4 +349,7 @@ async def check_in_reminder(
     result = dict(row)
     if "taken" in result:
         result["taken"] = bool(result["taken"])
+    await log_audit(db, tenant_id=current_tenant_id.get(), user_id=user_id,
+                    action="check-in", entity_type="medication_log", entity_id=log_id,
+                    changes={"reminder_id": reminder_id, "taken": bool(taken), "date": date_val})
     return result

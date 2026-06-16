@@ -285,5 +285,267 @@ def backup_restore(
     typer.echo(f"✅ {result['message']} (文件: {result.get('filename', filename)})")
 
 
+# ---------------------------------------------------------------------------
+# Reminders (spec §20)
+# ---------------------------------------------------------------------------
+
+@app.command("reminders:list")
+def reminders_list(
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """列出全部吃药提醒。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _get_authed(client, "/api/reminders", token=login["access_token"])
+    items = result.get("items", [])
+    typer.echo(f"共 {result['total']} 条提醒")
+    for r in items:
+        status = "✅" if r.get("enabled") else "⏸️"
+        times = ", ".join(r.get("times", []))
+        typer.echo(f"  {status} [{r['id'][:8]}] {r['title']} — {times}")
+
+
+@app.command("reminders:today")
+def reminders_today(
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """今日提醒时间轴。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _get_authed(client, "/api/reminders/today", token=login["access_token"])
+    slots = result.get("items", [])
+    typer.echo(f"📅 {result['date']} — 共 {result['total']} 个时间槽")
+    for s in slots:
+        icon = {"待服": "⏰", "已服": "✅", "漏服": "❌"}.get(s["status"], "•")
+        typer.echo(f"  {icon} {s['time']} {s['title']} [{s['status']}]")
+
+
+@app.command("reminders:add")
+def reminders_add(
+    title: str = typer.Option(..., "--title", "-t", help="提醒标题"),
+    times: str = typer.Option("08:00", "--times", help="时间，逗号分隔"),
+    start_date: str = typer.Option("", "--start", help="开始日期 YYYY-MM-DD"),
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """创建吃药提醒。"""
+    from datetime import datetime as dt
+    sd = start_date or dt.now().strftime("%Y-%m-%d")
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _post_authed(client, "/api/reminders", token=login["access_token"], data={
+            "title": title,
+            "times": [t.strip() for t in times.split(",")],
+            "start_date": sd,
+            "frequency": "daily",
+        })
+    typer.echo(f"✅ 已创建: {result['title']} (ID: {result['id'][:8]})")
+
+
+@app.command("reminders:toggle")
+def reminders_toggle(
+    reminder_id: str = typer.Argument(..., help="提醒ID"),
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """启用/暂停提醒。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        token = login["access_token"]
+        result = _post_authed(client, f"/api/reminders/{reminder_id}/toggle", token=token, data={})
+    state = "启用" if result["enabled"] else "暂停"
+    typer.echo(f"✅ {result['title']} 已{state}")
+
+
+@app.command("reminders:delete")
+def reminders_delete(
+    reminder_id: str = typer.Argument(..., help="提醒ID"),
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """删除提醒。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        _delete_authed(client, f"/api/reminders/{reminder_id}", token=login["access_token"])
+    typer.echo(f"✅ 已删除提醒 {reminder_id[:8]}")
+
+
+# ---------------------------------------------------------------------------
+# Constitution (spec §4.2)
+# ---------------------------------------------------------------------------
+
+@app.command("constitution:questionnaire")
+def constitution_questionnaire():
+    """获取体质自测问卷。"""
+    with httpx.Client() as client:
+        result = _get(client, "/api/constitution/questionnaire")
+    questions = result.get("questions", [])
+    typer.echo(f"📋 共 {len(questions)} 题")
+    for q in questions[:5]:
+        typer.echo(f"  Q{q['id']}: {q['text']}")
+    typer.echo(f"  ... (使用 API 查看完整问卷)")
+
+
+@app.command("constitution:latest")
+def constitution_latest(
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """查看最近体质评估结果。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _get_authed(client, "/api/constitution/latest", token=login["access_token"])
+    if not result:
+        typer.echo("暂无评估记录")
+        return
+    typer.echo(f"🧬 主体质: {result.get('primary_type', '未知')}")
+    secondary = result.get("secondary_types", [])
+    if secondary:
+        typer.echo(f"   兼夹: {', '.join(secondary)}")
+    scores = result.get("results", {})
+    typer.echo(f"   评分: {json.dumps(scores, ensure_ascii=False)}")
+
+
+# ---------------------------------------------------------------------------
+# Profile (spec §4.2)
+# ---------------------------------------------------------------------------
+
+@app.command("profile:get")
+def profile_get(
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """查看健康档案。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _get_authed(client, "/api/profile", token=login["access_token"])
+    typer.echo(f"👤 {result.get('display_name', '未设置')}")
+    typer.echo(f"   性别: {result.get('gender', '未设置')}")
+    typer.echo(f"   体质: {result.get('constitution_type', '未评估')}")
+    allergies = result.get("allergies", [])
+    if allergies:
+        typer.echo(f"   过敏: {', '.join(allergies)}")
+    conditions = result.get("health_conditions", [])
+    if conditions:
+        typer.echo(f"   健康问题: {', '.join(conditions)}")
+
+
+@app.command("profile:update")
+def profile_update(
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+    display_name: Optional[str] = typer.Option(None, "--name"),
+    gender: Optional[str] = typer.Option(None, "--gender"),
+    birth_year: Optional[int] = typer.Option(None, "--birth-year"),
+    constitution: Optional[str] = typer.Option(None, "--constitution"),
+):
+    """更新健康档案。"""
+    data: dict = {}
+    if display_name:
+        data["display_name"] = display_name
+    if gender:
+        data["gender"] = gender
+    if birth_year:
+        data["birth_year"] = birth_year
+    if constitution:
+        data["constitution_type"] = constitution
+    if not data:
+        typer.echo("⚠️ 请至少指定一个要更新的字段")
+        raise typer.Exit(1)
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        _put_authed(client, "/api/profile", token=login["access_token"], data=data)
+    typer.echo("✅ 档案已更新")
+
+
+# ---------------------------------------------------------------------------
+# Chat (spec §8)
+# ---------------------------------------------------------------------------
+
+@app.command("chat:send")
+def chat_send(
+    message: str = typer.Argument(..., help="咨询内容"),
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """向AI助手发送咨询。"""
+    with httpx.Client(timeout=120.0) as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _post_authed(client, "/api/chat", token=login["access_token"], data={
+            "message": message,
+            "history": [],
+        })
+    typer.echo(f"🤖 {result['reply']}")
+    if result.get("safety_warning"):
+        typer.echo(f"\n⚠️ {result['safety_warning']}")
+
+
+@app.command("chat:history")
+def chat_history(
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+    page: int = typer.Option(1, "--page", "-p"),
+):
+    """查看对话历史。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _get_authed(client, "/api/chat/history", token=login["access_token"],
+                             params={"page": page})
+    items = result.get("items", [])
+    typer.echo(f"共 {result['total']} 条对话")
+    for conv in items:
+        typer.echo(f"  [{conv['id'][:8]}] {conv.get('title', '无标题')} ({conv.get('updated_at', '')})")
+
+
+# ---------------------------------------------------------------------------
+# Daily Health (spec §5.4)
+# ---------------------------------------------------------------------------
+
+@app.command("daily-health")
+def daily_health(
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """查看今日养生卡。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _get_authed(client, "/api/daily-health", token=login["access_token"])
+    typer.echo(f"📅 {result.get('date', '')} — {result.get('solar_term', {}).get('name', '')}")
+    typer.echo(f"🌡️ {result.get('solar_term', {}).get('description', '')}")
+    tips = result.get("tips", [])
+    if tips:
+        typer.echo("\n💡 养生建议:")
+        for tip in tips:
+            typer.echo(f"  • {tip}")
+
+
+def _put_authed(client: httpx.Client, path: str, token: str, data: dict | None = None) -> dict:
+    try:
+        r = client.put(f"{BASE_URL}{path}", json=data, headers={"Authorization": f"Bearer {token}"})
+        r.raise_for_status()
+        return r.json()
+    except httpx.ConnectError:
+        typer.echo("❌ 无法连接到服务")
+        raise typer.Exit(1)
+    except httpx.HTTPStatusError as e:
+        typer.echo(f"❌ 请求失败: {e.response.status_code} {e.response.text}")
+        raise typer.Exit(1)
+
+
+def _delete_authed(client: httpx.Client, path: str, token: str) -> dict:
+    try:
+        r = client.delete(f"{BASE_URL}{path}", headers={"Authorization": f"Bearer {token}"})
+        r.raise_for_status()
+        return r.json()
+    except httpx.ConnectError:
+        typer.echo("❌ 无法连接到服务")
+        raise typer.Exit(1)
+    except httpx.HTTPStatusError as e:
+        typer.echo(f"❌ 请求失败: {e.response.status_code} {e.response.text}")
+        raise typer.Exit(1)
+
+
 if __name__ == "__main__":
     app()

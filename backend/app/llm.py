@@ -258,26 +258,50 @@ async def _validate_and_augment(content: str) -> str:
         return content
 
 
+_TCM_CONCEPT_TERMS = frozenset({
+    "气虚", "阳虚", "阴虚", "痰湿", "湿热", "血瘀", "气郁", "特禀", "平和",
+    "气虚质", "阳虚质", "阴虚质", "痰湿质", "湿热质", "血瘀质", "气郁质", "特禀质", "平和质",
+    "风寒", "风热", "暑湿", "燥邪", "火邪", "寒邪", "湿邪",
+    "风寒感冒", "风热感冒", "阴虚火旺", "阳虚火旺", "肝阳上亢", "脾胃虚弱", "脾虚",
+    "气虚乏力", "气血两虚", "肝肾不足", "肺气虚", "心气虚", "肾阳虚", "肾阴虚",
+    "补气", "补血", "滋阴", "温阳", "清热", "解毒", "活血", "化瘀", "理气",
+    "健脾", "益胃", "润肺", "安神", "平肝", "潜阳", "固表", "利水", "祛湿",
+    "补气之长", "补肺健脾", "实卫敛汗", "托毒生肌", "利水消肿",
+    "表实", "表虚", "实证", "虚证", "热证", "寒证", "里证",
+})
+
+_CJK_PATTERN = re.compile(r"^[\u4e00-\u9fff]+$")
+
+
 def _extract_herb_names(text: str) -> list[str]:
     """Extract potential Chinese herb names from LLM output text.
 
-    Looks for patterns like 「黄芪」, 【当归】, or names in 方药参考 sections.
-    Also catches common herb name patterns (2-4 Chinese chars after herb indicators).
+    Conservative extraction — only flags names that:
+    - Are 2-4 pure CJK characters (typical herb name length)
+    - Are NOT common TCM diagnostic/concept terms
     """
     candidates: set[str] = set()
 
     for m in re.finditer(r"[「【《]([^」】》]+)[」】》]", text):
         name = m.group(1).strip()
-        if 1 <= len(name) <= 6:
+        if _is_potential_herb_name(name):
             candidates.add(name)
 
-    for m in re.finditer(r"(?:药材|中药|中药材| Herb)[:：\s]*([^\s,，。；;、]{1,6})", text, re.IGNORECASE):
-        candidates.add(m.group(1).strip())
-
-    for m in re.finditer(r"(?:方剂|方子|经典方)[:：\s]*([^\s,，。；;、]{2,8})", text):
-        candidates.add(m.group(1).strip())
-
     return list(candidates)
+
+
+def _is_potential_herb_name(name: str) -> bool:
+    """Check if a string looks like a herb name, not a TCM concept."""
+    if not name or not _CJK_PATTERN.match(name):
+        return False
+    if not (2 <= len(name) <= 4):
+        return False
+    if name in _TCM_CONCEPT_TERMS:
+        return False
+    for term in _TCM_CONCEPT_TERMS:
+        if term in name or name in term:
+            return False
+    return True
 
 
 async def _check_herbs_exist(names: list[str]) -> list[str]:

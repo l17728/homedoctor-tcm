@@ -9,7 +9,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth import get_current_user
+from app.audit import log_audit
 from app.database import DbAdapter, get_db
+from app.repository import current_tenant_id
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 
@@ -122,4 +124,7 @@ async def update_profile(
     row = await db.query_one(
         "SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)
     )
+    await log_audit(db, tenant_id=current_tenant_id.get(), user_id=user_id,
+                    action="update", entity_type="user_profile", entity_id=user_id,
+                    changes={k: v for k, v in body.items() if v is not None})
     return _parse_profile(row)

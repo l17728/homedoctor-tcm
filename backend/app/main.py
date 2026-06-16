@@ -28,7 +28,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db(adapter)
     await seed_safety_rules(adapter)
     await seed_test_data(adapter)
-    await adapter.execute("COMMIT")
 
     yield
 

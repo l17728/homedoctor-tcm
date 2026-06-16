@@ -9,9 +9,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.auth import get_current_user
+from app.audit import log_audit
 from app.database import DbAdapter, get_db
 from app.models import MedicineCreate, MedicineUpdate
-from app.repository import MedicineRepository
+from app.repository import MedicineRepository, current_tenant_id
 
 router = APIRouter(prefix="/api/medicines", tags=["medicines"])
 
@@ -61,6 +62,8 @@ async def create_medicine(
     repo = MedicineRepository(db)
     medicine_id = await repo.create_medicine(body)
     medicine = await repo.get_medicine(medicine_id)
+    await log_audit(db, tenant_id=current_tenant_id.get(), user_id=current_user["id"],
+                    action="create", entity_type="medicine", entity_id=medicine_id, changes=body)
     return _parse_medicine(medicine)
 
 
@@ -99,6 +102,8 @@ async def update_medicine(
             detail="未找到该药品",
         )
     medicine = await repo.get_medicine(medicine_id)
+    await log_audit(db, tenant_id=current_tenant_id.get(), user_id=current_user["id"],
+                    action="update", entity_type="medicine", entity_id=medicine_id, changes=update_data)
     return _parse_medicine(medicine)
 
 
@@ -116,6 +121,8 @@ async def delete_medicine(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="未找到该药品",
         )
+    await log_audit(db, tenant_id=current_tenant_id.get(), user_id=current_user["id"],
+                    action="delete", entity_type="medicine", entity_id=medicine_id)
     return {"detail": "已删除"}
 
 
