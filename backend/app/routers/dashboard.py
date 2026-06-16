@@ -102,6 +102,20 @@ async def get_dashboard_stats(
     # Recent searches: placeholder for MVP (would come from search_logs table in v2)
     recent_searches: list[str] = []
 
+    # Medication adherence (last 7 days)
+    adherence_taken = 0
+    adherence_total = 0
+    log_rows = await db.query(
+        """SELECT taken FROM medication_logs
+           WHERE family_member_id = ? AND date >= date('now', '-7 days')""",
+        (current_user["id"],),
+    )
+    for lr in log_rows:
+        adherence_total += 1
+        if lr["taken"]:
+            adherence_taken += 1
+    adherence_rate = round(adherence_taken / adherence_total * 100, 1) if adherence_total > 0 else 0.0
+
     return {
         "herb_count": herb_count,
         "formula_count": formula_count,
@@ -109,4 +123,7 @@ async def get_dashboard_stats(
         "safety_alert_count": safety_alert_count,
         "recent_searches": recent_searches,
         "stock_alerts": stock_alerts,
+        "adherence_rate": adherence_rate,
+        "adherence_taken_7d": adherence_taken,
+        "adherence_total_7d": adherence_total,
     }

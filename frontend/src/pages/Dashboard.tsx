@@ -11,6 +11,7 @@ import {
   SafetyOutlined,
   CalendarOutlined,
   MessageOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { getDashboardStats, type DashboardStats } from '../api/dashboardApi';
@@ -114,6 +115,43 @@ export default function Dashboard() {
           </Card>
         </Col>
       </Row>
+
+      {!!stats?.adherence_total_7d && stats.adherence_total_7d > 0 && (
+        <Card
+          style={{ marginBottom: 24 }}
+          title={
+            <span>
+              <CheckCircleOutlined style={{ marginRight: 8, color: '#52c41a' }} />
+              用药依从性
+            </span>
+          }
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+            <Statistic
+              title="近7天按时服药率"
+              value={stats.adherence_rate ?? 0}
+              suffix="%"
+              valueStyle={{
+                color: (stats.adherence_rate ?? 0) >= 80 ? '#52c41a' : (stats.adherence_rate ?? 0) >= 60 ? '#faad14' : '#ff4d4f',
+                fontSize: 36,
+              }}
+            />
+            <div>
+              <Text type="secondary" style={{ fontSize: 16 }}>
+                {stats.adherence_taken_7d ?? 0} / {stats.adherence_total_7d ?? 0} 次按时服药
+              </Text>
+              <br />
+              <Text type="secondary">
+                {(stats.adherence_rate ?? 0) >= 80
+                  ? '坚持得很好，继续保持！'
+                  : (stats.adherence_rate ?? 0) >= 60
+                    ? '还可以，建议设置提醒避免漏服'
+                    : '依从性较低，请务必按时服药'}
+              </Text>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {(expiryAlerts.expired.length > 0 ||
         expiryAlerts.expiring_soon.length > 0 ||

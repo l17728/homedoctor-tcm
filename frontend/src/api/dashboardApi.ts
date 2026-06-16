@@ -8,6 +8,9 @@ export interface DashboardStats {
   safety_alert_count?: number;
   stock_alerts?: unknown[];
   recent_searches?: unknown[];
+  adherence_rate?: number;
+  adherence_taken_7d?: number;
+  adherence_total_7d?: number;
 }
 
 const MOCK_STATS: DashboardStats = {

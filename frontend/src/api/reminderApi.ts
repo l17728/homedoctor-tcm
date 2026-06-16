@@ -133,3 +133,35 @@ export async function checkInReminder(
     body: JSON.stringify({ time, taken }),
   });
 }
+
+export interface CheckInLog {
+  id: string;
+  date: string;
+  reminder_id: string;
+  title: string | null;
+  herb_name: string | null;
+  formula_name: string | null;
+  medicine_name: string | null;
+  taken: boolean;
+  skipped_reason: string | null;
+  created_at: string;
+}
+
+export interface CheckInHistory {
+  items: CheckInLog[];
+  total: number;
+  taken_count: number;
+  adherence_rate: number;
+  days: number;
+}
+
+export async function getReminderHistory(days: number = 7): Promise<CheckInHistory> {
+  const data = await request<CheckInHistory>(`/api/reminders/history?days=${days}`);
+  return {
+    items: data.items ?? [],
+    total: data.total ?? 0,
+    taken_count: data.taken_count ?? 0,
+    adherence_rate: data.adherence_rate ?? 0,
+    days: data.days ?? days,
+  };
+}

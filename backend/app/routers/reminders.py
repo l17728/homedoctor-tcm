@@ -142,6 +142,46 @@ async def get_today_reminders(
     return {"date": today, "items": slots, "total": len(slots)}
 
 
+@router.get("/history")
+async def get_reminder_history(
+    days: int = Query(7, ge=1, le=90),
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = current_user["id"]
+    since = (datetime.now(CST) - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    rows = await db.query(
+        """SELECT ml.id, ml.date, ml.medicine_id as reminder_id, ml.taken,
+                  ml.skipped_reason, ml.created_at,
+                  r.title, r.herb_name, r.formula_name, r.medicine_name
+           FROM medication_logs ml
+           LEFT JOIN reminders r ON ml.medicine_id = r.id
+           WHERE ml.family_member_id = ? AND ml.date >= ?
+           ORDER BY ml.created_at DESC
+           LIMIT 200""",
+        (user_id, since),
+    )
+
+    items = []
+    for row in rows:
+        item = dict(row)
+        item["taken"] = bool(item.get("taken", 0))
+        items.append(item)
+
+    taken_count = sum(1 for i in items if i["taken"])
+    total = len(items)
+    adherence_rate = round(taken_count / total * 100, 1) if total > 0 else 0.0
+
+    return {
+        "items": items,
+        "total": total,
+        "taken_count": taken_count,
+        "adherence_rate": adherence_rate,
+        "days": days,
+    }
+
+
 @router.get("/{reminder_id}")
 async def get_reminder(
     reminder_id: str,

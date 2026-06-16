@@ -30,6 +30,7 @@ import dayjs from 'dayjs';
 import {
   getReminders,
   getTodayReminders,
+  getReminderHistory,
   createReminder,
   updateReminder,
   deleteReminder,
@@ -38,6 +39,7 @@ import {
   type Reminder,
   type TodayReminderSlot,
   type ReminderCreate,
+  type CheckInLog,
 } from '../api/reminderApi';
 import { REMINDER_STATUS_COLOR } from '../constants';
 import StatusTag from '../components/StatusTag';
@@ -66,6 +68,7 @@ const FREQUENCY_OPTIONS = [
 export default function RemindersPage() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [todaySlots, setTodaySlots] = useState<TodayReminderSlot[]>([]);
+  const [history, setHistory] = useState<CheckInLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Reminder | null>(null);
@@ -74,9 +77,14 @@ export default function RemindersPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [list, today] = await Promise.all([getReminders(), getTodayReminders()]);
+      const [list, today, hist] = await Promise.all([
+        getReminders(),
+        getTodayReminders(),
+        getReminderHistory(7).catch(() => null),
+      ]);
       setReminders(list);
       setTodaySlots(today);
+      setHistory(hist?.items ?? []);
     } catch {
       // handled
     } finally {
@@ -288,6 +296,38 @@ export default function RemindersPage() {
                        )}
                        <StatusTag status={slot.status} colorMap={REMINDER_STATUS_COLOR} />
                      </Space>
+                  </div>
+                ))}
+              </Space>
+            </Card>
+          )}
+
+          {history.length > 0 && (
+            <Card title={<><CheckCircleOutlined /> 打卡历史（近7天）</>} style={{ marginBottom: 24 }}>
+              <Space direction="vertical" style={{ width: '100%' }} size="small">
+                {history.slice(0, 10).map((log) => (
+                  <div
+                    key={log.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '6px 12px',
+                      background: log.taken ? '#f6ffed' : '#fff2f0',
+                      borderRadius: 6,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <Tag color={log.taken ? 'green' : 'red'} style={{ fontSize: 13 }}>
+                        {log.date}
+                      </Tag>
+                      <span style={{ fontSize: 15 }}>
+                        {log.title ?? '已删除的提醒'}
+                      </span>
+                    </div>
+                    <Tag color={log.taken ? 'success' : 'error'}>
+                      {log.taken ? '已服' : '漏服'}
+                    </Tag>
                   </div>
                 ))}
               </Space>
