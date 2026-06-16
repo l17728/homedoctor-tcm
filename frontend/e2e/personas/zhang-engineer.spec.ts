@@ -313,22 +313,18 @@ test.describe('Persona: 张伟 — IT架构师 · 数据驱动的失眠患者', 
         await nameInput.fill('佐匹克隆');
       }
 
-      // 填写其他可能的字段
-      const typeSelect = page.locator('.ant-drawer').getByLabel('类型');
-      if (await typeSelect.isVisible().catch(() => false)) {
-        // 选择西药类型
-        await typeSelect.dispatchEvent('click');
-        const westOption = page.getByRole('option', { name: '西药' }).first();
-        if (await westOption.isVisible().catch(() => false)) {
-          await westOption.click();
-        }
-      }
+      // 选择西药类型
+      await page.waitForTimeout(500);
+      await drawer.locator('.ant-select-selector').first().click();
+      await page.waitForTimeout(500);
+      await page.locator('.ant-select-item-option').filter({ hasText: '西药' }).first().click({ force: true });
 
       // 提交
       await page.getByRole('button', { name: chineseText('提交') }).click();
 
       // 等待 drawer 关闭
-      await expect(drawer).not.toBeVisible();
+      await page.waitForTimeout(1000);
+      await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
 
       // 验证佐匹克隆出现在列表中
       await expect(page.getByText('佐匹克隆')).toBeVisible();
@@ -344,17 +340,14 @@ test.describe('Persona: 张伟 — IT架构师 · 数据驱动的失眠患者', 
         await nameInput2.fill('酸枣仁');
       }
 
-      const typeSelect2 = page.locator('.ant-drawer').getByLabel('类型');
-      if (await typeSelect2.isVisible().catch(() => false)) {
-        await typeSelect2.dispatchEvent('click');
-        const tcmOption = page.getByRole('option', { name: /中药|中成药/ }).first();
-        if (await tcmOption.isVisible().catch(() => false)) {
-          await tcmOption.click();
-        }
-      }
+      await page.waitForTimeout(500);
+      await drawer2.locator('.ant-select-selector').first().click();
+      await page.waitForTimeout(500);
+      await page.locator('.ant-select-item-option').filter({ hasText: '中成药' }).first().click({ force: true });
 
       await page.getByRole('button', { name: chineseText('提交') }).click();
-      await expect(drawer2).not.toBeVisible();
+      await page.waitForTimeout(1000);
+      await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
 
       // 验证两种药都在列表中
       await expect(page.getByText('佐匹克隆')).toBeVisible();
@@ -373,30 +366,30 @@ test.describe('Persona: 张伟 — IT架构师 · 数据驱动的失眠患者', 
   // -----------------------------------------------------------------------
   test('体质自测: 开始问卷 → 验证问题显示和分页导航', async ({ page }) => {
     await page.goto('/constitution');
+    await page.waitForLoadState('networkidle');
 
     // 验证介绍页显示
-    await expect(page.getByText('体质自测')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '体质自测' })).toBeVisible();
     await expect(page.getByText(/王琦九种体质/)).toBeVisible();
 
     // 点击"开始测试"
     const startButton = page.getByRole('button', { name: /开始测试/ });
     await expect(startButton).toBeVisible();
     await startButton.click();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1000);
 
-    // 验证进入问卷模式 — 应该显示进度条和问题
-    await expect(page.getByText(/第.*页/)).toBeVisible();
+    await expect(page.getByText(/第.*页/)).toBeVisible({ timeout: 10000 });
 
-    // 验证问题卡片显示（Radio.Group 选项）
-    const radioGroups = page.locator('.ant-radio-group');
-    await expect(radioGroups.first()).toBeVisible();
+    const radioButtons = page.locator('.ant-radio-wrapper');
+    await expect(radioButtons.first()).toBeVisible({ timeout: 10000 });
 
     // 验证答题选项（没有/很少/有时/经常/总是）
     await expect(page.getByText('没有').first()).toBeVisible();
     await expect(page.getByText('总是').first()).toBeVisible();
 
     // 回答第一个问题
-    const firstRadio = page.locator('.ant-radio-input').first();
-    await firstRadio.click();
+    await radioButtons.first().click();
 
     // 验证进度条更新
     const progress = page.locator('.ant-progress');
@@ -494,16 +487,16 @@ test.describe('Persona: 张伟 — IT架构师 · 数据驱动的失眠患者', 
     await page.waitForTimeout(5000);
 
     // 验证用户消息已发送
-    const userMsg = page.locator('.ant-card').filter({ hasText: '长期失眠怎么调理' });
+    const userMsg = page.locator('.ant-card').filter({ hasText: '长期失眠怎么调理' }).first();
     await expect(userMsg).toBeVisible();
 
     // 验证AI回复出现
     const aiCards = page.locator('.ant-card').filter({ hasText: /失眠|安神|酸枣仁|睡眠|建议|注意/ });
-    const aiVisible = await aiCards.first().isVisible().catch(() => false);
+    const aiVisible = await aiCards.last().isVisible().catch(() => false);
 
     if (aiVisible) {
       // 验证AI回复有内容
-      const aiText = await aiCards.first().textContent();
+      const aiText = await aiCards.last().textContent();
       expect(aiText!.length).toBeGreaterThan(10);
     }
 

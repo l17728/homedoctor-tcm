@@ -76,9 +76,13 @@ async def safety_check_v2(body: SafetyCheckRequestV2, db: DbAdapter = Depends(ge
         for w in result.warnings
     ]
 
+    # Extract interaction messages (layer 1b) for top-level interactions field
+    interactions = [w.title for w in warnings_v2 if w.layer == 1 and '交互' in w.source]
+
     return SafetyCheckResponseV2(
         safe=result.safe,
         warnings=warnings_v2,
+        interactions=interactions,
         disclaimer=result.disclaimer,
         checked_herbs=result.checked_herbs,
         checked_medicines=result.checked_medicines,

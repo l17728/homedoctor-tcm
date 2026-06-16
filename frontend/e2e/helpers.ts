@@ -130,6 +130,7 @@ export async function navigateTo(page: Page, menuLabel: string): Promise<void> {
 /**
  * Select an option from an Ant Design Select dropdown.
  * Lesson T2: Use dispatchEvent('click') to avoid "outside viewport" issues.
+ * Robust approach: click trigger → wait for dropdown → scroll option into view → click.
  */
 export async function selectAntdOption(
   page: Page,
@@ -137,10 +138,23 @@ export async function selectAntdOption(
   optionText: string,
 ): Promise<void> {
   await triggerLocator.dispatchEvent('click');
-  // Wait for dropdown to appear, then click the option
+  await page.waitForTimeout(300); // Give AntD time to render the dropdown portal
+
+  // Try role-based option first
   const option = page.getByRole('option', { name: optionText }).first();
-  await option.waitFor({ state: 'visible' });
-  await option.click();
+  const isVisible = await option.isVisible().catch(() => false);
+
+  if (isVisible) {
+    await option.scrollIntoViewIfNeeded();
+    await option.click();
+  } else {
+    // Fallback: click by text inside the dropdown container
+    const dropdown = page.locator('.ant-select-dropdown').last();
+    const textOption = dropdown.getByText(optionText, { exact: true }).first();
+    await textOption.waitFor({ state: 'visible', timeout: 5000 });
+    await textOption.scrollIntoViewIfNeeded();
+    await textOption.click();
+  }
 }
 
 /**

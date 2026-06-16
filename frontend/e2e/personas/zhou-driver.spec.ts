@@ -16,7 +16,6 @@ import {
   chineseText,
   navigateTo,
   opsCell,
-  selectAntdOption,
 } from '../helpers';
 
 test.describe('Persona: 周建华 — 出租车司机职业病用户', () => {
@@ -254,7 +253,7 @@ test.describe('Persona: 周建华 — 出租车司机职业病用户', () => {
     await page.getByRole('button', { name: /发送/ }).click();
 
     // 验证用户消息出现
-    await expect(page.getByText('腰痛吃什么中药好？')).toBeVisible();
+    await expect(page.getByText('腰痛吃什么中药好？', { exact: true })).toBeVisible();
 
     // 等待AI回复
     const thinkingIndicator = page.getByText('正在思考');
@@ -325,14 +324,25 @@ test.describe('Persona: 周建华 — 出租车司机职业病用户', () => {
     // 填写提醒标题
     await page.getByLabel('提醒标题').fill('饭前服用奥美拉唑（胃药）');
 
+    // 设置时间（TimePicker.RangePicker — required field）
+    const timePicker = drawer.locator('.ant-picker-range');
+    await timePicker.first().click();
+    await page.keyboard.type('08:00');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+    await page.keyboard.type('08:00');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(300);
+
     // 提交
     await page.getByRole('button', { name: chineseText('提交') }).click();
 
     // 抽屉关闭
-    await expect(page.locator('.ant-drawer')).not.toBeVisible();
+    await page.waitForTimeout(1000);
+    await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
 
     // 验证提醒出现在列表中
-    await expect(page.getByText('饭前服用奥美拉唑（胃药）')).toBeVisible();
+    await expect(page.getByText('饭前服用奥美拉唑（胃药）').first()).toBeVisible();
 
     // 验证今日提醒区域
     await expect(page.getByText('今日提醒')).toBeVisible();
@@ -370,17 +380,17 @@ test.describe('Persona: 周建华 — 出租车司机职业病用户', () => {
         await nameInput.fill('奥美拉唑肠溶胶囊');
       }
 
-      // 选择类型（Lesson T2: AntD Select 用 dispatchEvent）
-      const typeSelect = page.locator('.ant-drawer').getByLabel('类型');
-      if (await typeSelect.isVisible().catch(() => false)) {
-        await selectAntdOption(page, typeSelect, '西药');
-      }
+      await page.waitForTimeout(500);
+      await drawer.locator('.ant-select-selector').first().click();
+      await page.waitForTimeout(500);
+      await page.locator('.ant-select-item-option').filter({ hasText: '西药' }).first().click({ force: true });
 
       // 提交
       await page.getByRole('button', { name: chineseText('提交') }).click();
 
       // 抽屉关闭
-      await expect(page.locator('.ant-drawer')).not.toBeVisible();
+      await page.waitForTimeout(1000);
+      await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
 
       // 验证药品出现在列表中
       await expect(page.getByText('奥美拉唑肠溶胶囊')).toBeVisible();
@@ -443,14 +453,14 @@ test.describe('Persona: 周建华 — 出租车司机职业病用户', () => {
 
     // 通过侧边栏导航到知识库 → 中药
     await navigateTo(page, '知识库');
-    await page.getByText('中药').click();
+    await page.locator('.ant-menu').getByText('中药', { exact: true }).click();
     await page.waitForURL('/herbs');
     await expect(page).toHaveURL('/herbs');
     await expect(page.getByText('中药知识库')).toBeVisible();
 
     // 导航到方剂
     await page.getByText('知识库').first().click();
-    await page.getByText('方剂').click();
+    await page.locator('.ant-menu').getByText('方剂', { exact: true }).click();
     await page.waitForURL('/formulas');
     await expect(page.getByText('方剂知识库')).toBeVisible();
 

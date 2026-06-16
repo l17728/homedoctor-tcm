@@ -210,6 +210,7 @@ class SafetyWarningV2(BaseModel):
 class SafetyCheckResponseV2(BaseModel):
     safe: bool
     warnings: list[SafetyWarningV2]
+    interactions: list[str] = Field(default_factory=list, description="中西药交互提示列表")
     disclaimer: str
     checked_herbs: list[str] = Field(default_factory=list)
     checked_medicines: list[str] = Field(default_factory=list)

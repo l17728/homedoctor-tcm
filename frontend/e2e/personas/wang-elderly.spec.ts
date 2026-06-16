@@ -73,7 +73,7 @@ test.describe('Persona: 王秀英 — 银发独居长辈', () => {
 
     // 确认弹窗出现
     await expect(page.locator('.ant-modal-confirm, .ant-modal')).toBeVisible();
-    await expect(page.getByText(/切换到长辈模式|简化界面/)).toBeVisible();
+    await expect(page.getByText(/切换到长辈模式|简化界面/).first()).toBeVisible();
 
     // 确认切换
     await page.getByRole('button', { name: /确定切换/ }).click();
@@ -84,7 +84,7 @@ test.describe('Persona: 王秀英 — 银发独居长辈', () => {
     // 侧边栏消失，底部导航出现
     await expect(page.locator('.ant-layout-sider')).not.toBeVisible();
     await expect(page.getByText('首页').last()).toBeVisible();
-    await expect(page.getByText('AI问答').last()).toBeVisible();
+    await expect(page.getByText('问答').last()).toBeVisible();
     await expect(page.getByText('我的').last()).toBeVisible();
   });
 
@@ -113,14 +113,14 @@ test.describe('Persona: 王秀英 — 银发独居长辈', () => {
 
     // 3个Tab文字
     await expect(bottomNav.getByText('首页')).toBeVisible();
-    await expect(bottomNav.getByText('AI问答')).toBeVisible();
+    await expect(bottomNav.getByText('问答')).toBeVisible();
     await expect(bottomNav.getByText('我的')).toBeVisible();
 
     // 侧边栏不存在（长辈模式没有复杂的多级菜单）
     await expect(page.locator('.ant-layout-sider')).not.toBeVisible();
 
     // 验证可通过底部导航切换
-    await bottomNav.getByText('AI问答').click();
+    await bottomNav.getByText('问答').click();
     await page.waitForURL('/chat');
     await expect(page).toHaveURL('/chat');
 
@@ -244,14 +244,22 @@ test.describe('Persona: 王秀英 — 银发独居长辈', () => {
     const drawer = page.locator('.ant-drawer');
     await expect(drawer).toBeVisible();
 
-    // 填写提醒标题
     await page.getByLabel('提醒标题').fill('服用缬沙坦（降压药）');
 
-    // 提交（只需标题即可创建）
+    const timePicker = drawer.locator('.ant-picker').first();
+    await timePicker.click();
+    await page.waitForTimeout(500);
+    const tpInputs = timePicker.locator('input');
+    await tpInputs.nth(0).fill('08:00');
+    await tpInputs.nth(1).fill('08:00');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+
     await page.getByRole('button', { name: chineseText('提交') }).click();
 
     // 抽屉关闭
-    await expect(page.locator('.ant-drawer')).not.toBeVisible();
+    await page.waitForTimeout(1000);
+    await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
 
     // 提醒出现在列表中
     await expect(page.getByText('服用缬沙坦（降压药）')).toBeVisible();
@@ -351,7 +359,7 @@ test.describe('Persona: 王秀英 — 银发独居长辈', () => {
 
     // 点击知识库菜单展开
     await page.getByText('知识库').first().click();
-    await page.getByText('中药').click();
+    await page.locator('.ant-menu').getByText('中药', { exact: true }).click();
     await page.waitForURL('/herbs');
     await expect(page).toHaveURL('/herbs');
     await expect(page.getByText('中药知识库')).toBeVisible();
@@ -438,7 +446,7 @@ test.describe('Persona: 王秀英 — 银发独居长辈', () => {
     await register(page, username);
 
     await page.goto('/profile');
-    await expect(page.getByText('健康档案')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '健康档案' })).toBeVisible();
     await expect(page.getByText('基本信息')).toBeVisible();
 
     // 填写昵称

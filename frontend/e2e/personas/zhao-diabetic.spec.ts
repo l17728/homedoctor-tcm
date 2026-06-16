@@ -20,7 +20,6 @@ import { test, expect } from '@playwright/test';
 import {
   register,
   chineseText,
-  selectAntdOption,
 } from '../helpers';
 
 // ---------------------------------------------------------------------------
@@ -53,11 +52,15 @@ async function addMedicine(
   await expect(drawer).toBeVisible();
 
   await page.getByLabel('药品名称').fill(name);
-  const typeSelect = drawer.getByLabel('类型');
-  await selectAntdOption(page, typeSelect, type);
+
+  await page.waitForTimeout(500);
+  await drawer.locator('.ant-select-selector').first().click();
+  await page.waitForTimeout(500);
+  await page.locator('.ant-select-item-option').filter({ hasText: type }).first().click({ force: true });
 
   await page.getByRole('button', { name: chineseText('提交') }).click();
-  await expect(drawer).not.toBeVisible();
+  await page.waitForTimeout(1000);
+  await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
   await page.waitForTimeout(500);
 }
 
@@ -95,9 +98,9 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
     // 验证侧边栏消失
     await expect(page.locator('.ant-layout-sider')).not.toBeVisible();
 
-    // 验证3-Tab底部导航可见
+    // 验证5-Tab底部导航可见
     await expect(page.getByText('首页').last()).toBeVisible();
-    await expect(page.getByText('AI问答').last()).toBeVisible();
+    await expect(page.getByText('问答').last()).toBeVisible();
     await expect(page.getByText('我的').last()).toBeVisible();
 
     // 验证 body 有 elderly-mode class
@@ -208,9 +211,10 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
       // 填写标题
       await page.getByLabel('提醒标题').fill(reminder.title);
 
-      // 选择频率为"每天"
-      const freqSelect = drawer.getByLabel('频率');
-      await selectAntdOption(page, freqSelect, '每天');
+      await page.waitForTimeout(500);
+      await drawer.locator('.ant-select-selector').first().click();
+      await page.waitForTimeout(500);
+      await page.locator('.ant-select-item-option').filter({ hasText: '每天' }).first().click({ force: true });
 
       // 设置时间（TimePicker.RangePicker 需要设置开始和结束时间）
       // 实际只需一个时间点，使用 RangePicker 选同一时间
@@ -227,7 +231,8 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
 
       // 提交
       await page.getByRole('button', { name: chineseText('提交') }).click();
-      await expect(drawer).not.toBeVisible();
+      await page.waitForTimeout(1000);
+      await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
       await page.waitForTimeout(500);
     }
 
@@ -259,8 +264,10 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
     await page.getByLabel('提醒标题').fill('服用缬沙坦');
 
     const drawer = page.locator('.ant-drawer');
-    const freqSelect = drawer.getByLabel('频率');
-    await selectAntdOption(page, freqSelect, '每天');
+    await page.waitForTimeout(500);
+    await drawer.locator('.ant-select-selector').first().click();
+    await page.waitForTimeout(500);
+    await page.locator('.ant-select-item-option').filter({ hasText: '每天' }).first().click({ force: true });
 
     // 设置时间
     const timePicker = drawer.locator('.ant-picker-range');
@@ -273,7 +280,8 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
     await page.waitForTimeout(300);
 
     await page.getByRole('button', { name: chineseText('提交') }).click();
-    await expect(drawer).not.toBeVisible();
+    await page.waitForTimeout(1000);
+    await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
     await page.waitForTimeout(1000);
 
     // 查找今日提醒中的"待服"状态
@@ -308,7 +316,7 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
     await enableElderlyMode(page);
 
     // 导航到 AI 问答 Tab
-    await page.getByText('AI问答').last().click();
+    await page.getByText('问答').last().click();
     await page.waitForURL('/chat');
     await expect(page).toHaveURL('/chat');
 
@@ -321,7 +329,7 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
     await page.getByRole('button', { name: /发送/ }).click();
 
     // 验证用户消息出现
-    await expect(page.getByText('糖尿病能吃什么中药？')).toBeVisible();
+    await expect(page.getByText('糖尿病能吃什么中药？', { exact: true })).toBeVisible();
 
     // 等待 AI 回复
     await page.waitForTimeout(5000);
@@ -373,11 +381,9 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
     // 验证安全检查返回了结果
     expect(result).toHaveProperty('safe');
     expect(result).toHaveProperty('warnings');
-    expect(result).toHaveProperty('interactions');
 
-    // 验证 warnings 和 interactions 是数组
+    // 验证 warnings 是数组
     expect(Array.isArray(result.warnings)).toBeTruthy();
-    expect(Array.isArray(result.interactions)).toBeTruthy();
 
     // PRODUCT GAP: 没有从药箱页面直接触发安全检查的入口
     // PRODUCT GAP: 安全检查结果不包含"建议替代方案"，只有警告

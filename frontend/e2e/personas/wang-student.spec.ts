@@ -71,7 +71,8 @@ test.describe('Persona: 王浩 — 高二学生 (17岁)', () => {
 
       // Close drawer
       await page.locator('.ant-drawer-close').click();
-      await expect(drawer).not.toBeVisible();
+      await page.waitForTimeout(1000);
+      await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
     } else {
       // If 菊花 not in database, verify search results or empty state
       const hasEmpty = await page.getByText(/暂无|没有/).isVisible().catch(() => false);
@@ -243,7 +244,7 @@ test.describe('Persona: 王浩 — 高二学生 (17岁)', () => {
     await page.waitForTimeout(3000);
 
     // User message should be visible in the conversation
-    await expect(page.getByText('高血压日常怎么调理')).toBeVisible();
+    await expect(page.getByText('高血压日常怎么调理').first()).toBeVisible();
 
     // AI response should appear — either a real response or error fallback
     const messageCards = page.locator('.ant-card');
@@ -305,7 +306,7 @@ test.describe('Persona: 王浩 — 高二学生 (17岁)', () => {
 
     await page.goto('/settings');
 
-    await expect(page.getByText('设置')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '设置' })).toBeVisible();
 
     // --- Dark mode toggle ---
     const darkSwitch = page
@@ -334,7 +335,7 @@ test.describe('Persona: 王浩 — 高二学生 (17岁)', () => {
     // Toggle elderly mode — should show confirmation modal
     await elderlySwitch.click();
     await expect(page.locator('.ant-modal-confirm, .ant-modal')).toBeVisible();
-    await expect(page.getByText(/切换到长辈模式|简化界面/)).toBeVisible();
+    await expect(page.getByText(/切换到长辈模式|简化界面/).first()).toBeVisible();
 
     // Confirm
     await page.getByRole('button', { name: /确定切换/ }).click();
@@ -344,14 +345,14 @@ test.describe('Persona: 王浩 — 高二学生 (17岁)', () => {
 
     // 3-Tab bottom navigation should appear
     await expect(page.getByText('首页').last()).toBeVisible();
-    await expect(page.getByText('AI问答').last()).toBeVisible();
+    await expect(page.getByText('问答').last()).toBeVisible();
     await expect(page.getByText('我的').last()).toBeVisible();
 
     // Verify body has elderly-mode class
     await expect(page.locator('body')).toHaveClass(/elderly-mode/);
 
     // Navigate via bottom tab
-    await page.getByText('AI问答').last().click();
+    await page.getByText('问答').last().click();
     await page.waitForURL('/chat');
     await expect(page).toHaveURL('/chat');
 
@@ -395,7 +396,8 @@ test.describe('Persona: 王浩 — 高二学生 (17岁)', () => {
 
       // Close drawer
       await page.locator('.ant-drawer-close').click();
-      await expect(drawer).not.toBeVisible();
+      await page.waitForTimeout(1000);
+      await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
     } else {
       // If 枸杞 not found, verify empty state or table
       const hasEmpty = await page.getByText(/暂无|没有/).isVisible().catch(() => false);

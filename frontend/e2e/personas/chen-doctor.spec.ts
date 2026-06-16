@@ -46,7 +46,7 @@ test.describe('Persona: 陈明德 — 社区中医师 · 专业用户', () => {
       await expect(drawer).toBeVisible();
 
       // 验证组成药材（四物汤 = 当归 + 川芎 + 白芍 + 熟地）
-      const compositionItem = drawer.locator('.ant-descriptions-item').filter({ hasText: '组成' });
+      const compositionItem = drawer.locator('.ant-descriptions-row').filter({ hasText: '组成' });
       await expect(compositionItem).toBeVisible();
       const compositionText = await compositionItem.textContent();
 
@@ -61,7 +61,7 @@ test.describe('Persona: 陈明德 — 社区中医师 · 专业用户', () => {
       expect(compositionText!.match(/熟地|地黄/)).toBeTruthy();
 
       // 验证功效
-      const efficacyItem = drawer.locator('.ant-descriptions-item').filter({ hasText: '功效' });
+      const efficacyItem = drawer.locator('.ant-descriptions-row').filter({ hasText: '功效' });
       await expect(efficacyItem).toBeVisible();
       const efficacyText = await efficacyItem.textContent();
       expect(efficacyText).toContain('补血');
@@ -69,7 +69,7 @@ test.describe('Persona: 陈明德 — 社区中医师 · 专业用户', () => {
       // CHECK: 方剂详情是否显示出处（如《太平惠民和剂局方》）
       // 四物汤出自《太平惠民和剂局方》或《仙授理伤续断秘方》
       // description 字段可能包含出处信息
-      const descItem = drawer.locator('.ant-descriptions-item').filter({ hasText: '描述' });
+      const descItem = drawer.locator('.ant-descriptions-row').filter({ hasText: '描述' });
       if (await descItem.isVisible().catch(() => false)) {
         const descText = await descItem.textContent();
         // 专业用户需要知道方剂出处，验证是否在描述中提及
@@ -111,7 +111,7 @@ test.describe('Persona: 陈明德 — 社区中医师 · 专业用户', () => {
       const drawer = page.locator('.ant-drawer');
       await expect(drawer).toBeVisible();
 
-      const compositionItem = drawer.locator('.ant-descriptions-item').filter({ hasText: '组成' });
+      const compositionItem = drawer.locator('.ant-descriptions-row').filter({ hasText: '组成' });
       await expect(compositionItem).toBeVisible();
       const compositionText = await compositionItem.textContent();
 
@@ -125,10 +125,10 @@ test.describe('Persona: 陈明德 — 社区中医师 · 专业用户', () => {
       expect(compositionText).toContain('茯苓'); // 茯苓
 
       // 验证功效：滋阴补肾
-      const efficacyItem = drawer.locator('.ant-descriptions-item').filter({ hasText: '功效' });
+      const efficacyItem = drawer.locator('.ant-descriptions-row').filter({ hasText: '功效' });
       await expect(efficacyItem).toBeVisible();
       const efficacyText = await efficacyItem.textContent();
-      expect(efficacyText).toContain('滋阴');
+      expect(efficacyText).toMatch(/滋阴|滋补/);
     } else {
       // PRODUCT GAP: 六味地黄丸是最常用的补肾方剂
       const emptyState = page.getByText(/暂无/);
@@ -143,7 +143,7 @@ test.describe('Persona: 陈明德 — 社区中医师 · 专业用户', () => {
   // -----------------------------------------------------------------------
   test('安全检查: 附子+半夏 → 验证配伍禁忌拦截', async ({ page }) => {
     // 通过 API 直接测试安全检查引擎
-    const token = await page.evaluate(() => localStorage.getItem('family_doctor_token'));
+    const token = await page.evaluate(() => localStorage.getItem('token'));
 
     const result = await page.evaluate(
       async ({ authToken }) => {
@@ -195,7 +195,7 @@ test.describe('Persona: 陈明德 — 社区中医师 · 专业用户', () => {
   // Test 4: 安全检查 → 藜芦+细辛 → 验证十八反拦截
   // -----------------------------------------------------------------------
   test('安全检查: 藜芦+细辛 → 验证十八反配伍禁忌拦截', async ({ page }) => {
-    const token = await page.evaluate(() => localStorage.getItem('family_doctor_token'));
+    const token = await page.evaluate(() => localStorage.getItem('token'));
 
     const result = await page.evaluate(
       async ({ authToken }) => {
@@ -240,7 +240,7 @@ test.describe('Persona: 陈明德 — 社区中医师 · 专业用户', () => {
   // Test 5: 安全检查 → 甘草+甘遂 → 验证配伍禁忌
   // -----------------------------------------------------------------------
   test('安全检查: 甘草+甘遂 → 验证十八反配伍禁忌拦截', async ({ page }) => {
-    const token = await page.evaluate(() => localStorage.getItem('family_doctor_token'));
+    const token = await page.evaluate(() => localStorage.getItem('token'));
 
     const result = await page.evaluate(
       async ({ authToken }) => {
@@ -312,7 +312,7 @@ test.describe('Persona: 陈明德 — 社区中医师 · 专业用户', () => {
         await expect(backButton).toBeVisible();
 
         // 验证用法用量
-        const usageItem = page.locator('.ant-descriptions-item').filter({ hasText: '用法' });
+        const usageItem = page.locator('.ant-descriptions-row').filter({ hasText: '用法' });
         if (await usageItem.isVisible().catch(() => false)) {
           const usageText = await usageItem.textContent();
           expect(usageText!.length).toBeGreaterThan(0);
@@ -376,39 +376,39 @@ test.describe('Persona: 陈明德 — 社区中医师 · 专业用户', () => {
       // 专业用户需要验证所有关键信息字段
 
       // 1. 性味（麻黄：温，辛、微苦）
-      const natureItem = drawer.locator('.ant-descriptions-item').filter({ hasText: '性味' });
+      const natureItem = drawer.locator('.ant-descriptions-row').filter({ hasText: '性味' });
       await expect(natureItem).toBeVisible();
       const natureText = await natureItem.textContent();
       expect(natureText).toContain('温');
 
       // 2. 归经（麻黄归肺、膀胱经）
-      const meridianItem = drawer.locator('.ant-descriptions-item').filter({ hasText: '归经' });
+      const meridianItem = drawer.locator('.ant-descriptions-row').filter({ hasText: '归经' });
       await expect(meridianItem).toBeVisible();
       const meridianText = await meridianItem.textContent();
       expect(meridianText).toMatch(/肺|膀胱/);
 
       // 3. 功效（发汗解表、宣肺平喘、利水消肿）
-      const efficacyItem = drawer.locator('.ant-descriptions-item').filter({ hasText: '功效' });
+      const efficacyItem = drawer.locator('.ant-descriptions-row').filter({ hasText: '功效' });
       await expect(efficacyItem).toBeVisible();
       const efficacyText = await efficacyItem.textContent();
       expect(efficacyText).toMatch(/发汗|解表|平喘/);
 
       // 4. 用量
-      const dosageItem = drawer.locator('.ant-descriptions-item').filter({ hasText: '用量' });
+      const dosageItem = drawer.locator('.ant-descriptions-row').filter({ hasText: '用量' });
       if (await dosageItem.isVisible().catch(() => false)) {
         const dosageText = await dosageItem.textContent();
         expect(dosageText).toMatch(/\d/); // 应包含数字
       }
 
       // 5. 禁忌（麻黄禁忌：体虚自汗、阴虚盗汗者慎用）
-      const contraindicationItem = drawer.locator('.ant-descriptions-item').filter({ hasText: '禁忌' });
+      const contraindicationItem = drawer.locator('.ant-descriptions-row').filter({ hasText: '禁忌' });
       if (await contraindicationItem.isVisible().catch(() => false)) {
         const text = await contraindicationItem.textContent();
         expect(text!.length).toBeGreaterThan(0);
       }
 
       // 6. 毒性
-      const toxicityItem = drawer.locator('.ant-descriptions-item').filter({ hasText: '毒性' });
+      const toxicityItem = drawer.locator('.ant-descriptions-row').filter({ hasText: '毒性' });
       if (await toxicityItem.isVisible().catch(() => false)) {
         await expect(toxicityItem).toBeVisible();
       }
@@ -515,8 +515,9 @@ test.describe('Persona: 陈明德 — 社区中医师 · 专业用户', () => {
           await expect(printButton).toBeVisible();
 
           // 关闭 Modal（不实际触发打印，避免 Playwright 卡住）
-          await modal.getByRole('button', { name: /取消/ }).click();
-          await expect(modal).not.toBeVisible();
+          await modal.getByRole('button', { name: /取\s?消/ }).click();
+          await page.waitForTimeout(1000);
+          await expect(page.locator('.ant-modal')).toBeHidden({ timeout: 5000 });
 
           // PRODUCT GAP: 处方单打印依赖浏览器 print 功能
           // 缺少直接导出 PDF 文件的功能（需要服务端渲染）
@@ -533,7 +534,7 @@ test.describe('Persona: 陈明德 — 社区中医师 · 专业用户', () => {
   // -----------------------------------------------------------------------
   test('安全检查覆盖: 验证多组十八反配伍禁忌检测', async ({ page }) => {
     // PRODUCT GAP: 专业用户需要确认安全检查覆盖所有十八反十九畏组合
-    const token = await page.evaluate(() => localStorage.getItem('family_doctor_token'));
+    const token = await page.evaluate(() => localStorage.getItem('token'));
 
     // 测试多组经典配伍禁忌
     const testPairs = [

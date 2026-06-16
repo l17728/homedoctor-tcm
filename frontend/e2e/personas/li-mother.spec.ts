@@ -218,14 +218,16 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
       }
 
       // 选择类型
-      const typeSelect = page.locator('.ant-drawer').getByLabel('类型');
+      const typeSelect = page.locator('.ant-drawer .ant-select-selector').first();
       if (await typeSelect.isVisible().catch(() => false)) {
-        await selectAntdOption(page, typeSelect, '西药');
+        await typeSelect.click();
+        await page.waitForTimeout(500);
+        await page.locator('.ant-select-item-option').filter({ hasText: '西药' }).first().click({ force: true });
       }
 
-      // 提交
       await page.getByRole('button', { name: chineseText('提交') }).click();
-      await expect(page.locator('.ant-drawer')).not.toBeVisible();
+      await page.waitForTimeout(1000);
+      await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
 
       // 验证药品出现在列表
       await expect(page.getByText('布洛芬')).toBeVisible();
@@ -244,8 +246,16 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
         await qtyInput2.fill('10');
       }
 
+      const typeSelect2 = page.locator('.ant-drawer .ant-select-selector').first();
+      if (await typeSelect2.isVisible().catch(() => false)) {
+        await typeSelect2.click();
+        await page.waitForTimeout(500);
+        await page.locator('.ant-select-item-option').filter({ hasText: '西药' }).first().click({ force: true });
+      }
+
       await page.getByRole('button', { name: chineseText('提交') }).click();
-      await expect(page.locator('.ant-drawer')).not.toBeVisible();
+      await page.waitForTimeout(1000);
+      await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
 
       // 验证两个药品都在列表中
       await expect(page.getByText('布洛芬')).toBeVisible();
@@ -444,15 +454,24 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
       await dosageInput.fill('1片');
     }
 
-    // 填写备注（饭后服用）
     const notesInput = page.getByLabel('备注');
     if (await notesInput.isVisible().catch(() => false)) {
       await notesInput.fill('饭后服用，每日3次');
     }
 
-    // 提交
+    const timePicker = drawer.locator('.ant-picker').first();
+    if (await timePicker.isVisible().catch(() => false)) {
+      await timePicker.click();
+      await page.waitForTimeout(300);
+      await timePicker.locator('input').first().fill('08:00');
+      await timePicker.locator('input').last().fill('20:00');
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(300);
+    }
+
     await page.getByRole('button', { name: chineseText('提交') }).click();
-    await expect(page.locator('.ant-drawer')).not.toBeVisible();
+    await page.waitForTimeout(1000);
+    await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
 
     // 验证提醒出现在列表中
     await expect(page.getByText('布洛芬（饭后服用）')).toBeVisible();
@@ -474,7 +493,7 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
 
     // 导航到体质自测
     await page.goto('/constitution');
-    await expect(page.getByText('体质自测')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '体质自测' })).toBeVisible();
 
     // 验证介绍页内容
     await expect(page.getByText(/王琦九种体质/)).toBeVisible();
@@ -486,17 +505,16 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
       await expect(page.getByText(type, { exact: true }).first()).toBeVisible();
     }
 
-    // 点击开始测试
     await page.getByRole('button', { name: /开始测试/ }).click();
+    await page.waitForTimeout(1000);
 
-    // 验证问卷页面
     await expect(page.locator('.ant-progress')).toBeVisible();
     await expect(page.getByText(/第.*页/)).toBeVisible();
 
-    // 验证5个答案选项
+    await expect(page.locator('.ant-radio-wrapper').first()).toBeVisible({ timeout: 10000 });
     const answers = ['没有', '很少', '有时', '经常', '总是'];
     for (const ans of answers) {
-      await expect(page.getByText(ans, { exact: true }).first()).toBeVisible();
+      await expect(page.locator('.ant-radio-wrapper').filter({ hasText: ans }).first()).toBeVisible();
     }
 
     // 回答第一页的题目
@@ -565,7 +583,7 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
     // 尝试直接访问药箱页面
     await page.goto('/medicines');
     await page.waitForURL(/\/login/);
-    await expect(page.getByText(chineseText('登录'))).toBeVisible();
+    await expect(page.getByText(chineseText('登录')).first()).toBeVisible();
 
     // 尝试访问提醒页面
     await page.goto('/reminders');
@@ -622,7 +640,7 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
     await register(page, username);
 
     await page.goto('/profile');
-    await expect(page.getByText('健康档案')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '健康档案' })).toBeVisible();
 
     // 验证基本信息卡片
     await expect(page.getByText('基本信息')).toBeVisible();
@@ -644,7 +662,7 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
     }
 
     // 验证体质信息区域（显示"去测试"链接，因为还没做过体质自测）
-    await expect(page.getByText(/去测试|尚未进行体质测试/)).toBeVisible();
+    await expect(page.getByText(/去测试|尚未进行体质测试/).first()).toBeVisible();
 
     // PRODUCT GAP: 健康档案没有"当前用药"字段。
     //   李芳在吃止痛药（头痛）和调理月经的中药，
