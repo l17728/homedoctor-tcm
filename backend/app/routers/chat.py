@@ -207,10 +207,15 @@ async def chat(
     if body.history:
         messages = [*body.history, {"role": "user", "content": body.message}]
 
-    reply_text = await chat_completion(messages, constitution)
-
-    if not reply_text.endswith(DISCLAIMER):
-        reply_text = f"{reply_text}\n\n{DISCLAIMER}"
+    if has_api_key():
+        reply_text = await chat_completion(messages, constitution)
+        if not reply_text.endswith(DISCLAIMER):
+            reply_text = f"{reply_text}\n\n{DISCLAIMER}"
+    else:
+        mock = _generate_mock_reply(body.message, [], constitution)
+        reply_text = mock["reply"]
+        if not reply_text.endswith(DISCLAIMER):
+            reply_text = f"{reply_text}\n\n{DISCLAIMER}"
 
     reasoning: list[dict[str, Any]] = [
         {"step": "safety_keyword_check", "result": "passed"},
@@ -226,7 +231,7 @@ async def chat(
     return {
         "reply": reply_text,
         "safety_warning": None,
-        "model_used": settings.LLM_MODEL if has_api_key() else "fallback",
+        "model_used": settings.LLM_MODEL if has_api_key() else "mock-v1",
         "reasoning_trace": reasoning,
     }
 
@@ -339,26 +344,43 @@ async def chat_with_image(
 async def list_conversations(
     page: int = 1,
     pageSize: int = 20,
+    q: str | None = None,
     db: DbAdapter = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """List the current user's conversations."""
+    """List the current user's conversations, with optional keyword search."""
     user_id = current_user["id"]
 
-    count_row = await db.query_one(
-        "SELECT COUNT(*) as cnt FROM conversations WHERE user_id = ?",
-        (user_id,),
-    )
-    total = count_row["cnt"] if count_row else 0
+    if q:
+        count_row = await db.query_one(
+            "SELECT COUNT(*) as cnt FROM conversations WHERE user_id = ? AND title LIKE ?",
+            (user_id, f"%{q}%"),
+        )
+        total = count_row["cnt"] if count_row else 0
 
-    offset = (page - 1) * pageSize
-    rows = await db.query(
-        """SELECT * FROM conversations
-           WHERE user_id = ?
-           ORDER BY updated_at DESC
-           LIMIT ? OFFSET ?""",
-        (user_id, pageSize, offset),
-    )
+        offset = (page - 1) * pageSize
+        rows = await db.query(
+            """SELECT * FROM conversations
+               WHERE user_id = ? AND title LIKE ?
+               ORDER BY updated_at DESC
+               LIMIT ? OFFSET ?""",
+            (user_id, f"%{q}%", pageSize, offset),
+        )
+    else:
+        count_row = await db.query_one(
+            "SELECT COUNT(*) as cnt FROM conversations WHERE user_id = ?",
+            (user_id,),
+        )
+        total = count_row["cnt"] if count_row else 0
+
+        offset = (page - 1) * pageSize
+        rows = await db.query(
+            """SELECT * FROM conversations
+               WHERE user_id = ?
+               ORDER BY updated_at DESC
+               LIMIT ? OFFSET ?""",
+            (user_id, pageSize, offset),
+        )
 
     conversations = [_parse_conversation(r) for r in rows]
     total_pages = (total + pageSize - 1) // pageSize

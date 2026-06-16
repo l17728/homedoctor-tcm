@@ -1,8 +1,10 @@
 """LLM client for Huawei Cloud Kimi-K2.6 (Direct API + 轻量编排层, spec §8.6).
 
-Kimi-K2.6 supports both text and image input (multimodal).
-Uses httpx for async calls. No LangChain/LangGraph — medical reliability favors
-direct API control (spec §8.6 design decision).
+Features:
+- Model fallback chain: Kimi-K2.6 → GLM-5 → Qwen3-235B → DeepSeek-V3
+- Hallucination defense: validates herb/formula names against DB (spec §8.5)
+- Multimodal: text + image via Qwen2.5-VL-72B with OCR fallback
+- SSE streaming for real-time response display
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ import base64
 import io
 import json
 import logging
+import re
 from typing import Any, AsyncIterator
 
 import httpx
@@ -23,6 +26,11 @@ CHAT_COMPLETIONS_URL = f"{settings.LLM_BASE_URL}/chat/completions"
 VISION_COMPLETIONS_URL = f"{settings.LLM_VISION_BASE_URL}/chat/completions"
 
 DISCLAIMER = "⚠️ 以上建议仅供参考，不替代医生面诊。如有不适请及时就医。"
+
+HALLUCINATION_WARNING = (
+    "\n\n⚠️ **安全提示**：以上回复中提到的部分药材名称未经系统知识库验证，"
+    "请务必咨询执业中医师确认其真实性与适用性。"
+)
 
 SYSTEM_PROMPT = """你是「家庭医生」，一位专业的中医药健康咨询助手。你的职责是为用户提供养生保健建议和中医药知识参考。
 
@@ -64,6 +72,16 @@ def has_api_key() -> bool:
     return bool(settings.LLM_API_KEY)
 
 
+def _get_model_chain() -> list[str]:
+    """Return ordered list of models to try: primary first, then fallbacks."""
+    models = [settings.LLM_MODEL]
+    fallbacks = [m.strip() for m in settings.LLM_FALLBACK_MODELS.split(",") if m.strip()]
+    for m in fallbacks:
+        if m not in models:
+            models.append(m)
+    return models
+
+
 async def chat_completion(
     messages: list[dict[str, str]],
     constitution: dict[str, Any] | None = None,
@@ -76,8 +94,7 @@ async def chat_completion(
         "Authorization": f"Bearer {settings.LLM_API_KEY}",
         "Content-Type": "application/json",
     }
-    payload = {
-        "model": settings.LLM_MODEL,
+    base_payload = {
         "messages": [
             {"role": "system", "content": build_system_prompt(constitution)},
             *messages,
@@ -86,18 +103,30 @@ async def chat_completion(
         "max_tokens": 2048,
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(CHAT_COMPLETIONS_URL, headers=headers, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-            return data["choices"][0]["message"]["content"]
-    except httpx.HTTPStatusError as e:
-        logger.error("LLM API HTTP error: %s — %s", e.response.status_code, e.response.text[:200])
-        return _error_message()
-    except Exception as e:
-        logger.error("LLM API call failed: %s", e)
-        return _error_message()
+    model_chain = _get_model_chain()
+    last_error: str = ""
+
+    for i, model in enumerate(model_chain):
+        payload = {**base_payload, "model": model}
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(CHAT_COMPLETIONS_URL, headers=headers, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+                if i > 0:
+                    logger.info("LLM fallback succeeded with model: %s", model)
+                validated = await _validate_and_augment(content)
+                return validated
+        except httpx.HTTPStatusError as e:
+            last_error = f"{e.response.status_code}: {e.response.text[:200]}"
+            logger.warning("LLM model %s failed (HTTP %s), trying next fallback", model, e.response.status_code)
+        except Exception as e:
+            last_error = str(e)
+            logger.warning("LLM model %s failed (%s), trying next fallback", model, e)
+
+    logger.error("All %d models in fallback chain failed. Last error: %s", len(model_chain), last_error)
+    return _error_message()
 
 
 async def chat_completion_stream(
@@ -182,7 +211,9 @@ async def chat_completion_with_image(
             resp = await client.post(VISION_COMPLETIONS_URL, headers=headers, json=payload)
             resp.raise_for_status()
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"]["content"]
+            validated = await _validate_and_augment(content)
+            return validated
     except httpx.HTTPStatusError as e:
         logger.error("LLM vision API HTTP error: %s — %s", e.response.status_code, e.response.text[:200])
         ocr_text = _extract_text_from_image(image_base64)
@@ -203,6 +234,76 @@ async def chat_completion_with_image(
 
 def encode_image(raw: bytes, mime_type: str = "image/jpeg") -> str:
     return base64.b64encode(raw).decode("ascii")
+
+
+async def _validate_and_augment(content: str) -> str:
+    """Hallucination defense — validate herb/formula names against DB (spec §8.5).
+
+    Extracts Chinese herb names from LLM output and cross-checks against the
+    herbs table. If unknown names are found, appends a safety warning.
+    """
+    try:
+        mentioned = _extract_herb_names(content)
+        if not mentioned:
+            return content
+
+        unknown = await _check_herbs_exist(mentioned)
+        if unknown:
+            logger.warning("Hallucination defense: unknown herbs in LLM output: %s", unknown)
+            if HALLUCINATION_WARNING not in content:
+                return content + HALLUCINATION_WARNING
+        return content
+    except Exception as e:
+        logger.debug("Hallucination validation skipped: %s", e)
+        return content
+
+
+def _extract_herb_names(text: str) -> list[str]:
+    """Extract potential Chinese herb names from LLM output text.
+
+    Looks for patterns like 「黄芪」, 【当归】, or names in 方药参考 sections.
+    Also catches common herb name patterns (2-4 Chinese chars after herb indicators).
+    """
+    candidates: set[str] = set()
+
+    for m in re.finditer(r"[「【《]([^」】》]+)[」】》]", text):
+        name = m.group(1).strip()
+        if 1 <= len(name) <= 6:
+            candidates.add(name)
+
+    for m in re.finditer(r"(?:药材|中药|中药材| Herb)[:：\s]*([^\s,，。；;、]{1,6})", text, re.IGNORECASE):
+        candidates.add(m.group(1).strip())
+
+    for m in re.finditer(r"(?:方剂|方子|经典方)[:：\s]*([^\s,，。；;、]{2,8})", text):
+        candidates.add(m.group(1).strip())
+
+    return list(candidates)
+
+
+async def _check_herbs_exist(names: list[str]) -> list[str]:
+    """Check which names do NOT exist in the herbs table. Returns list of unknowns."""
+    from app.database import get_db
+
+    try:
+        db = get_db()
+    except RuntimeError:
+        return []
+
+    unknown: list[str] = []
+    for name in names:
+        row = await db.query_one(
+            "SELECT id FROM herbs WHERE name = ? OR aliases LIKE ? LIMIT 1",
+            (name, f"%{name}%"),
+        )
+        if not row:
+            formula_row = await db.query_one(
+                "SELECT id FROM formulas WHERE name = ? LIMIT 1",
+                (name,),
+            )
+            if not formula_row:
+                unknown.append(name)
+
+    return unknown
 
 
 def _extract_text_from_image(image_base64: str) -> str:

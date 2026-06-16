@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import sqlite3
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
@@ -208,6 +210,31 @@ DDL_STATEMENTS = [
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         FOREIGN KEY (user_id) REFERENCES users(id)
     )""",
+    """CREATE TABLE IF NOT EXISTS audit_log (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        user_id TEXT,
+        action TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT,
+        changes TEXT,
+        prev_hash TEXT,
+        hash TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS favorites (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        entry_type TEXT NOT NULL,
+        entry_id TEXT,
+        title TEXT,
+        content TEXT,
+        tags TEXT DEFAULT '[]',
+        source_type TEXT,
+        is_starred INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
 ]
 
 FTS_STATEMENTS = [
@@ -287,16 +314,50 @@ class DbAdapter(ABC):
 # SqliteAdapter
 # ---------------------------------------------------------------------------
 
+def _try_enable_sqlcipher() -> bool:
+    """Attempt to enable SQLCipher by monkey-patching sqlite3 with pysqlcipher3.
+
+    Returns True if encryption is active, False otherwise.
+    Called once at module import time if DB_ENCRYPTION_KEY is set.
+    """
+    import sqlite3 as _stdlib_sqlite3
+
+    key = os.environ.get("HOMEDOCTOR_DB_ENCRYPTION_KEY", "")
+    if not key:
+        return False
+
+    try:
+        import pysqlcipher3.dbapi2 as _sqlcipher
+    except ImportError:
+        logging.getLogger(__name__).warning(
+            "DB_ENCRYPTION_KEY is set but pysqlcipher3 is not installed — "
+            "database will NOT be encrypted. Install with: pip install pysqlcipher3"
+        )
+        return False
+
+    _stdlib_sqlite3.connect = _sqlcipher.connect  # type: ignore[method-assign]
+    logging.getLogger(__name__).info("SQLCipher enabled — database encryption active")
+    return True
+
+
+_SQLCIPHER_ACTIVE = _try_enable_sqlcipher()
+
+
 class SqliteAdapter(DbAdapter):
     """aiosqlite implementation of DbAdapter."""
 
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
         self._conn: aiosqlite.Connection | None = None
+        self._encryption_key: str | None = os.environ.get("HOMEDOCTOR_DB_ENCRYPTION_KEY", "") or None
 
     async def connect(self) -> None:
         self._conn = await aiosqlite.connect(self.db_path)
         self._conn.row_factory = aiosqlite.Row
+
+        if self._encryption_key and _SQLCIPHER_ACTIVE:
+            await self._conn.execute(f"PRAGMA key = '{self._encryption_key}'")
+            await self._conn.execute("PRAGMA cipher_compatibility = 4")
 
     async def close(self) -> None:
         if self._conn:

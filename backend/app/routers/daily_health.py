@@ -156,6 +156,14 @@ async def get_daily_health_card(
             "severity": "warning",
         })
 
+    constitution_row = await db.query_one(
+        "SELECT constitution_type FROM user_profiles WHERE user_id = ?",
+        (current_user["id"],),
+    )
+    constitution_type = "平和质"
+    if constitution_row and constitution_row.get("constitution_type"):
+        constitution_type = constitution_row["constitution_type"]
+
     return {
         "date": today.isoformat(),
         "solar_term": solar_term,
@@ -163,7 +171,7 @@ async def get_daily_health_card(
         "next_term": next_term_name,
         "days_to_next_term": days_to_next,
         "season_advice": SEASON_ADVICE.get(season, []),
-        "constitution_tips": CONSTITUTION_TIPS.get("平和质", []),
+        "constitution_tips": CONSTITUTION_TIPS.get(constitution_type, CONSTITUTION_TIPS["平和质"]),
         "stock_alerts": stock_alerts,
         "seasonal_herbs": TERM_SEASONAL_HERBS.get(season, []),
     }

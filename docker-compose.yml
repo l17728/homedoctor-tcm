@@ -12,8 +12,8 @@ services:
     environment:
       - DATABASE_URL=sqlite:///app/data/homedoctor.db
       - HOMEDOCTOR_DATABASE_URL=data/homedoctor.db
-      - HOMEDOCTOR_SECRET_KEY=${SECRET_KEY:-change-me-in-production}
-      - HOMEDOCTOR_LLM_API_KEY=${LLM_API_KEY:-URpUJXRfNpfO5OHmF-zalcvvfcAxGRvCl4FYfwdIeklNawnXuCVdzhQ0q_xzQR4Huo-ZqDr8BZUXL7lhqApNyw}
+      - HOMEDOCTOR_SECRET_KEY=${HOMEDOCTOR_SECRET_KEY:?must set HOMEDOCTOR_SECRET_KEY}
+      - HOMEDOCTOR_LLM_API_KEY=${HOMEDOCTOR_LLM_API_KEY:?must set HOMEDOCTOR_LLM_API_KEY}
       - HOMEDOCTOR_LLM_MODEL=Kimi-K2.6
       - EXTRA_ALLOWED_ORIGINS=http://124.156.193.122:3000,http://124.156.193.122:8000
     restart: unless-stopped
