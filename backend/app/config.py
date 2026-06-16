@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = ""
     LLM_BASE_URL: str = "https://api.modelarts-maas.com/openai/v1"
     LLM_MODEL: str = "Kimi-K2.6"
+    LLM_VISION_BASE_URL: str = "https://api.modelarts-maas.com/v1"
+    LLM_VISION_MODEL: str = "qwen2.5-vl-72b"
 
     model_config = {"env_prefix": "HOMEDOCTOR_"}
 

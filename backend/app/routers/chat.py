@@ -325,12 +325,12 @@ async def chat_with_image(
             "primary_type": constitution["primary"],
         })
     reasoning.append({"step": "llm_vision_completion", "result": "success",
-                      "model": settings.LLM_MODEL})
+                      "model": settings.LLM_VISION_MODEL})
 
     return {
         "reply": reply_text,
         "safety_warning": None,
-        "model_used": settings.LLM_MODEL if has_api_key() else "fallback",
+        "model_used": settings.LLM_VISION_MODEL if has_api_key() else "fallback",
         "reasoning_trace": reasoning,
     }
 

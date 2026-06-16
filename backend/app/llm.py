@@ -20,6 +20,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 CHAT_COMPLETIONS_URL = f"{settings.LLM_BASE_URL}/chat/completions"
+VISION_COMPLETIONS_URL = f"{settings.LLM_VISION_BASE_URL}/chat/completions"
 
 DISCLAIMER = "⚠️ 以上建议仅供参考，不替代医生面诊。如有不适请及时就医。"
 
@@ -156,14 +157,48 @@ async def chat_completion_with_image(
         logger.warning("LLM_API_KEY not configured — returning fallback message")
         return _fallback_message([{"role": "user", "content": text}])
 
-    ocr_text = _extract_text_from_image(image_base64)
-    if ocr_text:
-        augmented = f"{text}\n\n[图片识别文字]\n{ocr_text}"
-    else:
-        augmented = f"{text}\n\n[注意：用户上传了图片但未能识别出文字内容]"
+    data_url = f"data:{mime_type};base64,{image_base64}"
+    user_content: list[dict[str, Any]] = [
+        {"type": "text", "text": text},
+        {"type": "image_url", "image_url": {"url": data_url}},
+    ]
+    payload = {
+        "model": settings.LLM_VISION_MODEL,
+        "messages": [
+            {"role": "system", "content": build_system_prompt(constitution)},
+            {"role": "user", "content": user_content},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 2048,
+    }
 
-    messages = [{"role": "user", "content": augmented}]
-    return await chat_completion(messages, constitution)
+    headers = {
+        "Authorization": f"Bearer {settings.LLM_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(VISION_COMPLETIONS_URL, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+    except httpx.HTTPStatusError as e:
+        logger.error("LLM vision API HTTP error: %s — %s", e.response.status_code, e.response.text[:200])
+        ocr_text = _extract_text_from_image(image_base64)
+        if ocr_text:
+            logger.info("Vision API failed, using OCR fallback (%d chars)", len(ocr_text))
+            augmented = f"{text}\n\n[图片识别文字]\n{ocr_text}"
+            return await chat_completion([{"role": "user", "content": augmented}], constitution)
+        return _error_message()
+    except Exception as e:
+        logger.error("LLM vision API call failed: %s", e)
+        ocr_text = _extract_text_from_image(image_base64)
+        if ocr_text:
+            logger.info("Vision exception, using OCR fallback (%d chars)", len(ocr_text))
+            augmented = f"{text}\n\n[图片识别文字]\n{ocr_text}"
+            return await chat_completion([{"role": "user", "content": augmented}], constitution)
+        return _error_message()
 
 
 def encode_image(raw: bytes, mime_type: str = "image/jpeg") -> str:
