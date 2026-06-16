@@ -9,7 +9,7 @@ import {
   SoundOutlined,
   SaveOutlined,
 } from '@ant-design/icons';
-import { sendMessage, type ChatMessage } from '../api/chatApi';
+import { sendMessage, sendMessageStream, type ChatMessage } from '../api/chatApi';
 import { saveKnowledgeCard } from '../api/favoriteApi';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis';
@@ -64,23 +64,59 @@ export default function ChatPage() {
     setInput('');
     setLoading(true);
 
+    const assistantIdx = messages.length + 1;
+    let streamedContent = '';
+
     try {
-      const response = await sendMessage(userMessage.content, messages);
-      const aiMessage: ChatMessage = {
-        role: 'assistant',
-        content: response.reply,
-        warnings: response.warnings,
-      };
-      setMessages((prev) => [...prev, aiMessage]);
-      if (ttsEnabled) {
-        speak(response.reply);
+      setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+      let fullContent = '';
+
+      for await (const chunk of sendMessageStream(userMessage.content, messages)) {
+        fullContent += chunk;
+        streamedContent = fullContent;
+        setMessages((prev) => {
+          const next = [...prev];
+          next[assistantIdx] = { role: 'assistant', content: fullContent };
+          return next;
+        });
+      }
+
+      if (!streamedContent) {
+        const resp = await sendMessage(userMessage.content, messages);
+        streamedContent = resp.reply;
+        const warnings = resp.safety_warning ? [resp.safety_warning] : undefined;
+        setMessages((prev) => {
+          const next = [...prev];
+          next[assistantIdx] = { role: 'assistant', content: streamedContent, warnings };
+          return next;
+        });
+      }
+
+      if (ttsEnabled && streamedContent) {
+        speak(streamedContent);
       }
     } catch {
-      const aiMessage: ChatMessage = {
-        role: 'assistant',
-        content: '抱歉，服务暂时不可用，请稍后再试。',
-      };
-      setMessages((prev) => [...prev, aiMessage]);
+      try {
+        const resp = await sendMessage(userMessage.content, messages);
+        streamedContent = resp.reply;
+        const warnings = resp.safety_warning ? [resp.safety_warning] : undefined;
+        setMessages((prev) => {
+          const next = [...prev];
+          next[assistantIdx] = { role: 'assistant', content: streamedContent, warnings };
+          return next;
+        });
+        if (ttsEnabled && streamedContent) {
+          speak(streamedContent);
+        }
+      } catch {
+        setMessages((prev) => {
+          const next = [...prev];
+          if (next[assistantIdx]) {
+            next[assistantIdx] = { role: 'assistant', content: '抱歉，服务暂时不可用，请稍后再试。' };
+          }
+          return next;
+        });
+      }
     } finally {
       setLoading(false);
     }

@@ -14,10 +14,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.auth import get_current_user
+from app.config import settings
 from app.database import DbAdapter, get_db
+from app.llm import chat_completion, chat_completion_stream, DISCLAIMER, has_api_key
 from app.safety_keywords import EMERGENCY_WARNING, check_emergency_keywords
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -178,15 +181,76 @@ async def chat(
     If keywords are found, an immediate warning is returned without
     forwarding to the AI model.
     """
-    # Layer 1: Safety keyword check (硬编码规则优先于 AI)
     matched_keywords = check_emergency_keywords(body.message)
 
-    # Get user constitution for personalized advice (spec §1.5)
+    if matched_keywords:
+        return {
+            "reply": EMERGENCY_WARNING,
+            "safety_warning": EMERGENCY_WARNING,
+            "model_used": "safety-layer",
+            "reasoning_trace": [
+                {"step": "safety_keyword_check", "result": "emergency_detected",
+                 "keywords": matched_keywords},
+            ],
+        }
+
     constitution = await _get_user_constitution(db, current_user["id"])
 
-    # Generate response (mock for MVP)
-    response = _generate_mock_reply(body.message, matched_keywords, constitution)
-    return response
+    messages = [{"role": "user", "content": body.message}]
+    if body.history:
+        messages = [*body.history, {"role": "user", "content": body.message}]
+
+    reply_text = await chat_completion(messages, constitution)
+
+    if not reply_text.endswith(DISCLAIMER):
+        reply_text = f"{reply_text}\n\n{DISCLAIMER}"
+
+    reasoning: list[dict[str, Any]] = [
+        {"step": "safety_keyword_check", "result": "passed"},
+    ]
+    if constitution:
+        reasoning.append({
+            "step": "constitution_context",
+            "result": "injected",
+            "primary_type": constitution["primary"],
+        })
+    reasoning.append({"step": "llm_completion", "result": "success", "model": settings.LLM_MODEL})
+
+    return {
+        "reply": reply_text,
+        "safety_warning": None,
+        "model_used": settings.LLM_MODEL if has_api_key() else "fallback",
+        "reasoning_trace": reasoning,
+    }
+
+
+@router.post("/stream")
+async def chat_stream(
+    body: ChatRequest,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Streaming SSE endpoint for real-time AI response display."""
+    matched_keywords = check_emergency_keywords(body.message)
+
+    if matched_keywords:
+        async def emergency_stream():
+            yield f"data: {json.dumps({'content': EMERGENCY_WARNING, 'done': True})}\n\n"
+        return StreamingResponse(emergency_stream(), media_type="text/event-stream")
+
+    constitution = await _get_user_constitution(db, current_user["id"])
+
+    messages = [{"role": "user", "content": body.message}]
+    if body.history:
+        messages = [*body.history, {"role": "user", "content": body.message}]
+
+    async def generate():
+        async for chunk in chat_completion_stream(messages, constitution):
+            yield f"data: {json.dumps({'content': chunk})}\n\n"
+        tail = "\n\n" + DISCLAIMER
+        yield f"data: {json.dumps({'content': tail, 'done': True})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @router.get("/history")

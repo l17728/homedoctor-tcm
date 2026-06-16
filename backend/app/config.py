@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "家庭医生"
     CONFIG_DIR: str = "config/schemas"
 
+    LLM_API_KEY: str = ""
+    LLM_BASE_URL: str = "https://api.modelarts-maas.com/openai/v1"
+    LLM_MODEL: str = "Kimi-K2.6"
+
     model_config = {"env_prefix": "HOMEDOCTOR_"}
 
 

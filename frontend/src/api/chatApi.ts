@@ -8,24 +8,65 @@ export interface ChatMessage {
 
 export interface ChatResponse {
   reply: string;
-  warnings: string[];
+  safety_warning: string | null;
+  model_used: string;
+  reasoning_trace?: { step: string; result: string }[];
 }
 
 export async function sendMessage(
   message: string,
-  _history: ChatMessage[],
+  history?: ChatMessage[],
 ): Promise<ChatResponse> {
-  try {
-    return await request<ChatResponse>('/api/chat', {
-      method: 'POST',
-      body: JSON.stringify({ message }),
-    });
-  } catch {
-    // Mock fallback
-    return {
-      reply: `您好！我是家庭医生AI助手。您询问的是关于"${message}"的问题。\n\n这是一个演示回复。实际使用时将连接到真实的AI服务，为您提供专业的健康建议。`,
-      warnings: [],
-    };
+  return request<ChatResponse>('/api/chat', {
+    method: 'POST',
+    body: JSON.stringify({
+      message,
+      history: (history ?? []).map((m) => ({ role: m.role, content: m.content })),
+    }),
+  });
+}
+
+export async function* sendMessageStream(
+  message: string,
+  history?: ChatMessage[],
+): AsyncGenerator<string> {
+  const token = localStorage.getItem('token');
+  const resp = await fetch('/api/chat/stream', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      message,
+      history: (history ?? []).map((m) => ({ role: m.role, content: m.content })),
+    }),
+  });
+
+  if (!resp.ok) throw new Error(`Stream failed: ${resp.status}`);
+  const reader = resp.body?.getReader();
+  if (!reader) throw new Error('No response body');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const data = JSON.parse(line.slice(6));
+        if (data.content) yield data.content as string;
+      } catch {
+        void 0;
+      }
+    }
   }
 }
 
