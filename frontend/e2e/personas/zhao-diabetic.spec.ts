@@ -20,6 +20,7 @@ import { test, expect } from '@playwright/test';
 import {
   register,
   chineseText,
+  fillTimeRangePicker,
 } from '../helpers';
 
 // ---------------------------------------------------------------------------
@@ -208,28 +209,11 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
       const drawer = page.locator('.ant-drawer');
       await expect(drawer).toBeVisible();
 
-      // 填写标题
       await page.getByLabel('提醒标题').fill(reminder.title);
 
-      await page.waitForTimeout(500);
-      await drawer.locator('.ant-select-selector').first().click();
-      await page.waitForTimeout(500);
-      await page.locator('.ant-select-item-option').filter({ hasText: '每天' }).first().click({ force: true });
+      const [hh, mm] = reminder.time.split(':');
+      await fillTimeRangePicker(page, drawer, hh, mm);
 
-      // 设置时间（TimePicker.RangePicker 需要设置开始和结束时间）
-      // 实际只需一个时间点，使用 RangePicker 选同一时间
-      const timePicker = drawer.locator('.ant-picker-range');
-      await timePicker.first().click();
-      // 输入时间
-      await page.keyboard.type(reminder.time);
-      await page.keyboard.press('Enter');
-      await page.waitForTimeout(200);
-      // 结束时间也输入同一个
-      await page.keyboard.type(reminder.time);
-      await page.keyboard.press('Enter');
-      await page.waitForTimeout(300);
-
-      // 提交
       await page.getByRole('button', { name: chineseText('提交') }).click();
       await page.waitForTimeout(1000);
       await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
@@ -264,20 +248,8 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
     await page.getByLabel('提醒标题').fill('服用缬沙坦');
 
     const drawer = page.locator('.ant-drawer');
-    await page.waitForTimeout(500);
-    await drawer.locator('.ant-select-selector').first().click();
-    await page.waitForTimeout(500);
-    await page.locator('.ant-select-item-option').filter({ hasText: '每天' }).first().click({ force: true });
-
-    // 设置时间
-    const timePicker = drawer.locator('.ant-picker-range');
-    await timePicker.first().click();
-    await page.keyboard.type('08:00');
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(200);
-    await page.keyboard.type('08:00');
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(300);
+    await expect(drawer).toBeVisible();
+    await fillTimeRangePicker(page, drawer, '08', '00');
 
     await page.getByRole('button', { name: chineseText('提交') }).click();
     await page.waitForTimeout(1000);

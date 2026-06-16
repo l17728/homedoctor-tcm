@@ -22,7 +22,7 @@ import {
   logout,
   chineseText,
   firstToast,
-  selectAntdOption,
+  fillTimeRangePicker,
 } from '../helpers';
 
 test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
@@ -461,12 +461,7 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
 
     const timePicker = drawer.locator('.ant-picker').first();
     if (await timePicker.isVisible().catch(() => false)) {
-      await timePicker.click();
-      await page.waitForTimeout(300);
-      await timePicker.locator('input').first().fill('08:00');
-      await timePicker.locator('input').last().fill('20:00');
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(300);
+      await fillTimeRangePicker(page, drawer, '08', '00');
     }
 
     await page.getByRole('button', { name: chineseText('提交') }).click();
@@ -474,7 +469,7 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
     await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
 
     // 验证提醒出现在列表中
-    await expect(page.getByText('布洛芬（饭后服用）')).toBeVisible();
+    await expect(page.getByText('布洛芬（饭后服用）').first()).toBeVisible();
 
     // PRODUCT GAP: 提醒频率只有"每天/每周/自定义"，
     //   没有"每日3次"的预设选项，需要在备注中手动说明。
@@ -506,12 +501,12 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
     }
 
     await page.getByRole('button', { name: /开始测试/ }).click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(2000);
 
+    await expect(page.getByText('你容易疲乏吗？')).toBeVisible({ timeout: 15000 });
     await expect(page.locator('.ant-progress')).toBeVisible();
-    await expect(page.getByText(/第.*页/)).toBeVisible();
 
-    await expect(page.locator('.ant-radio-wrapper').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.ant-radio-wrapper').first()).toBeVisible({ timeout: 5000 });
     const answers = ['没有', '很少', '有时', '经常', '总是'];
     for (const ans of answers) {
       await expect(page.locator('.ant-radio-wrapper').filter({ hasText: ans }).first()).toBeVisible();

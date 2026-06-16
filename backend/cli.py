@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Optional
 
 import typer
@@ -31,6 +32,34 @@ def _post(client: httpx.Client, path: str, data: dict | None = None) -> dict:
     """POST request with error handling."""
     try:
         r = client.post(f"{BASE_URL}{path}", json=data)
+        r.raise_for_status()
+        return r.json()
+    except httpx.ConnectError:
+        typer.echo("❌ 无法连接到服务，请确认服务已启动")
+        raise typer.Exit(1)
+    except httpx.HTTPStatusError as e:
+        typer.echo(f"❌ 请求失败: {e.response.status_code} {e.response.text}")
+        raise typer.Exit(1)
+
+
+def _get_authed(client: httpx.Client, path: str, token: str, params: dict | None = None) -> dict:
+    """GET request with Bearer token."""
+    try:
+        r = client.get(f"{BASE_URL}{path}", params=params, headers={"Authorization": f"Bearer {token}"})
+        r.raise_for_status()
+        return r.json()
+    except httpx.ConnectError:
+        typer.echo("❌ 无法连接到服务，请确认服务已启动")
+        raise typer.Exit(1)
+    except httpx.HTTPStatusError as e:
+        typer.echo(f"❌ 请求失败: {e.response.status_code} {e.response.text}")
+        raise typer.Exit(1)
+
+
+def _post_authed(client: httpx.Client, path: str, token: str, data: dict | None = None) -> dict:
+    """POST request with Bearer token."""
+    try:
+        r = client.post(f"{BASE_URL}{path}", json=data, headers={"Authorization": f"Bearer {token}"})
         r.raise_for_status()
         return r.json()
     except httpx.ConnectError:
@@ -172,6 +201,88 @@ def safety_check(
             typer.echo(f"  {severity} {w['drug_a']} + {w['drug_b']}: {w['mechanism']}")
 
     typer.echo(f"\n{result.get('disclaimer', '')}")
+
+
+# ---------------------------------------------------------------------------
+# Data Export (PIPL)
+# ---------------------------------------------------------------------------
+
+@app.command("export:user")
+def export_user(
+    username: str = typer.Option(..., "--username", "-u", help="用户名"),
+    password: str = typer.Option(..., "--password", "-p", help="密码"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="输出文件路径"),
+):
+    """导出用户全部数据（PIPL 合规）。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        token = login["access_token"]
+        result = _get_authed(client, "/api/export", token=token)
+
+    data_section = result.get("data", {})
+    typer.echo(f"✅ 导出成功 (导出时间: {result.get('export_date')})")
+    typer.echo(f"用户: {result.get('user', {}).get('username')}")
+    for key, val in data_section.items():
+        if isinstance(val, list):
+            typer.echo(f"  {key}: {len(val)} 条")
+        elif val:
+            typer.echo(f"  {key}: 1 条")
+        else:
+            typer.echo(f"  {key}: 0 条")
+
+    filename = output or f"export_{username}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    typer.echo(f"💾 已保存到 {filename}")
+
+
+# ---------------------------------------------------------------------------
+# Backup / Restore
+# ---------------------------------------------------------------------------
+
+@app.command("backup:create")
+def backup_create(
+    username: str = typer.Option(..., "--username", "-u", help="用户名"),
+    password: str = typer.Option(..., "--password", "-p", help="密码"),
+):
+    """创建数据库备份。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _post_authed(client, "/api/backup", token=login["access_token"])
+    typer.echo(f"✅ 备份成功: {result['filename']} ({result['size_bytes']} bytes)")
+
+
+@app.command("backup:list")
+def backup_list(
+    username: str = typer.Option(..., "--username", "-u", help="用户名"),
+    password: str = typer.Option(..., "--password", "-p", help="密码"),
+):
+    """列出可用备份。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _get_authed(client, "/api/backup/list", token=login["access_token"])
+    backups = result.get("backups", [])
+    if not backups:
+        typer.echo("暂无备份")
+        return
+    typer.echo(f"共 {len(backups)} 个备份:")
+    for b in backups:
+        typer.echo(f"  📦 {b['filename']} — {b['size']} bytes ({b['created_at']})")
+
+
+@app.command("backup:restore")
+def backup_restore(
+    filename: str = typer.Argument(..., help="备份文件名"),
+    username: str = typer.Option(..., "--username", "-u", help="用户名"),
+    password: str = typer.Option(..., "--password", "-p", help="密码"),
+):
+    """从备份恢复（重启后生效）。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _post_authed(
+            client, "/api/restore", token=login["access_token"], data={"filename": filename}
+        )
+    typer.echo(f"✅ {result['message']} (文件: {result.get('filename', filename)})")
 
 
 if __name__ == "__main__":

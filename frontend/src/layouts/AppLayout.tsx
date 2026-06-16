@@ -16,6 +16,7 @@ import {
   StarOutlined,
   CalendarOutlined,
   SafetyOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -55,6 +56,11 @@ export default function AppLayout() {
       key: '/reminders',
       icon: <ClockCircleOutlined />,
       label: '提醒',
+    },
+    {
+      key: '/family',
+      icon: <TeamOutlined />,
+      label: '家庭成员',
     },
     {
       key: '/favorites',

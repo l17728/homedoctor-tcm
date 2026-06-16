@@ -162,5 +162,43 @@ export async function selectAntdOption(
  * Lesson T3: Multiple toasts can cause strict mode violations.
  */
 export function firstToast(page: Page): Locator {
-  return page.locator('.ant-message, .ant-notification').first();
+  return page.locator('.ant-message-notice, .ant-notification-notice').first();
+}
+
+// ---------------------------------------------------------------------------
+// AntD TimePicker.RangePicker helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Fill an AntD TimePicker.RangePicker by selecting cells from the dropdown panel.
+ *
+ * AntD's fill() on the input does NOT set the form value — the picker requires
+ * actual panel interaction. This helper opens the panel and clicks the hour/minute
+ * cells for both start and end times.
+ *
+ * @param page Playwright Page
+ * @param drawer The drawer locator containing the form
+ * @param hour   Hour string (e.g. '08')
+ * @param minute Minute string (e.g. '00')
+ */
+export async function fillTimeRangePicker(
+  page: Page,
+  drawer: Locator,
+  hour: string = '08',
+  minute: string = '00',
+): Promise<void> {
+  const picker = drawer.locator('.ant-picker-range').first();
+  const timeStr = `${hour}:${minute}`;
+
+  await picker.locator('input').nth(0).click();
+  await page.waitForTimeout(300);
+  await page.keyboard.type(timeStr);
+  await page.waitForTimeout(200);
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(300);
+
+  await page.keyboard.type(timeStr);
+  await page.waitForTimeout(200);
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(300);
 }

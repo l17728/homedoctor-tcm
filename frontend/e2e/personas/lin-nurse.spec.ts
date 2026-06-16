@@ -11,7 +11,7 @@
  * - 人参+五灵脂 → 十九畏（中药配伍禁忌，Layer 1a）
  */
 import { test, expect } from '@playwright/test';
-import { register, chineseText, firstToast, opsCell } from '../helpers';
+import { register, firstToast, opsCell } from '../helpers';
 
 // Unique username generator (fresh user per test)
 function uniqueUser(): string {

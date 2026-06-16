@@ -20,7 +20,6 @@ import { test, expect } from '@playwright/test';
 import {
   register,
   chineseText,
-  selectAntdOption,
   opsCell,
 } from '../helpers';
 
@@ -440,21 +439,21 @@ test.describe('Persona: 刘小雨 (中医研究生) — 知识库与学习', () 
     const categorySelect = page.locator('.ant-select-selector').first();
     await categorySelect.click();
     await page.waitForTimeout(500);
-    await page.locator('.ant-select-item-option').filter({ hasText: '补气药' }).first().click({ force: true });
+    await page.locator('.ant-select-item-option').filter({ hasText: '解表药' }).first().click({ force: true });
 
     await page.waitForTimeout(2000);
 
     const rows = page.locator('.ant-table-row');
     await expect(rows.first()).toBeVisible({ timeout: 15000 });
 
-    // 验证所有结果的分类列都是"补气药"
+    // 验证所有结果的分类列都是"解表药"
     const rowCount = await rows.count();
     expect(rowCount).toBeGreaterThan(0);
 
     for (let i = 0; i < Math.min(rowCount, 5); i++) {
-      const categoryCell = rows.nth(i).locator('td').nth(1); // 第2列是分类
+      const categoryCell = rows.nth(i).locator('td').nth(1);
       const cellText = await categoryCell.textContent();
-      expect(cellText).toContain('补气药');
+      expect(cellText).toContain('解表药');
     }
 
     // 清除筛选，验证恢复全部

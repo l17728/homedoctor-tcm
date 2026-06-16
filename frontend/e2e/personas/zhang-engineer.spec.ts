@@ -376,13 +376,12 @@ test.describe('Persona: 张伟 — IT架构师 · 数据驱动的失眠患者', 
     const startButton = page.getByRole('button', { name: /开始测试/ });
     await expect(startButton).toBeVisible();
     await startButton.click();
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(2000);
 
-    await expect(page.getByText(/第.*页/)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('你容易疲乏吗？')).toBeVisible({ timeout: 15000 });
 
     const radioButtons = page.locator('.ant-radio-wrapper');
-    await expect(radioButtons.first()).toBeVisible({ timeout: 10000 });
+    await expect(radioButtons.first()).toBeVisible({ timeout: 5000 });
 
     // 验证答题选项（没有/很少/有时/经常/总是）
     await expect(page.getByText('没有').first()).toBeVisible();

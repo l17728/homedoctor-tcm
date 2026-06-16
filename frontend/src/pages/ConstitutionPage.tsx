@@ -62,8 +62,13 @@ export default function ConstitutionPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [qs, hist] = await Promise.all([getQuestionnaire(), getAssessmentHistory()]);
+      const qs = await getQuestionnaire();
       setQuestions(qs);
+    } catch {
+      // handled
+    }
+    try {
+      const hist = await getAssessmentHistory();
       setHistory(hist.map((h) => ({ id: h.id, assessed_at: h.assessed_at, primary_type: h.primary_type, secondary_types: h.secondary_types })));
     } catch {
       // handled

@@ -359,3 +359,53 @@ class FavoriteUpdate(BaseModel):
     summary: str | None = None
     tags: list[str] | None = None
     is_starred: bool | None = None
+
+
+# ---------------------------------------------------------------------------
+# Family Members (家庭成员)
+# ---------------------------------------------------------------------------
+
+VALID_RELATIONS = {"父亲", "母亲", "配偶", "儿子", "女儿", "自己", "其他"}
+VALID_GENDERS = {"男", "女"}
+
+
+class FamilyMemberCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    relation: str
+    birth_date: str | None = None
+    gender: str | None = None
+
+    @field_validator("relation")
+    @classmethod
+    def validate_relation(cls, v: str) -> str:
+        if v not in VALID_RELATIONS:
+            raise ValueError(f"关系必须是 {VALID_RELATIONS} 之一，收到 {v!r}")
+        return v
+
+    @field_validator("gender")
+    @classmethod
+    def validate_gender(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_GENDERS:
+            raise ValueError(f"性别必须是 {VALID_GENDERS} 之一，收到 {v!r}")
+        return v
+
+
+class FamilyMemberUpdate(BaseModel):
+    name: str | None = None
+    relation: str | None = None
+    birth_date: str | None = None
+    gender: str | None = None
+
+    @field_validator("relation")
+    @classmethod
+    def validate_relation(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_RELATIONS:
+            raise ValueError(f"关系必须是 {VALID_RELATIONS} 之一，收到 {v!r}")
+        return v
+
+    @field_validator("gender")
+    @classmethod
+    def validate_gender(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_GENDERS:
+            raise ValueError(f"性别必须是 {VALID_GENDERS} 之一，收到 {v!r}")
+        return v

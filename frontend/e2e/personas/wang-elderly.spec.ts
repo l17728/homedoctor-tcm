@@ -26,6 +26,7 @@ import {
   chineseText,
   navigateTo,
   firstToast,
+  fillTimeRangePicker,
 } from '../helpers';
 
 test.describe('Persona: 王秀英 — 银发独居长辈', () => {
@@ -246,23 +247,15 @@ test.describe('Persona: 王秀英 — 银发独居长辈', () => {
 
     await page.getByLabel('提醒标题').fill('服用缬沙坦（降压药）');
 
-    const timePicker = drawer.locator('.ant-picker').first();
-    await timePicker.click();
-    await page.waitForTimeout(500);
-    const tpInputs = timePicker.locator('input');
-    await tpInputs.nth(0).fill('08:00');
-    await tpInputs.nth(1).fill('08:00');
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(500);
+    await fillTimeRangePicker(page, drawer, '08', '00');
 
     await page.getByRole('button', { name: chineseText('提交') }).click();
 
-    // 抽屉关闭
     await page.waitForTimeout(1000);
     await expect(page.locator('.ant-drawer-content')).toBeHidden({ timeout: 5000 });
 
     // 提醒出现在列表中
-    await expect(page.getByText('服用缬沙坦（降压药）')).toBeVisible();
+    await expect(page.getByText('服用缬沙坦（降压药）').first()).toBeVisible();
 
     // 今日提醒卡片应出现
     await expect(page.getByText('今日提醒')).toBeVisible();
@@ -286,7 +279,10 @@ test.describe('Persona: 王秀英 — 银发独居长辈', () => {
     // 先创建一个提醒
     await page.goto('/reminders');
     await page.getByRole('button', { name: /添加提醒/ }).click();
+    const drawer7 = page.locator('.ant-drawer');
+    await expect(drawer7).toBeVisible();
     await page.getByLabel('提醒标题').fill('服用缬沙坦');
+    await fillTimeRangePicker(page, drawer7, '08', '00');
     await page.getByRole('button', { name: chineseText('提交') }).click();
 
     // 等待列表刷新
@@ -330,9 +326,13 @@ test.describe('Persona: 王秀英 — 银发独居长辈', () => {
     // 创建提醒
     await page.goto('/reminders');
     await page.getByRole('button', { name: /添加提醒/ }).click();
+    const drawer8 = page.locator('.ant-drawer');
+    await expect(drawer8).toBeVisible();
     await page.getByLabel('提醒标题').fill('缬沙坦持久化测试');
+    await fillTimeRangePicker(page, drawer8, '08', '00');
     await page.getByRole('button', { name: chineseText('提交') }).click();
-    await expect(page.getByText('缬沙坦持久化测试')).toBeVisible();
+    await page.waitForTimeout(1000);
+    await expect(page.getByText('缬沙坦持久化测试').first()).toBeVisible();
 
     // 退出
     await logout(page);
@@ -344,7 +344,7 @@ test.describe('Persona: 王秀英 — 银发独居长辈', () => {
 
     // 导航到提醒页，验证数据还在
     await page.goto('/reminders');
-    await expect(page.getByText('缬沙坦持久化测试')).toBeVisible();
+    await expect(page.getByText('缬沙坦持久化测试').first()).toBeVisible();
 
     // 这验证了：王秀英即使误操作退出，数据不会丢失（最重要的担忧）
   });

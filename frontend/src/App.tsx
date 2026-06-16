@@ -23,6 +23,7 @@ import ProfilePage from './pages/ProfilePage';
 import FavoritesPage from './pages/FavoritesPage';
 import SeasonalHealthPage from './pages/SeasonalHealthPage';
 import SafetyCheckPage from './pages/SafetyCheckPage';
+import FamilyMembersPage from './pages/FamilyMembersPage';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -65,6 +66,7 @@ function ThemedApp() {
           <Route path="medicines" element={<MedicineList />} />
           <Route path="chat" element={<ChatPage />} />
           <Route path="reminders" element={<RemindersPage />} />
+          <Route path="family" element={<FamilyMembersPage />} />
           <Route path="constitution" element={<ConstitutionPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="favorites" element={<FavoritesPage />} />
