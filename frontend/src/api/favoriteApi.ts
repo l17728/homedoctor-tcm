@@ -69,7 +69,7 @@ export async function checkFavorite(
     method: 'POST',
     body: JSON.stringify({ entry_type, source_url }),
   });
-  return { exists: data.exists ?? false, favorite_id: data.favorite_id };
+  return { exists: data.is_favorited ?? data.exists ?? false, favorite_id: data.entry_id ?? data.favorite_id };
 }
 
 export async function saveKnowledgeCard(data: {
