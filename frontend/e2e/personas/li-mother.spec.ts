@@ -374,13 +374,14 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
           await page.goto(`/herbs/${herbId}`);
           await page.waitForTimeout(1500);
 
-          // 点击收藏按钮
-          const favBtn = page.getByText(/收藏/).first();
+          // 点击收藏按钮 — must use getByRole('button') to avoid matching
+          // the sidebar menu item "我的收藏" which also contains 收藏
+          const favBtn = page.getByRole('button', { name: /收藏/ });
           if (await favBtn.isVisible().catch(() => false)) {
             await favBtn.click();
 
             // 验证收藏成功提示
-            await expect(firstToast(page)).toBeVisible();
+            await expect(firstToast(page)).toBeVisible({ timeout: 5000 });
 
             // 导航到收藏页验证
             await page.goto('/favorites');

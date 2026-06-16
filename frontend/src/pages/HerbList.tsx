@@ -19,10 +19,7 @@ import { TOXICITY_COLOR } from '../constants';
 const { Title } = Typography;
 
 const CATEGORIES = [
-  '补气药',
-  '补血药',
-  '补阴药',
-  '补阳药',
+  '补虚药',
   '解表药',
   '清热药',
   '泻下药',
@@ -39,6 +36,9 @@ const CATEGORIES = [
   '平肝熄风药',
   '开窍药',
   '收涩药',
+  '攻毒杀虫止痒药',
+  '拔毒化腐生肌药',
+  '涌吐药',
 ];
 
 export default function HerbList() {
