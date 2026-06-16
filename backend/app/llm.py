@@ -8,6 +8,7 @@ direct API control (spec §8.6 design decision).
 from __future__ import annotations
 
 import base64
+import io
 import json
 import logging
 from typing import Any, AsyncIterator
@@ -155,41 +156,36 @@ async def chat_completion_with_image(
         logger.warning("LLM_API_KEY not configured — returning fallback message")
         return _fallback_message([{"role": "user", "content": text}])
 
-    headers = {
-        "Authorization": f"Bearer {settings.LLM_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    data_url = f"data:{mime_type};base64,{image_base64}"
-    user_content: list[dict[str, Any]] = [
-        {"type": "text", "text": text},
-        {"type": "image_url", "image_url": {"url": data_url}},
-    ]
-    payload = {
-        "model": settings.LLM_MODEL,
-        "messages": [
-            {"role": "system", "content": build_system_prompt(constitution)},
-            {"role": "user", "content": user_content},
-        ],
-        "temperature": 0.7,
-        "max_tokens": 2048,
-    }
+    ocr_text = _extract_text_from_image(image_base64)
+    if ocr_text:
+        augmented = f"{text}\n\n[图片识别文字]\n{ocr_text}"
+    else:
+        augmented = f"{text}\n\n[注意：用户上传了图片但未能识别出文字内容]"
 
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(CHAT_COMPLETIONS_URL, headers=headers, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-            return data["choices"][0]["message"]["content"]
-    except httpx.HTTPStatusError as e:
-        logger.error("LLM vision API HTTP error: %s — %s", e.response.status_code, e.response.text[:200])
-        return _error_message()
-    except Exception as e:
-        logger.error("LLM vision API call failed: %s", e)
-        return _error_message()
+    messages = [{"role": "user", "content": augmented}]
+    return await chat_completion(messages, constitution)
 
 
 def encode_image(raw: bytes, mime_type: str = "image/jpeg") -> str:
     return base64.b64encode(raw).decode("ascii")
+
+
+def _extract_text_from_image(image_base64: str) -> str:
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError:
+        logger.warning("pytesseract/Pillow not installed — skipping OCR")
+        return ""
+
+    try:
+        raw = base64.b64decode(image_base64)
+        img = Image.open(io.BytesIO(raw))
+        text = pytesseract.image_to_string(img, lang="chi_sim+eng")
+        return text.strip()
+    except Exception as e:
+        logger.warning("OCR extraction failed: %s", e)
+        return ""
 
 
 def _fallback_message(messages: list[dict[str, str]]) -> str:

@@ -4,6 +4,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   warnings?: string[];
+  image?: string;
 }
 
 export interface ChatResponse {
@@ -68,6 +69,28 @@ export async function* sendMessageStream(
       }
     }
   }
+}
+
+export async function sendMessageWithImage(
+  message: string,
+  image: File,
+): Promise<ChatResponse> {
+  const token = localStorage.getItem('token');
+  const form = new FormData();
+  form.append('message', message);
+  form.append('image', image);
+
+  const resp = await fetch('/api/chat/image', {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.detail || `请求失败: ${resp.status}`);
+  }
+  return resp.json();
 }
 
 export async function getChatHistory(): Promise<ChatMessage[]> {

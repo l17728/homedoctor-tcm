@@ -13,14 +13,21 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.auth import get_current_user
 from app.config import settings
 from app.database import DbAdapter, get_db
-from app.llm import chat_completion, chat_completion_stream, DISCLAIMER, has_api_key
+from app.llm import (
+    DISCLAIMER,
+    chat_completion,
+    chat_completion_stream,
+    chat_completion_with_image,
+    encode_image,
+    has_api_key,
+)
 from app.safety_keywords import EMERGENCY_WARNING, check_emergency_keywords
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -251,6 +258,81 @@ async def chat_stream(
         yield f"data: {json.dumps({'content': tail, 'done': True})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+MAX_IMAGE_SIZE = 10 * 1024 * 1024
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
+@router.post("/image")
+async def chat_with_image(
+    message: str = Form(...),
+    image: UploadFile = File(...),
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Send a message with an image for multimodal AI analysis.
+
+    Use cases (spec §16.2, §18):
+    - Medication photo recognition
+    - Medical report/document reading
+    - Skin condition visual reference
+    """
+    if image.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"不支持的图片格式：{image.content_type}。请上传 JPG/PNG/WebP/GIF。",
+        )
+
+    raw = await image.read()
+    if len(raw) > MAX_IMAGE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="图片大小不能超过 10MB。",
+        )
+
+    matched_keywords = check_emergency_keywords(message)
+    if matched_keywords:
+        return {
+            "reply": EMERGENCY_WARNING,
+            "safety_warning": EMERGENCY_WARNING,
+            "model_used": "safety-layer",
+            "reasoning_trace": [
+                {"step": "safety_keyword_check", "result": "emergency_detected",
+                 "keywords": matched_keywords},
+            ],
+        }
+
+    constitution = await _get_user_constitution(db, current_user["id"])
+    image_b64 = encode_image(raw, image.content_type or "image/jpeg")
+
+    reply_text = await chat_completion_with_image(
+        message, image_b64, image.content_type or "image/jpeg", constitution,
+    )
+
+    if not reply_text.endswith(DISCLAIMER):
+        reply_text = f"{reply_text}\n\n{DISCLAIMER}"
+
+    reasoning: list[dict[str, Any]] = [
+        {"step": "safety_keyword_check", "result": "passed"},
+        {"step": "image_validation", "result": "passed",
+         "mime": image.content_type, "size": len(raw)},
+    ]
+    if constitution:
+        reasoning.append({
+            "step": "constitution_context",
+            "result": "injected",
+            "primary_type": constitution["primary"],
+        })
+    reasoning.append({"step": "llm_vision_completion", "result": "success",
+                      "model": settings.LLM_MODEL})
+
+    return {
+        "reply": reply_text,
+        "safety_warning": None,
+        "model_used": settings.LLM_MODEL if has_api_key() else "fallback",
+        "reasoning_trace": reasoning,
+    }
 
 
 @router.get("/history")

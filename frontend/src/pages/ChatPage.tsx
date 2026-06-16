@@ -8,8 +8,10 @@ import {
   AudioMutedOutlined,
   SoundOutlined,
   SaveOutlined,
+  PictureOutlined,
+  CloseOutlined,
 } from '@ant-design/icons';
-import { sendMessage, sendMessageStream, type ChatMessage } from '../api/chatApi';
+import { sendMessage, sendMessageStream, sendMessageWithImage, type ChatMessage } from '../api/chatApi';
 import { saveKnowledgeCard } from '../api/favoriteApi';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis';
@@ -17,13 +19,18 @@ import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis';
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [savedCards, setSavedCards] = useState<Set<number>>(new Set());
+  const [pendingImage, setPendingImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { isListening, transcript, startListening, stopListening, isSupported: micSupported, error: micError } =
     useSpeechRecognition();
@@ -37,14 +44,12 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages]);
 
-  // Update input from speech recognition transcript
   useEffect(() => {
     if (transcript) {
       setInput(transcript);
     }
   }, [transcript]);
 
-  // Auto-stop listening → auto-send after a brief pause
   const wasListeningRef = useRef(false);
   useEffect(() => {
     if (isListening) {
@@ -52,61 +57,103 @@ export default function ChatPage() {
     }
     if (!isListening && wasListeningRef.current && transcript) {
       wasListeningRef.current = false;
-      // transcript already set in input, user can review and send
     }
   }, [isListening, transcript]);
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
+  useEffect(() => {
+    return () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+    };
+  }, [imagePreview]);
 
-    const userMessage: ChatMessage = { role: 'user', content: input.trim() };
+  const handleSelectImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      message.error('请选择图片文件');
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      message.error('图片大小不能超过 10MB');
+      return;
+    }
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setPendingImage(file);
+    setImagePreview(URL.createObjectURL(file));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleRemoveImage = () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setPendingImage(null);
+    setImagePreview('');
+  };
+
+  const handleSend = async () => {
+    if ((!input.trim() && !pendingImage) || loading) return;
+
+    const text = input.trim() || '请帮我看看这张图片';
+    const userMessage: ChatMessage = {
+      role: 'user',
+      content: text,
+      ...(imagePreview ? { image: imagePreview } : {}),
+    };
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
+    const sentImage = pendingImage;
+    const sentPreview = imagePreview;
+    setPendingImage(null);
+    setImagePreview('');
     setLoading(true);
 
     const assistantIdx = messages.length + 1;
-    let streamedContent = '';
+    setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
 
     try {
-      setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
-      let fullContent = '';
-
-      for await (const chunk of sendMessageStream(userMessage.content, messages)) {
-        fullContent += chunk;
-        streamedContent = fullContent;
-        setMessages((prev) => {
-          const next = [...prev];
-          next[assistantIdx] = { role: 'assistant', content: fullContent };
-          return next;
-        });
-      }
-
-      if (!streamedContent) {
-        const resp = await sendMessage(userMessage.content, messages);
-        streamedContent = resp.reply;
+      if (sentImage) {
+        const resp = await sendMessageWithImage(text, sentImage);
         const warnings = resp.safety_warning ? [resp.safety_warning] : undefined;
         setMessages((prev) => {
           const next = [...prev];
-          next[assistantIdx] = { role: 'assistant', content: streamedContent, warnings };
+          next[assistantIdx] = { role: 'assistant', content: resp.reply, warnings };
           return next;
         });
-      }
-
-      if (ttsEnabled && streamedContent) {
-        speak(streamedContent);
+        if (ttsEnabled) speak(resp.reply);
+      } else {
+        let fullContent = '';
+        for await (const chunk of sendMessageStream(text, messages)) {
+          fullContent += chunk;
+          setMessages((prev) => {
+            const next = [...prev];
+            next[assistantIdx] = { role: 'assistant', content: fullContent };
+            return next;
+          });
+        }
+        if (!fullContent) {
+          const resp = await sendMessage(text, messages);
+          const warnings = resp.safety_warning ? [resp.safety_warning] : undefined;
+          setMessages((prev) => {
+            const next = [...prev];
+            next[assistantIdx] = { role: 'assistant', content: resp.reply, warnings };
+            return next;
+          });
+          fullContent = resp.reply;
+        }
+        if (ttsEnabled && fullContent) speak(fullContent);
       }
     } catch {
       try {
-        const resp = await sendMessage(userMessage.content, messages);
-        streamedContent = resp.reply;
-        const warnings = resp.safety_warning ? [resp.safety_warning] : undefined;
-        setMessages((prev) => {
-          const next = [...prev];
-          next[assistantIdx] = { role: 'assistant', content: streamedContent, warnings };
-          return next;
-        });
-        if (ttsEnabled && streamedContent) {
-          speak(streamedContent);
+        if (sentImage && sentPreview) {
+          const resp = await sendMessageWithImage(text, sentImage);
+          const warnings = resp.safety_warning ? [resp.safety_warning] : undefined;
+          setMessages((prev) => {
+            const next = [...prev];
+            next[assistantIdx] = { role: 'assistant', content: resp.reply, warnings };
+            return next;
+          });
+          if (ttsEnabled) speak(resp.reply);
+        } else {
+          throw new Error('fallback exhausted');
         }
       } catch {
         setMessages((prev) => {
@@ -177,7 +224,7 @@ export default function ChatPage() {
 
       <div
         style={{
-          height: 'calc(100vh - 300px)',
+          height: 'calc(100vh - 320px)',
           overflowY: 'auto',
           marginBottom: 16,
           padding: 16,
@@ -188,7 +235,10 @@ export default function ChatPage() {
         {messages.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#999', padding: 40 }}>
             <RobotOutlined style={{ fontSize: 48, marginBottom: 16 }} />
-            <p>欢迎使用AI健康助手，请输入或语音说出您的健康问题</p>
+            <p>欢迎使用AI健康助手，请输入、语音或拍照提问</p>
+            <p style={{ fontSize: 12, color: '#bbb' }}>
+              支持文字、语音、图片提问（如药品说明书、化验单）
+            </p>
           </div>
         ) : (
           <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -203,13 +253,22 @@ export default function ChatPage() {
                     marginRight: msg.role === 'user' ? 0 : 'auto',
                   }}
                 >
+                  {msg.image && (
+                    <div style={{ marginBottom: 8 }}>
+                      <img
+                        src={msg.image}
+                        alt="用户上传"
+                        style={{ maxWidth: '100%', borderRadius: 4, maxHeight: 200 }}
+                      />
+                    </div>
+                  )}
                   <div style={{ marginBottom: msg.warnings && msg.warnings.length > 0 ? 8 : 0 }}>
                     <span style={{ marginRight: 8 }}>
                       {msg.role === 'assistant' ? <RobotOutlined /> : <UserOutlined />}
                     </span>
-                    <Text>{msg.content}</Text>
+                    <Text style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</Text>
                   </div>
-                  {msg.role === 'assistant' && idx > 0 && (
+                  {msg.role === 'assistant' && idx > 0 && msg.content && (
                     <div style={{ marginTop: 4, textAlign: 'right' }}>
                       <Button
                         type="text"
@@ -222,7 +281,7 @@ export default function ChatPage() {
                       </Button>
                     </div>
                   )}
-                  {msg.role === 'assistant' && (
+                  {msg.role === 'assistant' && msg.content && (
                     <div style={{ marginTop: 4 }}>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         ⚠ 以上建议仅供参考，不能替代专业医疗诊断。用药请遵医嘱。
@@ -266,11 +325,63 @@ export default function ChatPage() {
         />
       )}
 
+      {imagePreview && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 8,
+            padding: '4px 8px',
+            background: '#f5f5f5',
+            borderRadius: 4,
+          }}
+        >
+          <img
+            src={imagePreview}
+            alt="待发送"
+            style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4 }}
+          />
+          <Text style={{ flex: 1, color: '#999' }}>
+            {pendingImage?.name ?? '图片'} （{(pendingImage ? pendingImage.size / 1024 : 0).toFixed(0)}KB）
+          </Text>
+          <Button
+            type="text"
+            size="small"
+            icon={<CloseOutlined />}
+            onClick={handleRemoveImage}
+          />
+        </div>
+      )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        onChange={handleSelectImage}
+        style={{ display: 'none' }}
+      />
+
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <Tooltip title="拍照提问">
+          <Button
+            shape="circle"
+            size="large"
+            icon={<PictureOutlined />}
+            onClick={() => fileInputRef.current?.click()}
+            style={{ width: 48, height: 48, flexShrink: 0 }}
+          />
+        </Tooltip>
         <TextArea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={isListening ? '正在聆听...' : '请输入您的健康问题...'}
+          placeholder={
+            pendingImage
+              ? '描述您想了解的内容（可选）...'
+              : isListening
+                ? '正在聆听...'
+                : '请输入您的健康问题...'
+          }
           autoSize={{ minRows: 1, maxRows: 4 }}
           onPressEnter={(e) => {
             if (!e.shiftKey) {
