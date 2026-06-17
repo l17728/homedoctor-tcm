@@ -60,6 +60,14 @@ export async function toggleFavoriteStar(id: string, starred: boolean): Promise<
   });
 }
 
+export async function updateFavoriteTags(id: string, tags: string[]): Promise<Favorite> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return request<any>(`/api/favorites/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ tags }),
+  });
+}
+
 export async function checkFavorite(
   entry_type: string,
   source_url: string,

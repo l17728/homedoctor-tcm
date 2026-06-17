@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Table,
   Button,
   Popconfirm,
+  Popover,
   message,
   Empty,
   Skeleton,
@@ -17,12 +18,14 @@ import {
   StarFilled,
   DeleteOutlined,
   BookOutlined,
+  TagOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import {
   getFavorites,
   deleteFavorite,
   toggleFavoriteStar,
+  updateFavoriteTags,
   type Favorite,
 } from '../api/favoriteApi';
 import { PAGE_SIZE } from '../constants';
@@ -49,6 +52,11 @@ export default function FavoritesPage() {
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<string | undefined>(undefined);
   const [searchTitle, setSearchTitle] = useState('');
+  const [filterTag, setFilterTag] = useState<string | undefined>(undefined);
+
+  // --- tag editor state per-row ---
+  const [tagDraft, setTagDraft] = useState<Record<string, string>>({});
+  const [tagSavingId, setTagSavingId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -89,9 +97,102 @@ export default function FavoritesPage() {
     }
   };
 
-  const filtered = searchTitle
-    ? favorites.filter((f) => f.title.includes(searchTitle))
-    : favorites;
+  // --- tag management ---
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    favorites.forEach((f) => f.tags?.forEach((t) => set.add(t)));
+    return Array.from(set).sort();
+  }, [favorites]);
+
+  const handleAddTag = async (fav: Favorite) => {
+    const newTag = (tagDraft[fav.id] ?? '').trim();
+    if (!newTag) return;
+    if (fav.tags.includes(newTag)) {
+      message.warning('该标签已存在');
+      return;
+    }
+    const updated = [...fav.tags, newTag];
+    setTagSavingId(fav.id);
+    try {
+      await updateFavoriteTags(fav.id, updated);
+      setFavorites((prev) =>
+        prev.map((f) =>
+          f.id === fav.id ? { ...f, tags: updated } : f,
+        ),
+      );
+      setTagDraft((prev) => ({ ...prev, [fav.id]: '' }));
+    } catch {
+      message.error('添加标签失败');
+    } finally {
+      setTagSavingId(null);
+    }
+  };
+
+  const handleRemoveTag = async (fav: Favorite, tag: string) => {
+    const updated = fav.tags.filter((t) => t !== tag);
+    setTagSavingId(fav.id);
+    try {
+      await updateFavoriteTags(fav.id, updated);
+      setFavorites((prev) =>
+        prev.map((f) =>
+          f.id === fav.id ? { ...f, tags: updated } : f,
+        ),
+      );
+    } catch {
+      message.error('删除标签失败');
+    } finally {
+      setTagSavingId(null);
+    }
+  };
+
+  const renderTagEditor = (fav: Favorite) => (
+    <div style={{ width: 260 }}>
+      <div style={{ marginBottom: 8 }}>
+        {fav.tags.length > 0 ? (
+          <Space size={[4, 4]} wrap>
+            {fav.tags.map((t) => (
+              <Tag
+                key={t}
+                color={ROLE_COLOR[t] ?? 'blue'}
+                closable
+                onClose={(e) => {
+                  e.preventDefault();
+                  handleRemoveTag(fav, t);
+                }}
+              >
+                {t}
+              </Tag>
+            ))}
+          </Space>
+        ) : (
+          <span style={{ color: '#999', fontSize: 14 }}>暂无标签</span>
+        )}
+      </div>
+      <Input.Search
+        placeholder="输入标签后回车添加"
+        size="small"
+        enterButton="添加"
+        value={tagDraft[fav.id] ?? ''}
+        loading={tagSavingId === fav.id}
+        onChange={(e) =>
+          setTagDraft((prev) => ({ ...prev, [fav.id]: e.target.value }))
+        }
+        onSearch={() => handleAddTag(fav)}
+      />
+    </div>
+  );
+
+  // --- filtering ---
+  const filtered = useMemo(() => {
+    let result = favorites;
+    if (searchTitle) {
+      result = result.filter((f) => f.title.includes(searchTitle));
+    }
+    if (filterTag) {
+      result = result.filter((f) => f.tags?.includes(filterTag));
+    }
+    return result;
+  }, [favorites, searchTitle, filterTag]);
 
   const columns = [
     {
@@ -153,29 +254,48 @@ export default function FavoritesPage() {
         tags.length > 0 ? (
           <Space size={4} wrap>
             {tags.map((t) => (
-              <Tag key={t} color={ROLE_COLOR[t] ?? undefined}>{t}</Tag>
+              <Tag
+                key={t}
+                color={ROLE_COLOR[t] ?? undefined}
+                style={{ cursor: 'pointer' }}
+                onClick={() => setFilterTag(t)}
+              >
+                {t}
+              </Tag>
             ))}
           </Space>
         ) : (
-          '—'
+          <span style={{ color: '#ccc' }}>—</span>
         ),
     },
     {
       title: '操作',
       key: 'action',
       fixed: 'right' as const,
-      width: 80,
+      width: 160,
       render: (_: unknown, r: Favorite) => (
-        <Popconfirm
-          title="确定删除该收藏吗？"
-          onConfirm={() => handleDelete(r.id)}
-          okText="确定"
-          cancelText="取消"
-        >
-          <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-            删除
-          </Button>
-        </Popconfirm>
+        <Space size={0}>
+          <Popover
+            title="编辑标签"
+            trigger="click"
+            placement="left"
+            content={renderTagEditor(r)}
+          >
+            <Button type="link" size="small" icon={<TagOutlined />}>
+              标签
+            </Button>
+          </Popover>
+          <Popconfirm
+            title="确定删除该收藏吗？"
+            onConfirm={() => handleDelete(r.id)}
+            okText="确定"
+            cancelText="取消"
+          >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+              删除
+            </Button>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -196,7 +316,7 @@ export default function FavoritesPage() {
         </Title>
       </div>
 
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16 }} wrap>
         <Select
           allowClear
           placeholder="筛选类型"
@@ -208,6 +328,19 @@ export default function FavoritesPage() {
             { label: '方剂', value: 'formula' },
             { label: '知识卡片', value: 'knowledge_card' },
           ]}
+        />
+        <Select
+          allowClear
+          placeholder="全部标签"
+          style={{ width: 150 }}
+          value={filterTag}
+          onChange={(v) => setFilterTag(v)}
+          options={allTags.map((t) => ({ label: t, value: t }))}
+          tagRender={(props) => (
+            <Tag color={ROLE_COLOR[props.value] ?? 'blue'} style={{ margin: 0 }}>
+              {props.label}
+            </Tag>
+          )}
         />
         <Input.Search
           placeholder="搜索标题"

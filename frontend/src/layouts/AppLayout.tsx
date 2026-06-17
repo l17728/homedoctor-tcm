@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Layout, Menu, Button, Dropdown, theme } from 'antd';
+import { Layout, Menu, Button, Dropdown, Tooltip, theme } from 'antd';
 import {
   HomeOutlined,
   BookOutlined,
@@ -17,6 +17,7 @@ import {
   CalendarOutlined,
   SafetyOutlined,
   TeamOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -225,6 +226,46 @@ export default function AppLayout() {
           </div>
         </Content>
       </Layout>
+
+      {/* AI 健康助手 — 悬浮按钮 */}
+      {!['/chat', '/login'].includes(location.pathname) && (
+        <>
+          <style>{`
+            .ai-fab {
+              transition: transform 0.2s ease, box-shadow 0.2s ease;
+            }
+            .ai-fab:hover {
+              transform: scale(1.05);
+              box-shadow: 0 6px 16px rgba(24, 144, 255, 0.55);
+            }
+          `}</style>
+          <Tooltip title="AI健康助手" placement="left">
+            <Button
+              className="ai-fab"
+              shape="circle"
+              size="large"
+              icon={<RobotOutlined />}
+              onClick={() => navigate('/chat')}
+              style={{
+                position: 'fixed',
+                bottom: 32,
+                right: 32,
+                width: 56,
+                height: 56,
+                zIndex: 1000,
+                fontSize: 24,
+                backgroundColor: '#1890ff',
+                borderColor: '#1890ff',
+                color: '#fff',
+                boxShadow: '0 4px 12px rgba(24, 144, 255, 0.45)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            />
+          </Tooltip>
+        </>
+      )}
     </Layout>
   );
 }
