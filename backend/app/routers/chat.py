@@ -352,19 +352,21 @@ async def list_conversations(
     user_id = current_user["id"]
 
     if q:
+        like_pattern = f"%{q}%"
         count_row = await db.query_one(
-            "SELECT COUNT(*) as cnt FROM conversations WHERE user_id = ? AND title LIKE ?",
-            (user_id, f"%{q}%"),
+            """SELECT COUNT(*) as cnt FROM conversations
+               WHERE user_id = ? AND (title LIKE ? OR messages LIKE ?)""",
+            (user_id, like_pattern, like_pattern),
         )
         total = count_row["cnt"] if count_row else 0
 
         offset = (page - 1) * pageSize
         rows = await db.query(
             """SELECT * FROM conversations
-               WHERE user_id = ? AND title LIKE ?
+               WHERE user_id = ? AND (title LIKE ? OR messages LIKE ?)
                ORDER BY updated_at DESC
                LIMIT ? OFFSET ?""",
-            (user_id, f"%{q}%", pageSize, offset),
+            (user_id, like_pattern, like_pattern, pageSize, offset),
         )
     else:
         count_row = await db.query_one(

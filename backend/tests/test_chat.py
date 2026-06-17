@@ -144,6 +144,139 @@ async def test_list_conversations_after_save(client: AsyncClient, auth_headers: 
     assert any(c["title"] == "感冒咨询" for c in data["items"])
 
 
+@pytest.mark.asyncio
+async def test_search_by_message_content(client: AsyncClient, auth_headers: dict):
+    """Search by keyword in message content (not in title) should find the conversation.
+
+    Spec US-7: 搜索历史对话记录 — searches all conversations containing the keyword.
+    """
+    await client.post(
+        "/api/chat/conversations",
+        json={
+            "title": "日常咨询",
+            "messages": [
+                {"role": "user", "content": "黄芪可以治疗气虚吗？"},
+                {"role": "assistant", "content": "黄芪是补气要药，适合气虚体质。"},
+            ],
+        },
+        headers=auth_headers,
+    )
+
+    response = await client.get(
+        "/api/chat/history",
+        params={"q": "气虚"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] >= 1
+    matched = [c for c in data["items"] if c["title"] == "日常咨询"]
+    assert len(matched) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_by_title_still_works(client: AsyncClient, auth_headers: dict):
+    """Search by keyword in title should still return matching conversations."""
+    await client.post(
+        "/api/chat/conversations",
+        json={
+            "title": "头痛治疗",
+            "messages": [
+                {"role": "user", "content": "怎么处理"},
+                {"role": "assistant", "content": "建议休息"},
+            ],
+        },
+        headers=auth_headers,
+    )
+
+    response = await client.get(
+        "/api/chat/history",
+        params={"q": "头痛"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] >= 1
+    assert any(c["title"] == "头痛治疗" for c in data["items"])
+
+
+@pytest.mark.asyncio
+async def test_search_no_match_returns_empty(client: AsyncClient, auth_headers: dict):
+    """Search with non-existent keyword should return empty results."""
+    await client.post(
+        "/api/chat/conversations",
+        json={
+            "title": "养生",
+            "messages": [
+                {"role": "user", "content": "枸杞泡水"},
+            ],
+        },
+        headers=auth_headers,
+    )
+
+    response = await client.get(
+        "/api/chat/history",
+        params={"q": "不存在的罕见关键词XYZ"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 0
+    assert data["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_search_matches_assistant_reply(client: AsyncClient, auth_headers: dict):
+    """Search should match keywords in assistant replies too, not just user messages."""
+    await client.post(
+        "/api/chat/conversations",
+        json={
+            "title": "提问",
+            "messages": [
+                {"role": "user", "content": "你好"},
+                {"role": "assistant", "content": "当归补血汤是经典方剂。"},
+            ],
+        },
+        headers=auth_headers,
+    )
+
+    response = await client.get(
+        "/api/chat/history",
+        params={"q": "当归补血汤"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] >= 1
+    assert any(c["title"] == "提问" for c in data["items"])
+
+
+@pytest.mark.asyncio
+async def test_search_isolates_by_user(
+    client: AsyncClient, auth_headers: dict, second_user_headers: dict
+):
+    """Search should not return conversations belonging to other users."""
+    await client.post(
+        "/api/chat/conversations",
+        json={
+            "title": "用户A的记录",
+            "messages": [
+                {"role": "user", "content": "独特关键词紫雪丹"},
+            ],
+        },
+        headers=auth_headers,
+    )
+
+    response = await client.get(
+        "/api/chat/history",
+        params={"q": "紫雪丹"},
+        headers=second_user_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 0
+
+
 # ---------------------------------------------------------------------------
 # POST /api/chat/conversations
 # ---------------------------------------------------------------------------
