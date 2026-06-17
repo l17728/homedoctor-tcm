@@ -1,0 +1,15 @@
+{
+  "nodeType": "medicine",
+  "label": "药品",
+  "fields": [
+    {"id": "name", "name": "name", "type": "string", "label": "药品名称", "required": true, "group": "基本信息", "order": 1},
+    {"id": "brand", "name": "brand", "type": "string", "label": "品牌", "required": false, "group": "基本信息", "order": 2},
+    {"id": "type", "name": "type", "type": "enum", "label": "类型", "required": true, "group": "基本信息", "order": 3, "enumValues": ["西药", "中药", "中成药"]},
+    {"id": "specification", "name": "specification", "type": "string", "label": "规格", "required": false, "group": "用药信息", "order": 4},
+    {"id": "dosage_instructions", "name": "dosage_instructions", "type": "text", "label": "用法用量", "required": false, "group": "用药信息", "order": 5},
+    {"id": "drug_class", "name": "drug_class", "type": "string", "label": "药物类别", "required": false, "group": "用药信息", "order": 6},
+    {"id": "quantity", "name": "quantity", "type": "number", "label": "数量", "required": false, "group": "存储信息", "order": 7},
+    {"id": "unit", "name": "unit", "type": "enum", "label": "单位", "required": false, "group": "存储信息", "order": 8, "enumValues": ["盒", "瓶", "袋", "支"]},
+    {"id": "expiry_date", "name": "expiry_date", "type": "date", "label": "有效期", "required": false, "group": "存储信息", "order": 9}
+  ]
+}

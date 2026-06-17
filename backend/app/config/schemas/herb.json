@@ -1,0 +1,19 @@
+{
+  "nodeType": "herb",
+  "label": "中药",
+  "fields": [
+    {"id": "name", "name": "name", "type": "string", "label": "药名", "required": true, "group": "基本信息", "order": 1},
+    {"id": "aliases", "name": "aliases", "type": "string", "label": "别名", "required": false, "group": "基本信息", "order": 2},
+    {"id": "category", "name": "category", "type": "string", "label": "分类", "required": false, "group": "基本信息", "order": 3},
+    {"id": "origin", "name": "origin", "type": "string", "label": "产地", "required": false, "group": "基本信息", "order": 4},
+    {"id": "nature", "name": "nature", "type": "enum", "label": "药性", "required": false, "group": "性味归经", "order": 5, "enumValues": ["寒", "热", "温", "凉", "平"]},
+    {"id": "flavor", "name": "flavor", "type": "string", "label": "药味", "required": false, "group": "性味归经", "order": 6},
+    {"id": "meridians", "name": "meridians", "type": "string", "label": "归经", "required": false, "group": "性味归经", "order": 7},
+    {"id": "efficacy", "name": "efficacy", "type": "text", "label": "功效", "required": false, "group": "功效主治", "order": 8},
+    {"id": "indications", "name": "indications", "type": "text", "label": "主治", "required": false, "group": "功效主治", "order": 9},
+    {"id": "contraindications", "name": "contraindications", "type": "text", "label": "禁忌", "required": false, "group": "功效主治", "order": 10},
+    {"id": "dosage_min_g", "name": "dosage_min_g", "type": "number", "label": "最小剂量(g)", "required": false, "group": "用药信息", "order": 11},
+    {"id": "dosage_max_g", "name": "dosage_max_g", "type": "number", "label": "最大剂量(g)", "required": false, "group": "用药信息", "order": 12},
+    {"id": "toxicity", "name": "toxicity", "type": "string", "label": "毒性", "required": false, "group": "用药信息", "order": 13}
+  ]
+}
