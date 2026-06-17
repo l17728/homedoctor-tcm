@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.auth import get_current_user
 from app.audit import log_audit
 from app.database import DbAdapter, get_db
+from app.herb_quality import assess_all_quality, check_herb_quality
 from app.models import MedicineCreate, MedicineUpdate
 from app.repository import MedicineRepository, current_tenant_id, current_member_id
 
@@ -73,6 +74,36 @@ async def create_medicine(
     return _parse_medicine(medicine)
 
 
+@router.get("/quality-alerts")
+async def get_quality_alerts(
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Get all medicines with quality issues — spec §16.4.
+
+    Runs 中药饮片变质判断 + 开封后保质期追踪 + 过期检查 over every medicine
+    in the tenant scope and returns those whose assessment is not "good".
+    """
+    repo = MedicineRepository(db)
+    tid = repo._tenant_id()
+    mid = current_member_id.get()
+
+    member_clause = " AND family_member_id = ?" if mid else ""
+    member_params = (mid,) if mid else ()
+    rows = await db.query(
+        f"""SELECT * FROM medicines
+           WHERE tenant_id = ?{member_clause}
+           ORDER BY name""",
+        (tid,) + member_params,
+    )
+    medicines = [_parse_medicine(r) for r in rows]
+    flagged = assess_all_quality(medicines)
+    return {
+        "total": len(flagged),
+        "items": flagged,
+    }
+
+
 @router.get("/{medicine_id}")
 async def get_medicine(
     medicine_id: str,
@@ -88,6 +119,34 @@ async def get_medicine(
             detail="未找到该药品",
         )
     return _parse_medicine(row)
+
+
+@router.get("/{medicine_id}/quality")
+async def get_medicine_quality(
+    medicine_id: str,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Assess a single medicine for quality issues — spec §16.4.
+
+    Returns a structured assessment: expiry status, opened-shelf-life tracking,
+    and (for 中药饮片) the five deterioration signs to inspect.
+    """
+    repo = MedicineRepository(db)
+    row = await repo.get_medicine(medicine_id)
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到该药品",
+        )
+    medicine = _parse_medicine(row)
+    assessment = check_herb_quality(medicine)
+    return {
+        "medicine_id": medicine_id,
+        "name": medicine.get("name"),
+        "type": medicine.get("type"),
+        **assessment,
+    }
 
 
 @router.put("/{medicine_id}")
