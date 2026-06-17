@@ -268,6 +268,89 @@ async def get_formula(formula_id: str, db: DbAdapter = Depends(get_db)):
     return parsed
 
 
+def _formula_summary(row: dict[str, Any]) -> dict[str, Any]:
+    parsed = _parse_formula(row)
+    return {
+        "id": parsed.get("id", ""),
+        "name": parsed.get("name", ""),
+        "category": parsed.get("category", ""),
+        "source": parsed.get("source", ""),
+        "efficacy": parsed.get("efficacy", ""),
+        "derived_from_id": parsed.get("derived_from_id"),
+    }
+
+
+@router.get("/{formula_id}/tree")
+async def get_formula_tree(formula_id: str, db: DbAdapter = Depends(get_db)):
+    """Build the derivation tree (演化树) for a formula (spec §4.2 US-4).
+
+    Traverses the ``derived_from_id`` chain upward to collect ancestors,
+    and queries for all formulas whose ``derived_from_id`` points to this
+    formula to collect direct children (one level).
+
+    Returns::
+
+        {
+          "formula": {...},          # the queried formula (summary)
+          "parent": {...} | null,    # immediate parent if derived_from_id set
+          "ancestors": [...],        # root → ... → parent (ordered)
+          "children": [...],         # formulas derived directly from this one
+          "has_tree": bool           # true if any parent/children exist
+        }
+    """
+    repo = FormulaRepository(db)
+    row = await repo.get_formula(formula_id)
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到该方剂",
+        )
+
+    parsed = _parse_formula(row)
+    formula_summary = _formula_summary(row)
+
+    # --- Ancestors: walk derived_from_id chain upward ---
+    ancestors: list[dict[str, Any]] = []
+    parent_summary: dict[str, Any] | None = None
+    current_parent_id = parsed.get("derived_from_id")
+    visited: set[str] = {formula_id}
+    guard = 0
+
+    while current_parent_id and guard < 50:
+        if current_parent_id in visited:
+            break
+        visited.add(current_parent_id)
+        parent_row = await repo.get_formula(current_parent_id)
+        if not parent_row:
+            break
+        parent_parsed = _parse_formula(parent_row)
+        ancestors.append(_formula_summary(parent_row))
+        if parent_summary is None:
+            parent_summary = _formula_summary(parent_row)
+        current_parent_id = parent_parsed.get("derived_from_id")
+        guard += 1
+
+    # ancestors is ordered [parent, grandparent, ...] → reverse to [root, ..., parent]
+    ancestors.reverse()
+
+    # --- Children: direct descendants ---
+    children_rows = await db.query(
+        "SELECT * FROM formulas WHERE derived_from_id = ? ORDER BY name",
+        (formula_id,),
+    )
+    children = [_formula_summary(r) for r in children_rows]
+
+    has_tree = bool(parent_summary or children)
+
+    return {
+        "formula": formula_summary,
+        "parent": parent_summary,
+        "ancestors": ancestors,
+        "children": children,
+        "has_tree": has_tree,
+    }
+
+
 @router.get("/{formula_id}/roles")
 async def get_formula_herb_roles(
     formula_id: str, db: DbAdapter = Depends(get_db)

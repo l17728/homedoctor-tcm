@@ -11,7 +11,8 @@ Formulas table schema:
     id, name, source, category, composition, efficacy, indications,
     modifications, modifications_structured, derived_from_id, properties
 
-IDs start from formula-003 (formula-001=四君子汤, formula-002=四物汤 already exist).
+IDs: formula-001=四君子汤, formula-002=四物汤 (root formulas), formula-003 through formula-082
+(category formulas), formula-083 through formula-087 (derived formulas for derivation chains).
 """
 
 from __future__ import annotations
@@ -26,6 +27,37 @@ import sys
 # ---------------------------------------------------------------------------
 
 FORMULAS: list[dict] = [
+    # ===================================================================
+    # 基础补益方 (2) — 四君子汤 / 四物汤 — 两大补益体系的根方
+    # ===================================================================
+    {
+        "id": "formula-001",
+        "name": "四君子汤",
+        "source": "《太平惠民和剂局方》",
+        "category": "补益剂",
+        "composition": [
+            {"name": "人参", "dose": "9g", "role": "君"},
+            {"name": "白术", "dose": "9g", "role": "臣"},
+            {"name": "茯苓", "dose": "9g", "role": "佐"},
+            {"name": "甘草", "dose": "6g", "role": "使"},
+        ],
+        "efficacy": "益气健脾",
+        "indications": "脾胃气虚证。面色萎白，语声低微，气短乏力，食少便溏，舌淡苔白，脉虚弱",
+    },
+    {
+        "id": "formula-002",
+        "name": "四物汤",
+        "source": "《太平惠民和剂局方》",
+        "category": "补益剂",
+        "composition": [
+            {"name": "熟地黄", "dose": "12g", "role": "君"},
+            {"name": "当归", "dose": "9g", "role": "臣"},
+            {"name": "白芍", "dose": "9g", "role": "佐"},
+            {"name": "川芎", "dose": "6g", "role": "佐"},
+        ],
+        "efficacy": "补血调血",
+        "indications": "营血虚滞证。头晕目眩，心悸失眠，面色无华，妇人月经不调或经闭，脐腹作痛，舌淡，脉细弦或细涩",
+    },
     # ===================================================================
     # 解表剂 (8)
     # ===================================================================
@@ -1500,7 +1532,116 @@ FORMULAS: list[dict] = [
         "efficacy": "消导化积，清热利湿",
         "indications": "湿热食积证。脘腹胀痛，下痢泄泻，或大便秘结，小便短赤，舌苔黄腻，脉沉有力",
     },
+
+    # ===================================================================
+    # 衍生方剂 (Derived formulas) — 加减演化链上的关键节点
+    # 四君子汤 → 异功散 → 六君子汤 → 香砂六君子汤
+    # 四物汤 → 八珍汤 → 十全大补汤 → 人参养荣汤
+    # 桂枝汤 → 桂枝加葛根汤 / 桂枝加附子汤
+    # ===================================================================
+    {
+        "id": "formula-083",
+        "name": "异功散",
+        "source": "《小儿药证直诀》",
+        "category": "补益剂",
+        "composition": [
+            {"name": "人参", "dose": "9g", "role": "君"},
+            {"name": "白术", "dose": "9g", "role": "臣"},
+            {"name": "茯苓", "dose": "9g", "role": "佐"},
+            {"name": "陈皮", "dose": "6g", "role": "佐"},
+            {"name": "甘草", "dose": "6g", "role": "使"},
+        ],
+        "efficacy": "益气健脾，行气化滞",
+        "indications": "脾胃气虚兼气滞证。食欲不振，大便溏薄，胸脘痞闷不舒",
+    },
+    {
+        "id": "formula-084",
+        "name": "六君子汤",
+        "source": "《医学正传》",
+        "category": "补益剂",
+        "composition": [
+            {"name": "人参", "dose": "9g", "role": "君"},
+            {"name": "白术", "dose": "9g", "role": "臣"},
+            {"name": "茯苓", "dose": "9g", "role": "佐"},
+            {"name": "陈皮", "dose": "3g", "role": "佐"},
+            {"name": "半夏", "dose": "4.5g", "role": "佐"},
+            {"name": "甘草", "dose": "3g", "role": "使"},
+        ],
+        "efficacy": "益气健脾，燥湿化痰",
+        "indications": "脾胃气虚兼痰湿证。食少便溏，胸脘痞闷，呕吐吞酸，咳嗽痰多",
+    },
+    {
+        "id": "formula-085",
+        "name": "香砂六君子汤",
+        "source": "《古今名医方论》",
+        "category": "补益剂",
+        "composition": [
+            {"name": "人参", "dose": "9g", "role": "君"},
+            {"name": "白术", "dose": "9g", "role": "臣"},
+            {"name": "茯苓", "dose": "9g", "role": "佐"},
+            {"name": "陈皮", "dose": "3g", "role": "佐"},
+            {"name": "半夏", "dose": "4.5g", "role": "佐"},
+            {"name": "木香", "dose": "2g", "role": "佐"},
+            {"name": "砂仁", "dose": "2.4g", "role": "佐"},
+            {"name": "甘草", "dose": "3g", "role": "使"},
+        ],
+        "efficacy": "益气健脾，行气化痰",
+        "indications": "脾胃气虚，湿阻气滞证。脘腹胀痛，嗳气食少，恶心呕吐，大便不调",
+    },
+    {
+        "id": "formula-086",
+        "name": "桂枝加葛根汤",
+        "source": "《伤寒论》",
+        "category": "解表剂",
+        "composition": [
+            {"name": "桂枝", "dose": "9g", "role": "君"},
+            {"name": "芍药", "dose": "9g", "role": "臣"},
+            {"name": "生姜", "dose": "9g", "role": "佐"},
+            {"name": "甘草", "dose": "6g", "role": "佐"},
+            {"name": "大枣", "dose": "3枚", "role": "佐"},
+            {"name": "葛根", "dose": "12g", "role": "臣"},
+        ],
+        "efficacy": "解肌发表，升津舒经",
+        "indications": "桂枝汤证兼项背强几几者。发热，汗出，恶风，项背强急不舒",
+    },
+    {
+        "id": "formula-087",
+        "name": "桂枝加附子汤",
+        "source": "《伤寒论》",
+        "category": "解表剂",
+        "composition": [
+            {"name": "桂枝", "dose": "9g", "role": "君"},
+            {"name": "芍药", "dose": "9g", "role": "臣"},
+            {"name": "生姜", "dose": "9g", "role": "佐"},
+            {"name": "甘草", "dose": "6g", "role": "佐"},
+            {"name": "大枣", "dose": "3枚", "role": "佐"},
+            {"name": "附子", "dose": "9g", "role": "臣"},
+        ],
+        "efficacy": "调和营卫，扶阳固表",
+        "indications": "太阳病发汗太过，致表阳虚漏汗不止。恶风，小便难，四肢微急，难以屈伸",
+    },
 ]
+
+# ---------------------------------------------------------------------------
+# Derivation chains: derived formula_id → parent formula_id
+# Spec §4.2 US-4: 加减变化 + 演化树
+# Only set if both formulas exist in the database after seeding.
+# ---------------------------------------------------------------------------
+DERIVED_CHAINS: dict[str, str] = {
+    # 四君子汤 → 异功散 → 六君子汤 → 香砂六君子汤
+    "formula-083": "formula-001",  # 异功散 ← 四君子汤
+    "formula-084": "formula-083",  # 六君子汤 ← 异功散
+    "formula-085": "formula-084",  # 香砂六君子汤 ← 六君子汤
+    # 四物汤 → 八珍汤 → 十全大补汤 → 人参养荣汤
+    "formula-037": "formula-002",  # 八珍汤 ← 四物汤
+    "formula-038": "formula-037",  # 十全大补汤 ← 八珍汤
+    "formula-048": "formula-038",  # 人参养荣汤 ← 十全大补汤
+    # 桂枝汤 → 桂枝加葛根汤 / 桂枝加附子汤
+    "formula-086": "formula-004",  # 桂枝加葛根汤 ← 桂枝汤
+    "formula-087": "formula-004",  # 桂枝加附子汤 ← 桂枝汤
+    # 肾气丸 → 六味地黄丸 (六味地黄丸是钱乙从肾气丸中减去桂附而成)
+    "formula-040": "formula-043",  # 六味地黄丸 ← 肾气丸
+}
 
 
 def seed(db_path: str) -> None:
@@ -1568,6 +1709,24 @@ def seed(db_path: str) -> None:
 
     conn.commit()
 
+    # Apply derivation chains: set derived_from_id only for formulas that exist
+    chain_applied = 0
+    for derived_id, parent_id in DERIVED_CHAINS.items():
+        parent_exists = conn.execute(
+            "SELECT 1 FROM formulas WHERE id = ?", (parent_id,)
+        ).fetchone()
+        derived_exists = conn.execute(
+            "SELECT 1 FROM formulas WHERE id = ?", (derived_id,)
+        ).fetchone()
+        if parent_exists and derived_exists:
+            conn.execute(
+                "UPDATE formulas SET derived_from_id = ? WHERE id = ?",
+                (parent_id, derived_id),
+            )
+            chain_applied += 1
+
+    conn.commit()
+
     # Verify total count
     total = conn.execute("SELECT COUNT(*) FROM formulas").fetchone()[0]
 
@@ -1580,12 +1739,13 @@ def seed(db_path: str) -> None:
 
     print(f"Seeded {inserted} formulas (skipped {len(FORMULAS) - inserted} existing)")
     print(f"Total formulas in database: {total}")
+    print(f"Derivation chains applied: {chain_applied}")
     print(f"\nCategory breakdown:")
     for cat, cnt in rows:
         print(f"  {cat}: {cnt}")
 
     assert total >= 80, f"Expected at least 80 formulas, got {total}"
-    print(f"\n✓ Seeded {inserted} formulas successfully (total: {total})")
+    print(f"\n✓ Seeded {inserted} formulas successfully (total: {total}, chains: {chain_applied})")
 
 
 if __name__ == "__main__":
