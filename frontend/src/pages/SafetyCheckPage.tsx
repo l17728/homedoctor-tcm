@@ -5,6 +5,7 @@ import {
   Input,
   Tag,
   Alert,
+  Modal,
   Space,
   Typography,
   Empty,
@@ -19,6 +20,7 @@ import {
   CheckCircleOutlined,
   WarningOutlined,
   ExperimentOutlined,
+  ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import { checkSafetyV2, type SafetyCheckResult } from '../api/safetyApi';
 
@@ -31,6 +33,11 @@ interface SelectedItem {
 
 void (0 as unknown as SelectedItem);
 
+const CRITICAL_KEYWORDS = ['禁止', '禁忌', '配伍禁忌'];
+
+const isCriticalWarning = (warning: string): boolean =>
+  CRITICAL_KEYWORDS.some((kw) => warning.includes(kw));
+
 export default function SafetyCheckPage() {
   const [herbInput, setHerbInput] = useState('');
   const [medicineInput, setMedicineInput] = useState('');
@@ -39,6 +46,11 @@ export default function SafetyCheckPage() {
   const [profile, setProfile] = useState<string>('default');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SafetyCheckResult | null>(null);
+  const [criticalAcknowledged, setCriticalAcknowledged] = useState(false);
+
+  const hasCritical =
+    !!result && result.warnings.some((w) => isCriticalWarning(w));
+  const showCriticalModal = !!result && hasCritical && !criticalAcknowledged;
 
   const addHerb = () => {
     const name = herbInput.trim();
@@ -68,6 +80,7 @@ export default function SafetyCheckPage() {
     if (selectedHerbs.length === 0 && selectedMedicines.length === 0) return;
     setLoading(true);
     setResult(null);
+    setCriticalAcknowledged(false);
     try {
       const userProfile: Record<string, unknown> = {};
       if (profile === 'pregnant') {
@@ -203,7 +216,7 @@ export default function SafetyCheckPage() {
         </Card>
       )}
 
-      {result && !loading && (
+      {result && !loading && !showCriticalModal && (
         <Card>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
             {result.safe ? (
@@ -290,6 +303,27 @@ export default function SafetyCheckPage() {
           </div>
         </Card>
       )}
+
+      <Modal
+        open={showCriticalModal}
+        title={
+          <span style={{ color: '#ff4d4f' }}>
+            <ExclamationCircleOutlined style={{ marginRight: 8 }} />
+            安全风险提示
+          </span>
+        }
+        centered
+        closable={false}
+        maskClosable={false}
+        keyboard={false}
+        okText="我已了解风险"
+        cancelButtonProps={{ style: { display: 'none' } }}
+        onOk={() => setCriticalAcknowledged(true)}
+      >
+        <Paragraph style={{ fontSize: 16, marginBottom: 0 }}>
+          ⚠️ 安全检查发现严重配伍禁忌！请勿自行使用，必须咨询医师。
+        </Paragraph>
+      </Modal>
     </div>
   );
 }

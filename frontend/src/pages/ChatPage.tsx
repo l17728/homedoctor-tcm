@@ -41,6 +41,17 @@ const { TextArea } = Input;
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
+const TREATMENT_ADVICE_KEYWORDS = [
+  '建议服用',
+  '推荐用药',
+  '可以尝试',
+  '建议使用',
+  '方剂推荐',
+];
+
+const containsTreatmentAdvice = (content: string): boolean =>
+  TREATMENT_ADVICE_KEYWORDS.some((kw) => content.includes(kw));
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -458,6 +469,16 @@ export default function ChatPage() {
                       </Text>
                     </div>
                   )}
+                  {msg.role === 'assistant' &&
+                    msg.content &&
+                    containsTreatmentAdvice(msg.content) && (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        message="⚠️ 以上建议涉及用药，请务必咨询专业医师后使用。"
+                        style={{ marginTop: 6, padding: '4px 12px', fontSize: 13 }}
+                      />
+                    )}
                   {msg.warnings && msg.warnings.length > 0 && (
                     <Alert
                       type="error"
