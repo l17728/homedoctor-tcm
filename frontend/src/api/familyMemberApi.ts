@@ -83,3 +83,25 @@ export async function updateFamilyMember(
 export async function deleteFamilyMember(id: string): Promise<void> {
   await request<void>(`/api/family-members/${id}`, { method: 'DELETE' });
 }
+
+export async function switchMember(
+  id: string,
+): Promise<FamilyMember | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = await request<any>(`/api/family-members/${id}/switch`, {
+    method: 'POST',
+  });
+  return data.member ? mapMember(data.member) : null;
+}
+
+export async function clearMemberSwitch(): Promise<void> {
+  await request<void>('/api/family-members/clear-switch', { method: 'POST' });
+}
+
+export async function getCurrentMember(): Promise<FamilyMember | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = await request<any>('/api/family-members/current');
+  return data.member ? mapMember(data.member) : null;
+}
+
+export const MEMBER_STORAGE_KEY = 'current_member_id';

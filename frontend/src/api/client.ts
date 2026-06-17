@@ -24,6 +24,10 @@ export async function request<T>(
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  const memberId = localStorage.getItem('current_member_id');
+  if (memberId) {
+    headers['X-Member-Id'] = memberId;
+  }
 
   const response = await fetch(url, { ...options, headers });
 

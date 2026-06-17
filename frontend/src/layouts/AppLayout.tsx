@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Layout, Menu, Button, Dropdown, Tooltip, theme } from 'antd';
 import {
   HomeOutlined,
@@ -22,6 +22,13 @@ import {
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
+import {
+  getFamilyMembers,
+  switchMember,
+  clearMemberSwitch,
+  MEMBER_STORAGE_KEY,
+  type FamilyMember,
+} from '../api/familyMemberApi';
 
 const { Header, Sider, Content } = Layout;
 
@@ -32,6 +39,49 @@ export default function AppLayout() {
   const { user, logout } = useAuth();
   const { toggleTheme, isDark } = useTheme();
   const { token: themeToken } = theme.useToken();
+
+  const [members, setMembers] = useState<FamilyMember[]>([]);
+  const [currentMemberId, setCurrentMemberId] = useState<string | null>(
+    () => localStorage.getItem(MEMBER_STORAGE_KEY),
+  );
+
+  const loadMembers = useCallback(async () => {
+    try {
+      const list = await getFamilyMembers();
+      setMembers(list);
+      if (list.length === 0 && currentMemberId) {
+        localStorage.removeItem(MEMBER_STORAGE_KEY);
+        setCurrentMemberId(null);
+      }
+    } catch {
+      // Not logged in or network error — silently ignore
+    }
+  }, [currentMemberId]);
+
+  useEffect(() => {
+    if (user) {
+      void loadMembers();
+    }
+  }, [user, loadMembers]);
+
+  const handleSelectMember = useCallback(
+    async (memberId: string | null) => {
+      if (memberId) {
+        const member = await switchMember(memberId);
+        if (member) {
+          localStorage.setItem(MEMBER_STORAGE_KEY, memberId);
+          setCurrentMemberId(memberId);
+          navigate(0);
+        }
+      } else {
+        await clearMemberSwitch();
+        localStorage.removeItem(MEMBER_STORAGE_KEY);
+        setCurrentMemberId(null);
+        navigate(0);
+      }
+    },
+    [navigate],
+  );
 
   const menuItems = [
     {
@@ -198,6 +248,37 @@ export default function AppLayout() {
             onClick={() => setCollapsed(!collapsed)}
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {members.length > 0 && (
+              <Dropdown
+                placement="bottomRight"
+                menu={{
+                  items: [
+                    {
+                      key: 'all',
+                      label: '全部成员',
+                      onClick: () => void handleSelectMember(null),
+                    },
+                    { type: 'divider' as const },
+                    ...members.map((m) => ({
+                      key: m.id,
+                      label: m.name ?? '未命名',
+                      onClick: () => void handleSelectMember(m.id),
+                    })),
+                  ],
+                  selectedKeys: currentMemberId ? [currentMemberId] : ['all'],
+                }}
+              >
+                <Button
+                  type="text"
+                  icon={<TeamOutlined />}
+                  style={{ minHeight: 40, minWidth: 44, justifyContent: 'center' }}
+                >
+                  {currentMemberId
+                    ? members.find((m) => m.id === currentMemberId)?.name ?? '成员'
+                    : '全部成员'}
+                </Button>
+              </Dropdown>
+            )}
             <Button
               type="text"
               icon={<BulbOutlined />}
