@@ -39,6 +39,12 @@ keyring>=24.0.0
 # reportlab provides built-in CJK CID font (STSong-Light) — no external font files needed
 reportlab>=4.0.0
 
+# Multi-source knowledge ingestion (spec §18)
+# PyMuPDF extracts text from PDF files; python-docx from Word documents.
+# tesseract-ocr binary is already in the Docker image (chi_sim+eng).
+PyMuPDF>=1.24.0
+python-docx>=1.1.0
+
 # Testing
 pytest>=8.2.0
 pytest-asyncio>=0.23.0

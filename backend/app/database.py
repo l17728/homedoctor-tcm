@@ -313,6 +313,77 @@ DDL_STATEMENTS = [
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         UNIQUE(sharer_id, viewer_id)
     )""",
+    # -- 知识图谱：节点与边 (spec §9/§13.3 V3)
+    # 结构化数据是权威来源；图谱从 herbs/formulas/therapies/safety_rules 派生重建。
+    """CREATE TABLE IF NOT EXISTS graph_nodes (
+        id TEXT PRIMARY KEY,
+        node_type TEXT NOT NULL,
+        label TEXT NOT NULL,
+        properties TEXT DEFAULT '{}',
+        search_text TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS graph_edges (
+        id TEXT PRIMARY KEY,
+        edge_type TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        properties TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_graph_nodes_type ON graph_nodes(node_type)",
+    "CREATE INDEX IF NOT EXISTS idx_graph_edges_source ON graph_edges(source_id)",
+    "CREATE INDEX IF NOT EXISTS idx_graph_edges_target ON graph_edges(target_id)",
+    "CREATE INDEX IF NOT EXISTS idx_graph_edges_type ON graph_edges(edge_type)",
+    # -- 经典读诵：中医典籍书架 (spec §7.x 经典读诵)
+    """CREATE TABLE IF NOT EXISTS classics (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        author TEXT,
+        dynasty TEXT,
+        category TEXT,
+        description TEXT,
+        cover_color TEXT DEFAULT '#1890ff',
+        total_chapters INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS classic_chapters (
+        id TEXT PRIMARY KEY,
+        classic_id TEXT NOT NULL,
+        chapter_number INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        original_text TEXT NOT NULL,
+        translation TEXT,
+        translator_notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (classic_id) REFERENCES classics(id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS classic_annotations (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        classic_id TEXT NOT NULL,
+        chapter_id TEXT NOT NULL,
+        start_offset INTEGER NOT NULL,
+        end_offset INTEGER NOT NULL,
+        selected_text TEXT NOT NULL,
+        note_type TEXT NOT NULL DEFAULT 'annotation',
+        content TEXT NOT NULL,
+        ai_model TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (chapter_id) REFERENCES classic_chapters(id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS classic_study_notes (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        classic_id TEXT NOT NULL,
+        chapter_id TEXT,
+        content TEXT DEFAULT '',
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_classic_chapters_classic ON classic_chapters(classic_id)",
+    "CREATE INDEX IF NOT EXISTS idx_classic_annotations_user_chapter ON classic_annotations(user_id, chapter_id)",
+    "CREATE INDEX IF NOT EXISTS idx_classic_study_notes_user_classic ON classic_study_notes(user_id, classic_id)",
 ]
 
 FTS_STATEMENTS = [

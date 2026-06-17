@@ -18,6 +18,8 @@ import {
   SafetyOutlined,
   TeamOutlined,
   RobotOutlined,
+  ApartmentOutlined,
+  ReadOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -99,6 +101,11 @@ export default function AppLayout() {
       ],
     },
     {
+      key: '/classics',
+      icon: <ReadOutlined />,
+      label: '经典读诵',
+    },
+    {
       key: '/medicines',
       icon: <MedicineBoxOutlined />,
       label: '药箱',
@@ -117,6 +124,11 @@ export default function AppLayout() {
       key: '/favorites',
       icon: <StarOutlined />,
       label: '收藏',
+    },
+    {
+      key: '/knowledge-graph',
+      icon: <ApartmentOutlined />,
+      label: '知识图谱',
     },
     {
       key: '/seasonal',
@@ -168,6 +180,9 @@ export default function AppLayout() {
   ];
 
   const selectedKey = location.pathname;
+  const matchedKey =
+    menuItems.find((m) => m.key === selectedKey)?.key ??
+    (location.pathname.startsWith('/classics') ? '/classics' : selectedKey);
   const [openKeys, setOpenKeys] = useState<string[]>(() => {
     if (
       location.pathname.startsWith('/herbs') ||
@@ -219,7 +234,7 @@ export default function AppLayout() {
         <Menu
           theme="dark"
           mode="inline"
-          selectedKeys={[selectedKey]}
+          selectedKeys={[matchedKey]}
           openKeys={openKeys}
           onOpenChange={setOpenKeys}
           items={menuItems}

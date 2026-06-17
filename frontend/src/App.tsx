@@ -24,6 +24,9 @@ import FavoritesPage from './pages/FavoritesPage';
 import SeasonalHealthPage from './pages/SeasonalHealthPage';
 import SafetyCheckPage from './pages/SafetyCheckPage';
 import FamilyMembersPage from './pages/FamilyMembersPage';
+import KnowledgeGraphPage from './pages/KnowledgeGraphPage';
+import ClassicsBookshelf from './pages/ClassicsBookshelf';
+import ClassicReader from './pages/ClassicReader';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -70,6 +73,9 @@ function ThemedApp() {
           <Route path="constitution" element={<ConstitutionPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="favorites" element={<FavoritesPage />} />
+          <Route path="classics" element={<ClassicsBookshelf />} />
+          <Route path="classics/:id" element={<ClassicReader />} />
+          <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
           <Route path="seasonal" element={<SeasonalHealthPage />} />
           <Route path="safety" element={<SafetyCheckPage />} />
           <Route path="settings" element={<SettingsPage />} />
