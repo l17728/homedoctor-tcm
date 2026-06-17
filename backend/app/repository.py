@@ -12,6 +12,12 @@ current_tenant_id: contextvars.ContextVar[str] = contextvars.ContextVar(
     "tenant_id", default="default"
 )
 
+# Current family member_id — set by middleware from X-Member-Id header.
+# When None, queries return ALL data regardless of member (backward compatible).
+current_member_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "member_id", default=None
+)
+
 
 class BaseRepository:
     """Base repository with mandatory tenant_id filtering."""
@@ -114,20 +120,36 @@ class FormulaRepository(BaseRepository):
 class MedicineRepository(BaseRepository):
     """Repository for medicines (tenant-scoped, family drug cabinet)."""
 
+    def _member_id(self) -> str | None:
+        return current_member_id.get()
+
     async def list_medicines(
         self, page: int = 1, page_size: int = 20
     ) -> tuple[list[dict[str, Any]], int]:
         tid = self._tenant_id()
-        count_row = await self.db.query_one(
-            "SELECT COUNT(*) as cnt FROM medicines WHERE tenant_id = ?", (tid,)
-        )
+        mid = self._member_id()
+        if mid:
+            count_row = await self.db.query_one(
+                "SELECT COUNT(*) as cnt FROM medicines WHERE tenant_id = ? AND family_member_id = ?",
+                (tid, mid),
+            )
+            offset = (page - 1) * page_size
+            rows = await self.db.query(
+                """SELECT * FROM medicines WHERE tenant_id = ? AND family_member_id = ?
+                   ORDER BY name LIMIT ? OFFSET ?""",
+                (tid, mid, page_size, offset),
+            )
+        else:
+            count_row = await self.db.query_one(
+                "SELECT COUNT(*) as cnt FROM medicines WHERE tenant_id = ?",
+                (tid,),
+            )
+            offset = (page - 1) * page_size
+            rows = await self.db.query(
+                "SELECT * FROM medicines WHERE tenant_id = ? ORDER BY name LIMIT ? OFFSET ?",
+                (tid, page_size, offset),
+            )
         total = count_row["cnt"] if count_row else 0
-
-        offset = (page - 1) * page_size
-        rows = await self.db.query(
-            "SELECT * FROM medicines WHERE tenant_id = ? ORDER BY name LIMIT ? OFFSET ?",
-            (tid, page_size, offset),
-        )
         return rows, total
 
     async def get_medicine(self, medicine_id: str) -> dict[str, Any] | None:
@@ -143,15 +165,16 @@ class MedicineRepository(BaseRepository):
 
         medicine_id = str(uuid.uuid4())
         tid = self._tenant_id()
+        mid = self._member_id()
         await self.db.execute(
             """INSERT INTO medicines
-               (id, tenant_id, name, brand, type, specification, unit, quantity,
+               (id, tenant_id, family_member_id, name, brand, type, specification, unit, quantity,
                 production_date, expiry_date, opened_date, shelf_life_after_open,
                 dosage_instructions, contraindications, barcode, drug_class,
                 active_ingredients, herbal_fields, properties)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                medicine_id, tid, data["name"], data.get("brand"), data["type"],
+                medicine_id, tid, mid, data["name"], data.get("brand"), data["type"],
                 data.get("specification"), data.get("unit"), data.get("quantity", 0),
                 data.get("production_date"), data.get("expiry_date"),
                 data.get("opened_date"), data.get("shelf_life_after_open"),
