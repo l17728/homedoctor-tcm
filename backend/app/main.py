@@ -11,6 +11,7 @@ from app.config import settings
 from app.database import SqliteAdapter, init_db, seed_safety_rules, seed_test_data, set_db, _db_adapter
 from app.middleware.auth import AuthMiddleware
 from app.middleware.csrf import CsrfMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.tenant import TenantMiddleware
 
 
@@ -66,11 +67,12 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.add_middleware(RateLimitMiddleware)
     app.add_middleware(TenantMiddleware)
     app.add_middleware(CsrfMiddleware)
     app.add_middleware(AuthMiddleware)
 
-    from app.routers import health, auth, herbs, formulas, medicines, safety, chat, daily_health, dashboard, reminders, constitution, profile, favorites, seasonal_health, family_members, export, backup
+    from app.routers import health, auth, herbs, formulas, medicines, safety, chat, daily_health, dashboard, reminders, constitution, profile, favorites, seasonal_health, family_members, export, backup, account, triage
 
     app.include_router(health.router)
     app.include_router(auth.router)
@@ -89,6 +91,8 @@ def create_app() -> FastAPI:
     app.include_router(family_members.router)
     app.include_router(export.router)
     app.include_router(backup.router)
+    app.include_router(account.router)
+    app.include_router(triage.router)
 
     return app
 
