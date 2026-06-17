@@ -32,6 +32,15 @@ HALLUCINATION_WARNING = (
     "请务必咨询执业中医师确认其真实性与适用性。"
 )
 
+# L2: RAG grounding — appended when AI claims efficacy that doesn't match DB
+GROUNDING_WARNING = (
+    "\n\n⚠️ 以上回复中关于部分药材功效的描述未经知识库验证（待验证），"
+    "请咨询专业医师确认。"
+)
+
+# L3: LLM-as-Judge — prepended when judge model scores < 3
+JUDGE_WARNING = "⚠️ 本回答可能存在不准确之处，请咨询专业医师确认。\n\n"
+
 SYSTEM_PROMPT = """你是「家庭医生」，一位专业的中医药健康咨询助手。你的职责是为用户提供养生保健建议和中医药知识参考。
 
 回答时请遵循以下四步推理链路：
@@ -116,7 +125,10 @@ async def chat_completion(
                 content = data["choices"][0]["message"]["content"]
                 if i > 0:
                     logger.info("LLM fallback succeeded with model: %s", model)
-                validated = await _validate_and_augment(content)
+                question = _extract_user_question(messages)
+                validated, _meta = await _apply_hallucination_defenses(
+                    question, content, primary_model=model
+                )
                 return validated
         except httpx.HTTPStatusError as e:
             last_error = f"{e.response.status_code}: {e.response.text[:200]}"
@@ -256,6 +268,220 @@ async def _validate_and_augment(content: str) -> str:
     except Exception as e:
         logger.debug("Hallucination validation skipped: %s", e)
         return content
+
+
+# ---------------------------------------------------------------------------
+# L2: RAG Grounding Check — verify AI claims match DB efficacy (spec §8.5)
+# ---------------------------------------------------------------------------
+
+_EFFICACY_KEYWORDS = frozenset({
+    "补气", "补血", "补阴", "补阳", "滋阴", "温阳", "益气", "养血",
+    "生津", "健脾", "益胃", "补脾", "补肾", "养心", "益肺", "润肺",
+    "清热", "解毒", "凉血", "退热", "泻火", "燥湿", "除烦",
+    "活血", "化瘀", "理气", "行气", "行滞", "通痹", "通络", "化积",
+    "安神", "平肝", "潜阳", "熄风", "明目", "开窍", "醒神",
+    "固表", "敛肺", "涩肠", "涩精", "缩尿", "固精", "止汗", "止血",
+    "利水", "祛湿", "化痰", "止咳", "平喘", "消肿", "祛风", "散寒",
+    "温中", "化湿", "祛痰", "缓急", "和中",
+    "调经", "止痛", "通便", "润肠", "排脓", "托毒", "敛疮", "生肌",
+    "升阳", "解表", "透疹", "降逆", "止呕", "利尿", "发汗",
+    "消食", "驱虫", "杀虫", "调和",
+})
+
+
+def _extract_efficacy_keywords(text: str) -> set[str]:
+    """Return the subset of known TCM efficacy keywords found in *text*."""
+    return {kw for kw in _EFFICACY_KEYWORDS if kw in text}
+
+
+def _get_herb_context(text: str, herb_name: str, window: int = 40) -> str:
+    """Concatenate text windows (±window chars) around every occurrence of *herb_name*."""
+    parts: list[str] = []
+    idx = 0
+    while True:
+        pos = text.find(herb_name, idx)
+        if pos == -1:
+            break
+        start = max(0, pos - window)
+        end = min(len(text), pos + len(herb_name) + window)
+        parts.append(text[start:end])
+        idx = pos + len(herb_name)
+    return " ".join(parts)
+
+
+async def _check_grounding(
+    content: str,
+    db: Any = None,
+) -> tuple[str, list[str]]:
+    """L2: RAG grounding check (spec §8.5).
+
+    For each herb mentioned that exists in the DB, extract efficacy keywords
+    from the surrounding text and compare against the herb's DB ``efficacy``
+    field.  If the AI makes efficacy claims with **zero** overlap, the herb is
+    flagged as ungrounded and a ``待验证`` warning is appended.
+
+    Returns ``(possibly_augmented_content, list_of_ungrounded_herb_names)``.
+    """
+    ungrounded: list[str] = []
+
+    if db is None:
+        try:
+            from app.database import get_db
+            db = get_db()
+        except RuntimeError:
+            return content, ungrounded
+
+    try:
+        mentioned = _extract_herb_names(content)
+        if not mentioned:
+            return content, ungrounded
+
+        for name in mentioned:
+            row = await db.query_one(
+                "SELECT efficacy FROM herbs WHERE name = ? OR aliases LIKE ? LIMIT 1",
+                (name, f"%{name}%"),
+            )
+            if not row or not row.get("efficacy"):
+                continue
+
+            db_keywords = _extract_efficacy_keywords(row["efficacy"])
+            if not db_keywords:
+                continue
+
+            context = _get_herb_context(content, name)
+            claimed_keywords = _extract_efficacy_keywords(context)
+
+            if claimed_keywords and not (claimed_keywords & db_keywords):
+                ungrounded.append(name)
+    except Exception as e:
+        logger.debug("Grounding check skipped: %s", e)
+        return content, ungrounded
+
+    if ungrounded and GROUNDING_WARNING not in content:
+        content = content + GROUNDING_WARNING
+
+    return content, ungrounded
+
+
+# ---------------------------------------------------------------------------
+# L3: LLM-as-Judge — independent model scores response accuracy (spec §8.5)
+# ---------------------------------------------------------------------------
+
+JUDGE_PROMPT_TEMPLATE = (
+    "请评分以下中医健康问答的准确性（1-5分）：\n"
+    "问题：{question}\n"
+    "回答：{answer}\n"
+    "评分标准：5=完全准确，4=基本准确，3=部分准确，2=存在错误，1=严重错误\n"
+    "只返回数字。"
+)
+
+
+def _get_judge_model(primary_model: str) -> str:
+    """Return a *different* model from the fallback chain for cross-evaluation."""
+    for m in _get_model_chain():
+        if m != primary_model:
+            return m
+    return primary_model
+
+
+def _parse_judge_score(response: str) -> int | None:
+    """Extract the first digit 1-5 from the judge response text."""
+    match = re.search(r"[1-5]", response)
+    return int(match.group()) if match else None
+
+
+async def _judge_response(
+    question: str,
+    answer: str,
+    primary_model: str,
+) -> int | None:
+    """L3: LLM-as-Judge (spec §8.5).
+
+    Sends the question + answer to a **different** model for an independent
+    accuracy score (1-5).  Returns the score, or ``None`` on failure so the
+    caller can gracefully degrade without blocking the response.
+    """
+    if not has_api_key():
+        return None
+
+    judge_model = _get_judge_model(primary_model)
+    prompt = JUDGE_PROMPT_TEMPLATE.format(
+        question=str(question)[:500],
+        answer=str(answer)[:2000],
+    )
+
+    headers = {
+        "Authorization": f"Bearer {settings.LLM_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": judge_model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.0,
+        "max_tokens": 16,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(CHAT_COMPLETIONS_URL, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            judge_text = data["choices"][0]["message"]["content"]
+            score = _parse_judge_score(judge_text)
+            if score is not None:
+                logger.info("L3 judge score=%d (model=%s)", score, judge_model)
+            return score
+    except Exception as e:
+        logger.warning("L3 judge failed — graceful skip: %s", e)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Unified hallucination defense pipeline (L1 → L2 → L3)
+# ---------------------------------------------------------------------------
+
+def _extract_user_question(messages: list[dict[str, str]]) -> str:
+    """Extract the most recent user message text from the messages list."""
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            content = msg["content"]
+            if isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        return part.get("text", "")
+                return ""
+            return str(content)
+    return ""
+
+
+async def _apply_hallucination_defenses(
+    question: str,
+    answer: str,
+    db: Any = None,
+    primary_model: str = "",
+) -> tuple[str, dict[str, Any]]:
+    """Apply all three hallucination defense layers (spec §8.5).
+
+    L1: Herb name validation (existing ``_validate_and_augment``).
+    L2: RAG grounding check (``_check_grounding``).
+    L3: LLM-as-Judge (``_judge_response``).
+
+    Returns ``(augmented_answer, metadata_dict)``.
+    """
+    metadata: dict[str, Any] = {}
+
+    answer = await _validate_and_augment(answer)
+
+    answer, l2_flags = await _check_grounding(answer, db)
+    metadata["grounding_flags"] = l2_flags
+
+    score = await _judge_response(question, answer, primary_model)
+    if score is not None:
+        metadata["judge_score"] = score
+        if score < 3:
+            answer = JUDGE_WARNING + answer
+
+    return answer, metadata
 
 
 _TCM_CONCEPT_TERMS = frozenset({
