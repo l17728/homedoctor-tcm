@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.database import DbAdapter, get_db
 from app.pinyin_data import to_pinyin, to_pinyin_abbrev
 from app.repository import HerbRepository
+from app.routers.formulas import _parse_formula, extract_herb_names
 
 router = APIRouter(prefix="/api/herbs", tags=["herbs"])
 
@@ -97,9 +98,60 @@ async def get_herb(herb_id: str, db: DbAdapter = Depends(get_db)):
     repo = HerbRepository(db)
     row = await repo.get_herb(herb_id)
     if not row:
-        from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="未找到该中药",
         )
     return _parse_herb(row)
+
+
+@router.get("/{herb_id}/formulas")
+async def get_herb_formulas(herb_id: str, db: DbAdapter = Depends(get_db)):
+    """Find formulas that contain this herb (代表方剂 + 常用配伍).
+
+    Scans all formulas, parses each composition via
+    :func:`app.routers.formulas.extract_herb_names`, and returns:
+
+    - ``formulas``: representative formulas containing this herb (≤20).
+    - ``common_combinations``: herbs that most frequently co-occur with
+      this herb, sorted by co-occurrence count descending (≤10).
+    """
+    herb = await db.query_one("SELECT name FROM herbs WHERE id = ?", (herb_id,))
+    if not herb:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到该中药",
+        )
+    herb_name = herb["name"]
+
+    all_formulas = await db.query(
+        "SELECT id, name, category, efficacy, composition, properties FROM formulas"
+    )
+    related: list[dict[str, Any]] = []
+    co_occurrence: dict[str, int] = {}
+
+    for f in all_formulas:
+        parsed = _parse_formula(f)
+        herbs_in_formula = extract_herb_names(parsed)
+        if herb_name in herbs_in_formula:
+            related.append(
+                {
+                    "id": f["id"],
+                    "name": f["name"],
+                    "category": parsed.get("category", "") or "",
+                    "efficacy": parsed.get("efficacy", "") or "",
+                }
+            )
+            for h in herbs_in_formula:
+                if h != herb_name:
+                    co_occurrence[h] = co_occurrence.get(h, 0) + 1
+
+    common_pairs = sorted(
+        co_occurrence.items(), key=lambda x: x[1], reverse=True
+    )[:10]
+
+    return {
+        "herb_name": herb_name,
+        "formulas": related[:20],
+        "common_combinations": [{"name": h, "count": c} for h, c in common_pairs],
+    }
