@@ -3,6 +3,13 @@ fastapi>=0.111.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
 
+# Voice (spec §13.2 V2 — 语音问答全链路). Optional: backend ASR/TTS engines.
+# When absent, /api/voice/* endpoints gracefully degrade and the frontend
+# falls back to the browser's native Web Speech API (useSpeechRecognition /
+# useSpeechSynthesis hooks). Install only on hosts with adequate resources.
+# openai-whisper>=20231117    # ASR — heavy (downloads model weights, GPU recommended)
+# pyttsx3>=2.90               # TTS — lightweight offline, uses OS speech drivers
+
 # Database
 aiosqlite>=0.20.0
 

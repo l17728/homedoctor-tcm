@@ -302,6 +302,17 @@ DDL_STATEMENTS = [
         reminder_id TEXT,
         FOREIGN KEY (plan_id) REFERENCES medication_plans(id)
     )""",
+    # -- 子女远程协助：家庭数据共享 (spec §22)
+    """CREATE TABLE IF NOT EXISTS family_shares (
+        id TEXT PRIMARY KEY,
+        sharer_id TEXT NOT NULL,
+        viewer_id TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT '家属查看',
+        status TEXT NOT NULL DEFAULT 'active',
+        alert_config TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(sharer_id, viewer_id)
+    )""",
 ]
 
 FTS_STATEMENTS = [
