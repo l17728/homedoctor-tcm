@@ -1,5 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
-import { Input, Button, Card, Typography, Space, Alert, Spin, Switch, Tooltip, message } from 'antd';
+import {
+  Input,
+  Button,
+  Card,
+  Typography,
+  Space,
+  Alert,
+  Spin,
+  Switch,
+  Tooltip,
+  Collapse,
+  Skeleton,
+  message,
+} from 'antd';
 import {
   SendOutlined,
   RobotOutlined,
@@ -11,7 +24,14 @@ import {
   PictureOutlined,
   CloseOutlined,
 } from '@ant-design/icons';
-import { sendMessage, sendMessageStream, sendMessageWithImage, type ChatMessage } from '../api/chatApi';
+import {
+  sendMessage,
+  sendMessageStream,
+  sendMessageWithImage,
+  getChatHistory,
+  type ChatMessage,
+  type ReasoningStep,
+} from '../api/chatApi';
 import { saveKnowledgeCard } from '../api/favoriteApi';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis';
@@ -25,6 +45,10 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  /** True only while SSE chunks are actively being appended (typing dots). */
+  const [streaming, setStreaming] = useState(false);
+  /** True while the conversation history is being fetched on mount. */
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [savedCards, setSavedCards] = useState<Set<number>>(new Set());
   const [pendingImage, setPendingImage] = useState<File | null>(null);
@@ -43,6 +67,30 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // ---------------------------------------------------------------------------
+  // Enhancement 1 — restore the latest conversation on mount so messages are
+  // not lost on refresh. Fails silently to the welcome state.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const history = await getChatHistory();
+        if (cancelled) return;
+        if (history.length > 0) {
+          setMessages(history);
+        }
+      } catch {
+        // silent fallback — show welcome message instead
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (transcript) {
@@ -115,29 +163,84 @@ export default function ChatPage() {
         const warnings = resp.safety_warning ? [resp.safety_warning] : undefined;
         setMessages((prev) => {
           const next = [...prev];
-          next[assistantIdx] = { role: 'assistant', content: resp.reply, warnings };
+          next[assistantIdx] = {
+            role: 'assistant',
+            content: resp.reply,
+            warnings,
+            ...(resp.reasoning_trace?.length
+              ? { reasoning_trace: resp.reasoning_trace }
+              : {}),
+          };
           return next;
         });
         if (ttsEnabled) speak(resp.reply);
       } else {
         let fullContent = '';
-        for await (const chunk of sendMessageStream(text, messages)) {
-          fullContent += chunk;
-          setMessages((prev) => {
-            const next = [...prev];
-            next[assistantIdx] = { role: 'assistant', content: fullContent };
-            return next;
-          });
+        let reasoningTrace: ReasoningStep[] | undefined;
+        setStreaming(true);
+        try {
+          for await (const chunk of sendMessageStream(text, messages)) {
+            if (chunk.content !== undefined) {
+              fullContent += chunk.content;
+              setMessages((prev) => {
+                const next = [...prev];
+                next[assistantIdx] = { role: 'assistant', content: fullContent };
+                return next;
+              });
+            }
+            // Backend may attach reasoning_trace to the terminating event.
+            if (chunk.reasoning_trace) {
+              reasoningTrace = chunk.reasoning_trace;
+            }
+          }
+        } finally {
+          setStreaming(false);
         }
+
+        // Enhancement 3 — graceful fallback to non-streaming when nothing
+        // arrived, and surface an error if even the fallback is empty.
         if (!fullContent) {
           const resp = await sendMessage(text, messages);
           const warnings = resp.safety_warning ? [resp.safety_warning] : undefined;
+          if (resp.reasoning_trace?.length) {
+            reasoningTrace = resp.reasoning_trace;
+          }
+          fullContent = resp.reply;
           setMessages((prev) => {
             const next = [...prev];
-            next[assistantIdx] = { role: 'assistant', content: resp.reply, warnings };
+            next[assistantIdx] = {
+              role: 'assistant',
+              content: fullContent,
+              warnings,
+              ...(reasoningTrace ? { reasoning_trace: reasoningTrace } : {}),
+            };
             return next;
           });
-          fullContent = resp.reply;
+        } else if (reasoningTrace) {
+          // Attach reasoning trace captured during streaming.
+          setMessages((prev) => {
+            const next = [...prev];
+            if (next[assistantIdx]) {
+              next[assistantIdx] = {
+                ...next[assistantIdx],
+                reasoning_trace: reasoningTrace,
+              };
+            }
+            return next;
+          });
+        }
+
+        if (!fullContent) {
+          setMessages((prev) => {
+            const next = [...prev];
+            if (next[assistantIdx]) {
+              next[assistantIdx] = {
+                role: 'assistant',
+                content: '抱歉，未能获取回复内容，请稍后重试。',
+              };
+            }
+            return next;
+          });
         }
         if (ttsEnabled && fullContent) speak(fullContent);
       }
@@ -148,7 +251,14 @@ export default function ChatPage() {
           const warnings = resp.safety_warning ? [resp.safety_warning] : undefined;
           setMessages((prev) => {
             const next = [...prev];
-            next[assistantIdx] = { role: 'assistant', content: resp.reply, warnings };
+            next[assistantIdx] = {
+              role: 'assistant',
+              content: resp.reply,
+              warnings,
+              ...(resp.reasoning_trace?.length
+                ? { reasoning_trace: resp.reasoning_trace }
+                : {}),
+            };
             return next;
           });
           if (ttsEnabled) speak(resp.reply);
@@ -166,6 +276,7 @@ export default function ChatPage() {
       }
     } finally {
       setLoading(false);
+      setStreaming(false);
     }
   };
 
@@ -232,7 +343,11 @@ export default function ChatPage() {
           borderRadius: 8,
         }}
       >
-        {messages.length === 0 ? (
+        {historyLoading && messages.length === 0 ? (
+          <div style={{ padding: 16 }}>
+            <Skeleton active paragraph={{ rows: 3 }} />
+          </div>
+        ) : messages.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#999', padding: 40 }}>
             <RobotOutlined style={{ fontSize: 48, marginBottom: 16 }} />
             <p>欢迎使用AI健康助手，请输入、语音或拍照提问</p>
@@ -267,7 +382,62 @@ export default function ChatPage() {
                       {msg.role === 'assistant' ? <RobotOutlined /> : <UserOutlined />}
                     </span>
                     <Text style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</Text>
+                    {/* Enhancement 3 — typing indicator while streaming this turn */}
+                    {streaming &&
+                      msg.role === 'assistant' &&
+                      idx === messages.length - 1 && (
+                        <span className="typing-dots" aria-hidden>
+                          <span className="typing-dot" />
+                          <span className="typing-dot" style={{ animationDelay: '0.15s' }} />
+                          <span className="typing-dot" style={{ animationDelay: '0.3s' }} />
+                        </span>
+                      )}
                   </div>
+                  {/* Enhancement 2 — expandable reasoning trace */}
+                  {msg.role === 'assistant' &&
+                    msg.reasoning_trace &&
+                    msg.reasoning_trace.length > 0 && (
+                      <Collapse
+                        ghost
+                        size="small"
+                        style={{ marginTop: 8 }}
+                        items={[
+                          {
+                            key: 'reasoning',
+                            label: (
+                              <Text type="secondary" style={{ fontSize: 13 }}>
+                                🧠 AI 推理过程
+                              </Text>
+                            ),
+                            children: (
+                              <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                                {msg.reasoning_trace.map((t, ti) => (
+                                  <div key={ti}>
+                                    <Text type="secondary" style={{ fontSize: 12 }}>
+                                      步骤 {ti + 1}：{t.step}
+                                    </Text>
+                                    <div
+                                      style={{
+                                        background: '#f5f5f5',
+                                        borderRadius: 4,
+                                        padding: '4px 8px',
+                                        fontSize: 12,
+                                        color: '#666',
+                                        marginTop: 2,
+                                        lineHeight: 1.6,
+                                        wordBreak: 'break-word',
+                                      }}
+                                    >
+                                      {t.result}
+                                    </div>
+                                  </div>
+                                ))}
+                              </Space>
+                            ),
+                          },
+                        ]}
+                      />
+                    )}
                   {msg.role === 'assistant' && idx > 0 && msg.content && (
                     <div style={{ marginTop: 4, textAlign: 'right' }}>
                       <Button
@@ -306,7 +476,7 @@ export default function ChatPage() {
                 </Card>
               </div>
             ))}
-            {loading && (
+            {loading && !streaming && (
               <Card size="small" style={{ background: '#f6ffed', maxWidth: '80%' }}>
                 <Spin size="small" /> <RobotOutlined /> 正在思考...
               </Card>
@@ -425,6 +595,25 @@ export default function ChatPage() {
           0% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.4); }
           70% { box-shadow: 0 0 0 10px rgba(255, 77, 79, 0); }
           100% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0); }
+        }
+        .typing-dots {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          margin-left: 4px;
+          vertical-align: middle;
+        }
+        .typing-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #1890ff;
+          display: inline-block;
+          animation: typing-bounce 1s infinite ease-in-out;
+        }
+        @keyframes typing-bounce {
+          0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+          30% { transform: translateY(-4px); opacity: 1; }
         }
       `}</style>
     </div>
