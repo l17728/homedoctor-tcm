@@ -1,5 +1,13 @@
 import { request } from './client';
 
+export interface ModificationItem {
+  symptom?: string;      // 症状/场景 (e.g., "兼有食积者")
+  action?: string;       // 加减 (e.g., "加山楂、神曲")
+  add?: string[];        // 加 (herbs to add)
+  remove?: string[];     // 减 (herbs to remove)
+  note?: string;         // 备注
+}
+
 export interface Formula {
   id: string;
   name: string;
@@ -9,6 +17,9 @@ export interface Formula {
   indication: string;
   usage: string;
   description: string;
+  modifications?: string[] | ModificationItem[] | string;
+  modifications_structured?: ModificationItem[];
+  derived_from_id?: string | null;
 }
 
 export interface PaginatedFormulas {
@@ -68,6 +79,9 @@ function mapFormula(row: any): Formula {
     indication: row.indications ?? row.indication ?? '',
     usage: row.usage ?? props['用法'] ?? '',
     description: row.description ?? row.source ?? '',
+    modifications: row.modifications ?? undefined,
+    modifications_structured: row.modifications_structured ?? undefined,
+    derived_from_id: row.derived_from_id ?? null,
   };
 }
 

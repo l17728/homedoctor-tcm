@@ -12,6 +12,8 @@ import {
   Input,
   DatePicker,
   Space,
+  Alert,
+  Card,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -20,10 +22,12 @@ import {
   ExperimentOutlined,
   PrinterOutlined,
   SafetyOutlined,
+  PlusCircleOutlined,
+  BranchesOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getFormula, type Formula } from '../api/formulaApi';
+import { getFormula, type Formula, type ModificationItem } from '../api/formulaApi';
 import { createFavorite, deleteFavorite, checkFavorite } from '../api/favoriteApi';
 import { request } from '../api/client';
 
@@ -50,6 +54,33 @@ const ROLE_PRINT_LABEL: Record<string, string> = {
   使药: '使',
 };
 
+/** Normalize modification data into a uniform list of items. */
+function parseModifications(formula: Formula): ModificationItem[] {
+  if (
+    Array.isArray(formula.modifications_structured) &&
+    formula.modifications_structured.length > 0
+  ) {
+    return formula.modifications_structured;
+  }
+  if (Array.isArray(formula.modifications) && formula.modifications.length > 0) {
+    const objs = formula.modifications.filter(
+      (m): m is ModificationItem => typeof m === 'object' && m !== null,
+    );
+    if (objs.length > 0) return objs;
+    const strs = formula.modifications.filter(
+      (m): m is string => typeof m === 'string',
+    );
+    if (strs.length > 0) return strs.map((m) => ({ note: m }));
+  }
+  if (
+    typeof formula.modifications === 'string' &&
+    formula.modifications.trim()
+  ) {
+    return [{ note: formula.modifications }];
+  }
+  return [];
+}
+
 export default function FormulaDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -63,6 +94,7 @@ export default function FormulaDetail() {
   const [prescriber, setPrescriber] = useState('');
   const [prescribeDate, setPrescribeDate] = useState<dayjs.Dayjs>(dayjs());
   const [notes, setNotes] = useState('');
+  const [parentFormulaName, setParentFormulaName] = useState<string | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -87,6 +119,24 @@ export default function FormulaDetail() {
     };
     load();
   }, [id]);
+
+  useEffect(() => {
+    if (!formula?.derived_from_id) {
+      setParentFormulaName(null);
+      return;
+    }
+    let cancelled = false;
+    getFormula(formula.derived_from_id)
+      .then((parent) => {
+        if (!cancelled) setParentFormulaName(parent.name);
+      })
+      .catch(() => {
+        if (!cancelled) setParentFormulaName(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [formula?.derived_from_id]);
 
   const handleToggleFavorite = async () => {
     if (!formula || !id) return;
@@ -157,6 +207,29 @@ export default function FormulaDetail() {
           </Button>
         </Space>
       </div>
+      {formula.derived_from_id && (
+        <Alert
+          className="no-print"
+          type="info"
+          showIcon
+          icon={<BranchesOutlined />}
+          style={{ marginBottom: 16 }}
+          message={
+            <Space>
+              <Text>本方源于：</Text>
+              <Text strong>{parentFormulaName ?? '源方剂'}</Text>
+            </Space>
+          }
+          action={
+            <Button
+              size="small"
+              onClick={() => navigate(`/formulas/${formula.derived_from_id}`)}
+            >
+              查看源方
+            </Button>
+          }
+        />
+      )}
       <Descriptions column={1} bordered className="no-print">
         <Descriptions.Item label="分类">{formula.category}</Descriptions.Item>
         <Descriptions.Item label="组成">
@@ -197,6 +270,61 @@ export default function FormulaDetail() {
           />
         </>
       )}
+
+      {(() => {
+        const mods = parseModifications(formula);
+        if (mods.length === 0) return null;
+        return (
+          <>
+            <Divider className="no-print" />
+            <Title level={4} className="no-print">
+              <PlusCircleOutlined style={{ marginRight: 8 }} />
+              加减变化
+            </Title>
+            <List
+              className="no-print"
+              dataSource={mods}
+              renderItem={(mod) => (
+                <List.Item>
+                  <Card size="small" style={{ width: '100%' }} bordered>
+                    <Space direction="vertical" style={{ width: '100%' }} size="small">
+                      {mod.symptom && (
+                        <Text strong style={{ fontSize: 15 }}>{mod.symptom}</Text>
+                      )}
+                      {mod.action && (
+                        <Text>{mod.action}</Text>
+                      )}
+                      {(mod.add?.length || mod.remove?.length) ? (
+                        <Space wrap>
+                          {mod.add && mod.add.length > 0 && (
+                            <>
+                              <Text type="secondary">加：</Text>
+                              {mod.add.map((h) => (
+                                <Tag color="green" key={h}>{h}</Tag>
+                              ))}
+                            </>
+                          )}
+                          {mod.remove && mod.remove.length > 0 && (
+                            <>
+                              <Text type="secondary">减：</Text>
+                              {mod.remove.map((h) => (
+                                <Tag color="red" key={h}>{h}</Tag>
+                              ))}
+                            </>
+                          )}
+                        </Space>
+                      ) : null}
+                      {mod.note && (
+                        <Text type="secondary">{mod.note}</Text>
+                      )}
+                    </Space>
+                  </Card>
+                </List.Item>
+              )}
+            />
+          </>
+        );
+      })()}
 
       <Modal
         title="处方单预览"
