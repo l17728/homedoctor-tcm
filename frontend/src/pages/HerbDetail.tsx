@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Descriptions, Button, Skeleton, Typography, message, Tag, Space } from 'antd';
-import { ArrowLeftOutlined, StarOutlined, StarFilled } from '@ant-design/icons';
+import { Descriptions, Button, Skeleton, Typography, message, Tag, Space, Card, Empty } from 'antd';
+import { ArrowLeftOutlined, StarOutlined, StarFilled, BookOutlined, LinkOutlined } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getHerb, type Herb } from '../api/herbApi';
+import { getHerb, getHerbFormulas, type Herb, type HerbFormulasResponse } from '../api/herbApi';
 import { createFavorite, deleteFavorite, checkFavorite } from '../api/favoriteApi';
 import StatusTag from '../components/StatusTag';
 import { TOXICITY_COLOR } from '../constants';
@@ -46,14 +46,19 @@ export default function HerbDetail() {
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteId, setFavoriteId] = useState<string | null>(null);
+  const [herbFormulas, setHerbFormulas] = useState<HerbFormulasResponse | null>(null);
 
   useEffect(() => {
     if (!id) return;
     const load = async () => {
       setLoading(true);
       try {
-        const data = await getHerb(id);
+        const [data, formulas] = await Promise.all([
+          getHerb(id),
+          getHerbFormulas(id).catch(() => null),
+        ]);
         setHerb(data);
+        if (formulas) setHerbFormulas(formulas);
         const check = await checkFavorite('herb', id);
         setIsFavorite(check.exists);
         setFavoriteId(check.favorite_id ?? null);
@@ -143,6 +148,99 @@ export default function HerbDetail() {
         </Descriptions.Item>
         <Descriptions.Item label="描述">{herb.description}</Descriptions.Item>
       </Descriptions>
+
+      <Card
+        size="small"
+        style={{ marginTop: 16 }}
+        title={
+          <Space>
+            <BookOutlined />
+            <span style={{ fontSize: 16 }}>代表方剂</span>
+          </Space>
+        }
+      >
+        {herbFormulas && herbFormulas.formulas.length > 0 ? (
+          <Space direction="vertical" style={{ width: '100%' }} size={8}>
+            {herbFormulas.formulas.slice(0, 10).map((f) => (
+              <div
+                key={f.id}
+                onClick={() => navigate(`/formulas/${f.id}`)}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: '1px solid #f0f0f0',
+                  cursor: 'pointer',
+                  minHeight: 44,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  transition: 'border-color 0.2s, box-shadow 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#91caff';
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(24,144,255,0.12)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = '#f0f0f0';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <span style={{ fontSize: 16, fontWeight: 500, flexShrink: 0 }}>{f.name}</span>
+                {f.category && <Tag color="blue">{f.category}</Tag>}
+                {f.efficacy && (
+                  <span
+                    style={{
+                      fontSize: 14,
+                      color: '#8c8c8c',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {f.efficacy}
+                  </span>
+                )}
+              </div>
+            ))}
+          </Space>
+        ) : (
+          <Empty description="暂无相关方剂" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        )}
+      </Card>
+
+      {herbFormulas && herbFormulas.common_combinations.length > 0 && (
+        <Card
+          size="small"
+          style={{ marginTop: 16 }}
+          title={
+            <Space>
+              <LinkOutlined />
+              <span style={{ fontSize: 16 }}>常用配伍</span>
+            </Space>
+          }
+        >
+          <Space size={[8, 12]} wrap>
+            {(() => {
+              const combos = herbFormulas.common_combinations;
+              const maxCount = combos[0]?.count || 1;
+              return combos.map((c) => {
+                const ratio = c.count / maxCount;
+                const color = ratio > 0.66 ? 'red' : ratio > 0.33 ? 'orange' : 'default';
+                return (
+                  <Tag
+                    key={c.name}
+                    color={color}
+                    style={{ fontSize: 16, padding: '6px 12px', cursor: 'pointer', minHeight: 32 }}
+                    onClick={() => navigate(`/herbs?search=${encodeURIComponent(c.name)}`)}
+                  >
+                    {c.name}（{c.count}首方剂）
+                  </Tag>
+                );
+              });
+            })()}
+          </Space>
+        </Card>
+      )}
     </div>
   );
 }

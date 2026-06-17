@@ -22,6 +22,24 @@ export interface PaginatedHerbs {
   totalPages: number;
 }
 
+export interface HerbFormulaItem {
+  id: string;
+  name: string;
+  category: string;
+  efficacy: string;
+}
+
+export interface HerbCombinationItem {
+  name: string;
+  count: number;
+}
+
+export interface HerbFormulasResponse {
+  herb_name: string;
+  formulas: HerbFormulaItem[];
+  common_combinations: HerbCombinationItem[];
+}
+
 const MOCK_HERBS: Herb[] = [
   {
     id: '1',
@@ -170,4 +188,15 @@ export async function getHerb(id: string): Promise<Herb> {
     if (!herb) throw new Error('药材未找到');
     return herb;
   }
+}
+
+export async function getHerbFormulas(herbId: string): Promise<HerbFormulasResponse> {
+  const data = await request<HerbFormulasResponse>(`/api/herbs/${herbId}/formulas`);
+  return {
+    herb_name: data.herb_name ?? '',
+    formulas: Array.isArray(data.formulas) ? data.formulas : [],
+    common_combinations: Array.isArray(data.common_combinations)
+      ? data.common_combinations
+      : [],
+  };
 }
