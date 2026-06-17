@@ -12,7 +12,7 @@ from app.auth import get_current_user
 from app.audit import log_audit
 from app.database import DbAdapter, get_db
 from app.models import MedicineCreate, MedicineUpdate
-from app.repository import MedicineRepository, current_tenant_id
+from app.repository import MedicineRepository, current_tenant_id, current_member_id
 
 router = APIRouter(prefix="/api/medicines", tags=["medicines"])
 
@@ -140,30 +140,34 @@ async def get_medicine_alerts(
     """Get medicines needing attention: expired, expiring soon (≤30 days), low stock (≤5)."""
     repo = MedicineRepository(db)
     tid = repo._tenant_id()
+    mid = current_member_id.get()
     now = datetime.now(CST)
     today = now.strftime("%Y-%m-%d")
     soon_date = (now + timedelta(days=30)).strftime("%Y-%m-%d")
 
+    member_clause = " AND family_member_id = ?" if mid else ""
+    member_params = (mid,) if mid else ()
+
     expired = await db.query(
-        """SELECT * FROM medicines
-           WHERE tenant_id = ? AND expiry_date IS NOT NULL AND expiry_date < ? AND expiry_date != ''
+        f"""SELECT * FROM medicines
+           WHERE tenant_id = ?{member_clause} AND expiry_date IS NOT NULL AND expiry_date < ? AND expiry_date != ''
            ORDER BY expiry_date ASC""",
-        (tid, today),
+        (tid,) + member_params + (today,),
     )
 
     expiring_soon = await db.query(
-        """SELECT * FROM medicines
-           WHERE tenant_id = ? AND expiry_date IS NOT NULL
+        f"""SELECT * FROM medicines
+           WHERE tenant_id = ?{member_clause} AND expiry_date IS NOT NULL
              AND expiry_date >= ? AND expiry_date <= ? AND expiry_date != ''
            ORDER BY expiry_date ASC""",
-        (tid, today, soon_date),
+        (tid,) + member_params + (today, soon_date),
     )
 
     low_stock = await db.query(
-        """SELECT * FROM medicines
-           WHERE tenant_id = ? AND quantity <= 5
+        f"""SELECT * FROM medicines
+           WHERE tenant_id = ?{member_clause} AND quantity <= 5
            ORDER BY quantity ASC""",
-        (tid,),
+        (tid,) + member_params,
     )
 
     return {

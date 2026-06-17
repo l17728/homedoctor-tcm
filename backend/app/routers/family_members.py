@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.auth import get_current_user
 from app.database import DbAdapter, get_db
 from app.models import FamilyMemberCreate, FamilyMemberUpdate
+from app.repository import current_member_id
 
 router = APIRouter(prefix="/api/family-members", tags=["family-members"])
 
@@ -59,6 +60,56 @@ async def create_family_member(
     )
     row = await db.query_one("SELECT * FROM family_members WHERE id = ?", (member_id,))
     return _parse_member(row)
+
+
+# ---------------------------------------------------------------------------
+# Member switching — must come BEFORE /{member_id} routes to avoid conflicts
+# ---------------------------------------------------------------------------
+
+@router.get("/current")
+async def get_current_member(
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Return the currently selected member based on X-Member-Id header, or null."""
+    mid = current_member_id.get()
+    if not mid:
+        return {"member": None}
+    row = await db.query_one(
+        "SELECT * FROM family_members WHERE id = ? AND user_id = ?",
+        (mid, current_user["id"]),
+    )
+    return {"member": _parse_member(row) if row else None}
+
+
+@router.post("/clear-switch")
+async def clear_member_switch(
+    current_user: dict = Depends(get_current_user),
+):
+    """Clear the current member selection (switch back to 'all members')."""
+    return {"detail": "已清除成员选择", "member": None}
+
+
+@router.post("/{member_id}/switch")
+async def switch_member(
+    member_id: str,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Validate the member belongs to current user and return its info.
+
+    Frontend stores the returned ID and sends it via X-Member-Id header.
+    """
+    row = await db.query_one(
+        "SELECT * FROM family_members WHERE id = ? AND user_id = ?",
+        (member_id, current_user["id"]),
+    )
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="未找到该成员",
+        )
+    return {"member": _parse_member(row)}
 
 
 @router.put("/{member_id}")

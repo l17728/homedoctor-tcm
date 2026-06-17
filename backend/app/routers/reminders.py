@@ -11,7 +11,7 @@ from app.auth import get_current_user
 from app.audit import log_audit
 from app.database import DbAdapter, get_db
 from app.models import ReminderCreate, ReminderUpdate
-from app.repository import current_tenant_id
+from app.repository import current_tenant_id, current_member_id
 
 router = APIRouter(prefix="/api/reminders", tags=["reminders"])
 
@@ -47,16 +47,18 @@ async def create_reminder(
 ):
     reminder_id = str(uuid.uuid4())
     user_id = current_user["id"]
+    mid = current_member_id.get()
     now = datetime.now(CST).strftime("%Y-%m-%d %H:%M:%S")
     await db.execute(
         """INSERT INTO reminders
-           (id, user_id, title, herb_name, formula_name, medicine_name, dosage,
+           (id, user_id, family_member_id, title, herb_name, formula_name, medicine_name, dosage,
             frequency, times, start_date, end_date, notes, enabled,
             created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             reminder_id,
             user_id,
+            mid,
             body.title,
             body.herb_name,
             body.formula_name,
@@ -86,8 +88,12 @@ async def list_reminders(
     current_user: dict = Depends(get_current_user),
 ):
     user_id = current_user["id"]
+    mid = current_member_id.get()
     sql = "SELECT * FROM reminders WHERE user_id = ?"
     params: list[Any] = [user_id]
+    if mid:
+        sql += " AND family_member_id = ?"
+        params.append(mid)
     if enabled is not None:
         sql += " AND enabled = ?"
         params.append(1 if enabled else 0)
@@ -102,16 +108,27 @@ async def get_today_reminders(
     current_user: dict = Depends(get_current_user),
 ):
     user_id = current_user["id"]
+    mid = current_member_id.get()
     now = datetime.now(CST)
     today = now.strftime("%Y-%m-%d")
-    rows = await db.query(
-        """SELECT * FROM reminders
-           WHERE user_id = ? AND enabled = 1
-             AND start_date <= ?
-             AND (end_date IS NULL OR end_date >= ?)
-           ORDER BY created_at DESC""",
-        (user_id, today, today),
-    )
+    if mid:
+        rows = await db.query(
+            """SELECT * FROM reminders
+               WHERE user_id = ? AND family_member_id = ? AND enabled = 1
+                 AND start_date <= ?
+                 AND (end_date IS NULL OR end_date >= ?)
+               ORDER BY created_at DESC""",
+            (user_id, mid, today, today),
+        )
+    else:
+        rows = await db.query(
+            """SELECT * FROM reminders
+               WHERE user_id = ? AND enabled = 1
+                 AND start_date <= ?
+                 AND (end_date IS NULL OR end_date >= ?)
+               ORDER BY created_at DESC""",
+            (user_id, today, today),
+        )
     # Fetch today's medication logs to determine actual status
     logs = await db.query(
         """SELECT * FROM medication_logs
