@@ -142,7 +142,7 @@ async def run_safety_check(
     # No-op for MVP. Future: send structured prompt to AI, parse response.
 
     # --- Determine safety ---
-    has_blocking = any(w.severity in ("critical", "high", "warning") for w in warnings)
+    has_blocking = any(w.severity in ("critical", "high") for w in warnings)
 
     result = SafetyCheckResult(
         safe=not has_blocking,

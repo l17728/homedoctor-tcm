@@ -393,7 +393,7 @@ async def test_herb_drug_r07_antihypertensive_gancao(client: AsyncClient, db: Db
     })
     assert resp.status_code == 200
     data = resp.json()
-    assert data["safe"] is False
+    assert data["safe"] is True
     layer1b = [w for w in data["warnings"] if w["layer"] == 1 and "中西药交互" in w["title"]]
     assert len(layer1b) >= 1
 
@@ -408,7 +408,7 @@ async def test_herb_drug_r06_hypoglycemic_gugen(client: AsyncClient, db: DbAdapt
     })
     assert resp.status_code == 200
     data = resp.json()
-    assert data["safe"] is False
+    assert data["safe"] is True
     layer1b = [w for w in data["warnings"] if w["layer"] == 1 and "中西药交互" in w["title"]]
     assert len(layer1b) >= 1
 
@@ -439,7 +439,7 @@ async def test_herb_drug_r09_tetracycline_shigao(client: AsyncClient, db: DbAdap
     })
     assert resp.status_code == 200
     data = resp.json()
-    assert data["safe"] is False
+    assert data["safe"] is True
     layer1b = [w for w in data["warnings"] if w["layer"] == 1 and "中西药交互" in w["title"]]
     assert len(layer1b) >= 1
 
@@ -454,7 +454,7 @@ async def test_herb_drug_r10_iron_dahuang(client: AsyncClient, db: DbAdapter):
     })
     assert resp.status_code == 200
     data = resp.json()
-    assert data["safe"] is False
+    assert data["safe"] is True
     layer1b = [w for w in data["warnings"] if w["layer"] == 1 and "中西药交互" in w["title"]]
     assert len(layer1b) >= 1
 

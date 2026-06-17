@@ -353,7 +353,7 @@ async def check_in_reminder(
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (
             log_id,
-            user_id,
+            current_member_id.get() or user_id,
             date_val,
             reminder_id,
             taken,
