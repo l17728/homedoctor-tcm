@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+
+os.environ["HOMEDOCTOR_TESTING"] = "1"
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
