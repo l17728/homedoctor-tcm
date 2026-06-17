@@ -236,6 +236,72 @@ DDL_STATEMENTS = [
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )""",
+    # -- 外治理疗知识库 (spec §9.6 / §10.6.1)
+    """CREATE TABLE IF NOT EXISTS therapies (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        risk_level TEXT NOT NULL DEFAULT 'medium',
+        home_use_safe INTEGER NOT NULL DEFAULT 0,
+        display_only INTEGER NOT NULL DEFAULT 0,
+        description TEXT,
+        indications TEXT,
+        contraindications TEXT,
+        operation_steps TEXT,
+        duration TEXT,
+        frequency TEXT,
+        precautions TEXT,
+        properties TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    # -- 疗法穴位关联 (spec §9.6.4)
+    """CREATE TABLE IF NOT EXISTS therapy_acupoints (
+        id TEXT PRIMARY KEY,
+        therapy_id TEXT NOT NULL,
+        acupoint_name TEXT NOT NULL,
+        location TEXT,
+        function TEXT,
+        meridian TEXT,
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (therapy_id) REFERENCES therapies(id)
+    )""",
+    # -- 疗法专用安全规则 (spec §9.6.6)
+    """CREATE TABLE IF NOT EXISTS therapy_safety_rules (
+        id TEXT PRIMARY KEY,
+        therapy_category TEXT,
+        rule_type TEXT NOT NULL,
+        condition_text TEXT NOT NULL,
+        action TEXT NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'warning',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    # -- 用药套餐 (spec §20.5) — groups multiple medicines into a shared-schedule plan
+    """CREATE TABLE IF NOT EXISTS medication_plans (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        family_member_id TEXT,
+        name TEXT NOT NULL,
+        description TEXT,
+        status TEXT DEFAULT 'active',
+        start_date TEXT,
+        end_date TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )""",
+    """CREATE TABLE IF NOT EXISTS plan_items (
+        id TEXT PRIMARY KEY,
+        plan_id TEXT NOT NULL,
+        medicine_name TEXT NOT NULL,
+        dosage TEXT,
+        frequency TEXT,
+        times TEXT,
+        notes TEXT,
+        sort_order INTEGER DEFAULT 0,
+        reminder_id TEXT,
+        FOREIGN KEY (plan_id) REFERENCES medication_plans(id)
+    )""",
 ]
 
 FTS_STATEMENTS = [
@@ -246,6 +312,10 @@ FTS_STATEMENTS = [
     """CREATE VIRTUAL TABLE IF NOT EXISTS formulas_fts USING fts5(
         name, source, efficacy, indications, category,
         content=formulas, content_rowid=rowid
+    )""",
+    """CREATE VIRTUAL TABLE IF NOT EXISTS therapies_fts USING fts5(
+        name, category, description, indications, contraindications,
+        content=therapies, content_rowid=rowid
     )""",
 ]
 
@@ -282,6 +352,14 @@ FTS_TRIGGERS = [
     """CREATE TRIGGER IF NOT EXISTS formulas_ad AFTER DELETE ON formulas BEGIN
         INSERT INTO formulas_fts(formulas_fts, rowid, name, source, efficacy, indications, category)
         VALUES ('delete', old.rowid, old.name, old.source, old.efficacy, old.indications, old.category);
+    END""",
+    """CREATE TRIGGER IF NOT EXISTS therapies_ai AFTER INSERT ON therapies BEGIN
+        INSERT INTO therapies_fts(rowid, name, category, description, indications, contraindications)
+        VALUES (new.rowid, new.name, new.category, new.description, new.indications, new.contraindications);
+    END""",
+    """CREATE TRIGGER IF NOT EXISTS therapies_ad AFTER DELETE ON therapies BEGIN
+        INSERT INTO therapies_fts(therapies_fts, rowid, name, category, description, indications, contraindications)
+        VALUES ('delete', old.rowid, old.name, old.category, old.description, old.indications, old.contraindications);
     END""",
 ]
 
@@ -713,4 +791,51 @@ async def seed_test_data(db: DbAdapter) -> None:
             (f["id"], f["name"], f["source"], f["category"], f["composition"],
              f["efficacy"], f["indications"], f["modifications"],
              f["modifications_structured"], f["properties"]),
+        )
+
+    await seed_therapy_data(db)
+
+
+async def seed_therapy_data(db: DbAdapter) -> None:
+    """Seed therapy knowledge base (spec §9.6) — 33 therapies + acupoints + safety rules."""
+    from app.therapy_data import THERAPIES, THERAPY_SAFETY_RULES
+
+    for t in THERAPIES:
+        acupoints = t.get("acupoints", [])
+        props = t.get("properties", {})
+        await db.execute(
+            """INSERT OR IGNORE INTO therapies
+               (id, name, category, risk_level, home_use_safe, display_only,
+                description, indications, contraindications, operation_steps,
+                duration, frequency, precautions, properties)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                t["id"], t["name"], t["category"], t["risk_level"],
+                t["home_use_safe"], t["display_only"],
+                t["description"], t["indications"], t["contraindications"],
+                t["operation_steps"], t["duration"], t["frequency"],
+                t["precautions"], json.dumps(props, ensure_ascii=False),
+            ),
+        )
+        for ap in acupoints:
+            ap_id = f"{t['id']}-acp-{ap['acupoint_name']}"
+            await db.execute(
+                """INSERT OR IGNORE INTO therapy_acupoints
+                   (id, therapy_id, acupoint_name, location, function, meridian, is_primary)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    ap_id, t["id"], ap["acupoint_name"], ap.get("location"),
+                    ap.get("function"), ap.get("meridian"), ap.get("is_primary", 0),
+                ),
+            )
+
+    for rule in THERAPY_SAFETY_RULES:
+        await db.execute(
+            """INSERT OR IGNORE INTO therapy_safety_rules
+               (id, therapy_category, rule_type, condition_text, action, severity)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                rule["id"], rule["therapy_category"], rule["rule_type"],
+                rule["condition_text"], rule["action"], rule["severity"],
+            ),
         )

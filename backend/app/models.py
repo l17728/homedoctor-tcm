@@ -340,6 +340,111 @@ class ReminderResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# 用药套餐 (Medication Plans, spec §20.5)
+# ---------------------------------------------------------------------------
+
+VALID_PLAN_STATUSES = {"active", "paused", "completed"}
+
+
+class PlanItemCreate(BaseModel):
+    medicine_name: str = Field(min_length=1, max_length=200)
+    dosage: str | None = None
+    frequency: str = "daily"
+    times: list[str]
+    notes: str | None = None
+    sort_order: int = 0
+
+    @field_validator("times")
+    @classmethod
+    def validate_times(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("至少需要一个提醒时间")
+        return [_validate_time_str(t) for t in v]
+
+
+class PlanItemUpdate(BaseModel):
+    medicine_name: str | None = None
+    dosage: str | None = None
+    frequency: str | None = None
+    times: list[str] | None = None
+    notes: str | None = None
+    sort_order: int | None = None
+
+    @field_validator("times")
+    @classmethod
+    def validate_times(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None:
+            if not v:
+                raise ValueError("至少需要一个提醒时间")
+            return [_validate_time_str(t) for t in v]
+        return v
+
+
+class PlanItemOut(BaseModel):
+    id: str
+    plan_id: str
+    medicine_name: str
+    dosage: str | None = None
+    frequency: str | None = None
+    times: list[str] = []
+    notes: str | None = None
+    sort_order: int = 0
+    reminder_id: str | None = None
+
+
+class MedicationPlanCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = None
+    family_member_id: str | None = None
+    status: str = "active"
+    start_date: str | None = None
+    end_date: str | None = None
+    items: list[PlanItemCreate] = Field(min_length=1)
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: str) -> str:
+        if v not in VALID_PLAN_STATUSES:
+            raise ValueError(f"状态必须是 {VALID_PLAN_STATUSES} 之一，收到 {v!r}")
+        return v
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("结束日期不能早于开始日期")
+        return self
+
+
+class MedicationPlanUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    status: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_PLAN_STATUSES:
+            raise ValueError(f"状态必须是 {VALID_PLAN_STATUSES} 之一，收到 {v!r}")
+        return v
+
+
+class MedicationPlanOut(BaseModel):
+    id: str
+    user_id: str
+    family_member_id: str | None = None
+    name: str
+    description: str | None = None
+    status: str
+    start_date: str | None = None
+    end_date: str | None = None
+    created_at: str
+    updated_at: str
+    items: list[PlanItemOut] = []
+
+
+# ---------------------------------------------------------------------------
 # Favorites / 知识收藏
 # ---------------------------------------------------------------------------
 
@@ -409,3 +514,22 @@ class FamilyMemberUpdate(BaseModel):
         if v is not None and v not in VALID_GENDERS:
             raise ValueError(f"性别必须是 {VALID_GENDERS} 之一，收到 {v!r}")
         return v
+
+
+# ---------------------------------------------------------------------------
+# Prescription / Health Report PDF (spec §21)
+# ---------------------------------------------------------------------------
+
+class PrescriptionRequest(BaseModel):
+    formula_id: str = Field(min_length=1, max_length=200)
+    patient_name: str = Field(default="—", max_length=100)
+    patient_age: str | None = Field(default=None, max_length=20)
+    patient_gender: str | None = Field(default=None, max_length=10)
+    prescriber: str | None = Field(default=None, max_length=100)
+    notes: str | None = Field(default=None, max_length=2000)
+    usage_instructions: str | None = Field(default=None, max_length=1000)
+
+
+class HealthReportRequest(BaseModel):
+    member_id: str | None = Field(default=None, max_length=200)
+    report_type: str = Field(default="summary", max_length=50)
