@@ -34,6 +34,9 @@ def _compute_slot_status(scheduled_time: str, now: datetime) -> str:
     sh, sm = scheduled_time.split(":")
     scheduled = now.replace(hour=int(sh), minute=int(sm), second=0, microsecond=0)
     delta = now - scheduled
+    if delta > timedelta(hours=12):
+        scheduled += timedelta(days=1)
+        delta = now - scheduled
     if delta > timedelta(hours=2):
         return "漏服"
     return "待服"
