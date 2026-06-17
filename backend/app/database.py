@@ -195,6 +195,7 @@ DDL_STATEMENTS = [
     """CREATE TABLE IF NOT EXISTS reminders (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
+        family_member_id TEXT,
         title TEXT NOT NULL,
         herb_name TEXT,
         formula_name TEXT,
@@ -414,6 +415,16 @@ class SqliteAdapter(DbAdapter):
 # Initialization
 # ---------------------------------------------------------------------------
 
+async def _migrate_reminders_member_id(db: DbAdapter) -> None:
+    """Add family_member_id column to reminders table if missing (backward compat for existing DBs)."""
+    try:
+        cols = await db.query("PRAGMA table_info(reminders)")
+        if not any(c["name"] == "family_member_id" for c in cols):
+            await db.execute("ALTER TABLE reminders ADD COLUMN family_member_id TEXT")
+    except Exception:
+        pass  # Table might not exist yet or column already added
+
+
 async def init_db(db: DbAdapter) -> None:
     """Create all tables and FTS indexes."""
     for stmt in DDL_STATEMENTS:
@@ -424,6 +435,8 @@ async def init_db(db: DbAdapter) -> None:
         except Exception:
             # FTS5 might not be available in all SQLite builds; skip gracefully
             pass
+    # Migration: add family_member_id to reminders for existing databases
+    await _migrate_reminders_member_id(db)
 
 
 async def seed_safety_rules(db: DbAdapter) -> None:
