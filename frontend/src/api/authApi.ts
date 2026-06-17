@@ -10,6 +10,19 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface RegisterConsent {
+  consent_privacy: boolean;
+  consent_health_data: boolean;
+  birth_year?: number;
+}
+
+export interface ConsentStatus {
+  consent_privacy: boolean;
+  consent_health_data: boolean;
+  consent_date: string | null;
+  birth_year: number | null;
+}
+
 interface BackendAuthResponse {
   access_token: string;
   token_type: string;
@@ -34,14 +47,19 @@ export async function loginApi(
 export async function registerApi(
   username: string,
   password: string,
+  consent: RegisterConsent,
 ): Promise<AuthResponse> {
   const raw = await request<BackendAuthResponse>('/api/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, ...consent }),
   });
   return mapAuthResponse(raw);
 }
 
 export async function getMe(): Promise<User> {
   return request<User>('/api/auth/me');
+}
+
+export async function getConsentStatus(): Promise<ConsentStatus> {
+  return request<ConsentStatus>('/api/auth/consent-status');
 }

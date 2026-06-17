@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -53,9 +54,20 @@ def decode_access_token(token: str) -> dict:
 
 
 async def register_user(
-    db: DbAdapter, username: str, password: str, display_name: str | None = None
+    db: DbAdapter,
+    username: str,
+    password: str,
+    display_name: str | None = None,
+    *,
+    consent_privacy: bool = False,
+    consent_health_data: bool = False,
+    birth_year: int | None = None,
 ) -> dict:
-    """Register a new user. Returns user dict with token."""
+    """Register a new user. Returns user dict with token.
+
+    Stores PIPL consent records (隐私同意 / 健康数据同意 / 同意日期) in
+    ``users.settings`` JSON so the consent timeline is auditable.
+    """
     # Check duplicate
     existing = await db.query_one(
         "SELECT id FROM users WHERE username = ?", (username,)
@@ -70,6 +82,17 @@ async def register_user(
     family_id = str(uuid.uuid4())
     password_hash = hash_password(password)
 
+    # Build PIPL consent record stored in settings JSON (spec §12.2)
+    settings_json = json.dumps(
+        {
+            "consent_privacy": consent_privacy,
+            "consent_health_data": consent_health_data,
+            "consent_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "birth_year": birth_year,
+        },
+        ensure_ascii=False,
+    )
+
     # Create family
     await db.execute(
         "INSERT INTO families (id, name, owner_id) VALUES (?, ?, ?)",
@@ -78,9 +101,9 @@ async def register_user(
 
     # Create user
     await db.execute(
-        """INSERT INTO users (id, username, password_hash, display_name, family_id)
-           VALUES (?, ?, ?, ?, ?)""",
-        (user_id, username, password_hash, display_name or username, family_id),
+        """INSERT INTO users (id, username, password_hash, display_name, family_id, settings)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (user_id, username, password_hash, display_name or username, family_id, settings_json),
     )
 
     # Create token

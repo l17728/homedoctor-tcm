@@ -44,6 +44,8 @@ async def auth_headers(client: AsyncClient):
         "username": "testuser",
         "password": "testpass123",
         "display_name": "测试用户",
+        "consent_privacy": True,
+        "consent_health_data": True,
     })
     data = response.json()
     token = data["access_token"]
@@ -57,6 +59,8 @@ async def second_user_headers(client: AsyncClient):
         "username": "testuser2",
         "password": "testpass456",
         "display_name": "第二用户",
+        "consent_privacy": True,
+        "consent_health_data": True,
     })
     data = response.json()
     token = data["access_token"]

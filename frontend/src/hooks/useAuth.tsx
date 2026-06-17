@@ -11,13 +11,14 @@ import {
   getMe,
   type User,
   type AuthResponse,
+  type RegisterConsent,
 } from '../api/authApi';
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string, consent: RegisterConsent) => Promise<void>;
   logout: () => void;
 }
 
@@ -67,8 +68,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const register = useCallback(
-    async (username: string, password: string) => {
-      const response = await registerApi(username, password);
+    async (username: string, password: string, consent: RegisterConsent) => {
+      const response = await registerApi(username, password, consent);
       handleAuthResponse(response);
     },
     [handleAuthResponse],

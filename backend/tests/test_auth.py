@@ -11,6 +11,8 @@ async def test_register_success(client: AsyncClient):
         "username": "newuser",
         "password": "password123",
         "display_name": "新用户",
+        "consent_privacy": True,
+        "consent_health_data": True,
     })
     assert response.status_code == 201
     data = response.json()
@@ -27,10 +29,12 @@ async def test_register_duplicate(client: AsyncClient):
     await client.post("/api/auth/register", json={
         "username": "dupuser",
         "password": "password123",
+        "consent_privacy": True,
     })
     response = await client.post("/api/auth/register", json={
         "username": "dupuser",
         "password": "password456",
+        "consent_privacy": True,
     })
     assert response.status_code == 409
     assert "已存在" in response.json()["detail"]
@@ -43,6 +47,7 @@ async def test_login_success(client: AsyncClient):
     await client.post("/api/auth/register", json={
         "username": "loginuser",
         "password": "mypassword",
+        "consent_privacy": True,
     })
     # Login
     response = await client.post("/api/auth/login", json={
@@ -61,6 +66,7 @@ async def test_login_wrong_password(client: AsyncClient):
     await client.post("/api/auth/register", json={
         "username": "wrongpwuser",
         "password": "correctpass",
+        "consent_privacy": True,
     })
     response = await client.post("/api/auth/login", json={
         "username": "wrongpwuser",

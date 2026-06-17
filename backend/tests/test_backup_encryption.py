@@ -167,6 +167,8 @@ async def file_auth_headers(file_client: AsyncClient):
             "username": "backupuser",
             "password": "backuppass123",
             "display_name": "备份用户",
+            "consent_privacy": True,
+            "consent_health_data": True,
         },
     )
     assert response.status_code in (200, 201), response.text
