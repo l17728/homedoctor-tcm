@@ -149,7 +149,7 @@ class MedicineRepository(BaseRepository):
                 production_date, expiry_date, opened_date, shelf_life_after_open,
                 dosage_instructions, contraindications, barcode, drug_class,
                 active_ingredients, herbal_fields, properties)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}')""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 medicine_id, tid, data["name"], data.get("brand"), data["type"],
                 data.get("specification"), data.get("unit"), data.get("quantity", 0),
@@ -159,6 +159,7 @@ class MedicineRepository(BaseRepository):
                 data.get("barcode"), data.get("drug_class"),
                 json.dumps(data.get("active_ingredients", []), ensure_ascii=False),
                 json.dumps(data.get("herbal_fields", {}), ensure_ascii=False),
+                json.dumps(data.get("properties", {}), ensure_ascii=False),
             ),
         )
         return medicine_id
@@ -174,7 +175,7 @@ class MedicineRepository(BaseRepository):
         # Build dynamic UPDATE
         set_parts: list[str] = []
         values: list[Any] = []
-        json_fields = {"active_ingredients", "herbal_fields"}
+        json_fields = {"active_ingredients", "herbal_fields", "properties"}
 
         for key, value in data.items():
             if value is None:

@@ -10,6 +10,7 @@ Layer 5:  免责声明 — always attach disclaimer
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 
 from app.database import DbAdapter
@@ -195,6 +196,30 @@ async def _check_herb_herb_contraindications(
 # Layer 1b: 中西药交互检查
 # ---------------------------------------------------------------------------
 
+async def _get_medicine_drug_class(db: DbAdapter, medicine_name: str) -> str:
+    """Look up a medicine's drugClass from its properties JSON.
+
+    Returns '西药' if not found (backward compatible default).
+    Only medicines whose drugClass is '西药' should trigger Layer 1b.
+    '中药' and '中成药' go through Layer 1a (配伍禁忌) instead.
+    """
+    row = await db.query_one(
+        "SELECT properties FROM medicines WHERE name = ?", (medicine_name,)
+    )
+    if row:
+        props = row["properties"]
+        if isinstance(props, str):
+            try:
+                props = json.loads(props)
+            except (json.JSONDecodeError, TypeError):
+                props = {}
+        if isinstance(props, dict):
+            dc = props.get("drugClass", "")
+            if dc in ("中药", "西药", "中成药"):
+                return dc
+    return "西药"  # backward compatible default
+
+
 async def _check_herb_drug_interactions(
     db: DbAdapter, herb_names: list[str], medicine_names: list[str]
 ) -> list[SafetyWarning]:
@@ -206,6 +231,13 @@ async def _check_herb_drug_interactions(
     seen_ids: set[str] = set()
 
     for drug in medicine_names:
+        # --- drugClass awareness (spec §15.2) ---
+        # Only 西药 medicines trigger Layer 1b (中西药交互).
+        # 中药 / 中成药 medicines go through Layer 1a (配伍禁忌) instead.
+        drug_class = await _get_medicine_drug_class(db, drug)
+        if drug_class != "西药":
+            continue
+
         for herb in herb_names:
             # Exact match: drug_a = western drug, drug_b = herb
             rows = await db.query(

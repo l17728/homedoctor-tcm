@@ -58,7 +58,13 @@ async def create_medicine(
     db: DbAdapter = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Add a new medicine to the family drug cabinet."""
+    """Add a new medicine to the family drug cabinet.
+
+    The ``properties`` dict may include a ``drugClass`` key with one of:
+    ``"中药"``, ``"西药"``, ``"中成药"``. The safety engine uses this value
+    to decide whether Layer 1b (中西药交互) applies. When omitted the medicine
+    defaults to ``"西药"`` (backward compatible).
+    """
     repo = MedicineRepository(db)
     medicine_id = await repo.create_medicine(body)
     medicine = await repo.get_medicine(medicine_id)
