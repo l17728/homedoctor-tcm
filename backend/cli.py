@@ -547,5 +547,314 @@ def _delete_authed(client: httpx.Client, path: str, token: str) -> dict:
         raise typer.Exit(1)
 
 
+# ---------------------------------------------------------------------------
+# Safety V2 — Five-layer safety check (spec §15.3)
+# ---------------------------------------------------------------------------
+
+@app.command("safety:check-v2")
+def safety_check_v2(
+    herbs: list[str] = typer.Option([], "--herbs", "-h", help="中药名称（可多次指定）"),
+    medicines: list[str] = typer.Option([], "--medicines", "-m", help="西药/中成药名称（可多次指定）"),
+    pregnant: bool = typer.Option(False, "--pregnant", help="孕期标记"),
+    age: Optional[int] = typer.Option(None, "--age", help="年龄"),
+    weight: Optional[float] = typer.Option(None, "--weight", help="体重(kg)"),
+):
+    """五层安全检查（中药配伍/中西药交互/剂量/特殊人群/免责声明）。"""
+    profile: dict = {}
+    if pregnant:
+        profile["is_pregnant"] = True
+    if age is not None:
+        profile["age"] = age
+    if weight is not None:
+        profile["weight_kg"] = weight
+
+    with httpx.Client() as client:
+        result = _post(client, "/api/safety/check-v2", data={
+            "herbs": herbs,
+            "medicines": medicines,
+            "user_profile": profile or None,
+        })
+
+    if result["safe"]:
+        typer.echo("✅ 未发现配伍禁忌")
+    else:
+        typer.echo(f"⚠️ 发现 {len(result['warnings'])} 条警告:")
+        for w in result["warnings"]:
+            sev = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}.get(w["severity"], "•")
+            typer.echo(f"  {sev} [L{w['layer']}] {w['title']}: {w['detail']}")
+            if w.get("action"):
+                typer.echo(f"     建议: {w['action']}")
+
+    if result.get("interactions"):
+        typer.echo("\n💊 中西药交互:")
+        for inter in result["interactions"]:
+            typer.echo(f"  • {inter}")
+
+    unknown_herbs = result.get("unknown_herbs", [])
+    if unknown_herbs:
+        typer.echo(f"\n❓ 未知中药: {', '.join(unknown_herbs)}")
+    unknown_meds = result.get("unknown_medicines", [])
+    if unknown_meds:
+        typer.echo(f"❓ 未知药品: {', '.join(unknown_meds)}")
+
+    typer.echo(f"\n{result.get('disclaimer', '')}")
+
+
+# ---------------------------------------------------------------------------
+# Favorites (spec §10 — knowledge collection)
+# ---------------------------------------------------------------------------
+
+@app.command("favorites:list")
+def favorites_list(
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+    entry_type: Optional[str] = typer.Option(None, "--type", "-t", help="按类型筛选 (herb/formula/knowledge_card/medicine)"),
+):
+    """列出我的收藏。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        params = {"entry_type": entry_type} if entry_type else None
+        result = _get_authed(client, "/api/favorites", token=login["access_token"], params=params)
+    items = result.get("items", [])
+    typer.echo(f"共 {result['total']} 条收藏")
+    for item in items:
+        star = "⭐" if item.get("is_starred") else "  "
+        typer.echo(f"  {star} [{item['id'][:8]}] ({item.get('entry_type', '')}) {item.get('title', '')}")
+
+
+@app.command("favorites:add")
+def favorites_add(
+    entry_type: str = typer.Option(..., "--type", "-t", help="类型 (herb/formula/knowledge_card/medicine)"),
+    title: str = typer.Option(..., "--title", help="标题"),
+    content: Optional[str] = typer.Option(None, "--content", help="内容"),
+    summary: Optional[str] = typer.Option(None, "--summary", help="摘要"),
+    source_url: Optional[str] = typer.Option(None, "--source-url", help="来源URL"),
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """添加收藏。"""
+    data: dict = {"entry_type": entry_type, "title": title}
+    if content:
+        data["content"] = content
+    if summary:
+        data["summary"] = summary
+    if source_url:
+        data["source_url"] = source_url
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _post_authed(client, "/api/favorites", token=login["access_token"], data=data)
+    typer.echo(f"✅ 已收藏: {result['title']} (ID: {result['id'][:8]}, 类型: {result.get('entry_type', '')})")
+
+
+@app.command("favorites:delete")
+def favorites_delete(
+    entry_id: str = typer.Argument(..., help="收藏ID"),
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """删除收藏。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        _delete_authed(client, f"/api/favorites/{entry_id}", token=login["access_token"])
+    typer.echo(f"✅ 已删除收藏 {entry_id[:8]}")
+
+
+# ---------------------------------------------------------------------------
+# Family Members (spec §3.1 — multi-member family)
+# ---------------------------------------------------------------------------
+
+@app.command("family-members:list")
+def family_members_list(
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """列出家庭成员。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _get_authed(client, "/api/family-members", token=login["access_token"])
+    items = result.get("items", [])
+    typer.echo(f"共 {result['total']} 位家庭成员")
+    for m in items:
+        typer.echo(f"  [{m['id'][:8]}] {m.get('name', '')} — {m.get('relation', '')} ({m.get('gender', '未设置')})")
+
+
+@app.command("family-members:add")
+def family_members_add(
+    name: str = typer.Option(..., "--name", "-n", help="成员姓名"),
+    relation: str = typer.Option(..., "--relation", "-r", help="关系 (父亲/母亲/配偶/儿子/女儿/自己/其他)"),
+    gender: Optional[str] = typer.Option(None, "--gender", "-g", help="性别 (男/女)"),
+    birth_date: Optional[str] = typer.Option(None, "--birth-date", help="出生日期 YYYY-MM-DD"),
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """添加家庭成员。"""
+    data: dict = {"name": name, "relation": relation}
+    if gender:
+        data["gender"] = gender
+    if birth_date:
+        data["birth_date"] = birth_date
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _post_authed(client, "/api/family-members", token=login["access_token"], data=data)
+    typer.echo(f"✅ 已添加: {result['name']} — {result.get('relation', '')} (ID: {result['id'][:8]})")
+
+
+@app.command("family-members:switch")
+def family_members_switch(
+    member_id: str = typer.Argument(..., help="成员ID"),
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """切换当前活跃家庭成员。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _post_authed(client, f"/api/family-members/{member_id}/switch", token=login["access_token"])
+    member = result.get("member", {})
+    typer.echo(f"✅ 已切换到: {member.get('name', '')} — {member.get('relation', '')} (ID: {member.get('id', '')[:8]})")
+
+
+# ---------------------------------------------------------------------------
+# Triage — Child emergency triage (spec §23.1, no auth required)
+# ---------------------------------------------------------------------------
+
+@app.command("triage:questionnaire")
+def triage_questionnaire(
+    age_months: int = typer.Option(..., "--age-months", help="月龄 (0-168)"),
+):
+    """获取儿童分诊问卷（按月龄）。"""
+    with httpx.Client() as client:
+        result = _get(client, "/api/triage/questionnaire", params={"age_months": age_months})
+    typer.echo(f"👶 年龄组: {result.get('age_group', '')} (月龄 {result.get('age_months')})")
+    questions = result.get("questions", [])
+    typer.echo(f"📋 问卷共 {result.get('question_count', len(questions))} 题")
+    for q in questions:
+        typer.echo(f"  Q{q.get('id', '')}: {q.get('text', '')}")
+    red_flags = result.get("red_flags", [])
+    if red_flags:
+        typer.echo(f"\n🚩 红旗症状清单 ({len(red_flags)} 项):")
+        for rf in red_flags[:10]:
+            typer.echo(f"  [{rf.get('id', '')}] {rf.get('symptom', '')}")
+        if len(red_flags) > 10:
+            typer.echo(f"  ... (共 {len(red_flags)} 项)")
+    typer.echo(f"\n⚠️ {result.get('disclaimer', '')}")
+
+
+@app.command("triage:assess")
+def triage_assess(
+    age_months: int = typer.Option(..., "--age-months", help="月龄 (0-168)"),
+    symptoms: str = typer.Option("", "--symptoms", "-s", help="红旗症状ID列表，逗号分隔 (如 RF01,RF03)"),
+    answers: Optional[str] = typer.Option(None, "--answers", help="问卷答案JSON (如 '{\"Q01\":38.5}')"),
+    age_days: Optional[int] = typer.Option(None, "--age-days", help="日龄（新生儿精确度）"),
+):
+    """儿童急症分诊评估。"""
+    body: dict = {"age_months": age_months}
+    if age_days is not None:
+        body["age_days"] = age_days
+
+    red_flag_ids = [s.strip() for s in symptoms.split(",") if s.strip()]
+    if red_flag_ids:
+        body["red_flags"] = red_flag_ids
+
+    if answers:
+        try:
+            import json as _json
+            parsed = _json.loads(answers)
+            body["answers"] = [{"id": k, "value": v} for k, v in parsed.items()]
+        except (ValueError, json.JSONDecodeError):
+            typer.echo("⚠️ --answers 格式错误，请提供有效 JSON")
+            raise typer.Exit(1)
+
+    with httpx.Client() as client:
+        result = _post(client, "/api/triage/assess", data=body)
+
+    level = result.get("level", "")
+    level_icon = {"紧急": "🔴", "急诊": "🟠", "常规": "🟡", "居家护理": "🟢"}.get(level, "•")
+    typer.echo(f"{level_icon} 分诊级别: {level}")
+    if result.get("action"):
+        typer.echo(f"📋 建议: {result['action']}")
+
+    warnings = result.get("warnings", [])
+    if warnings:
+        typer.echo(f"\n⚠️ 警告 ({len(warnings)} 项):")
+        for w in warnings:
+            typer.echo(f"  • {w}")
+
+    recommendations = result.get("recommendations", [])
+    if recommendations:
+        typer.echo("\n💡 建议:")
+        for rec in recommendations:
+            typer.echo(f"  • {rec}")
+
+    typer.echo(f"\n⚠️ {result.get('disclaimer', '')}")
+
+
+# ---------------------------------------------------------------------------
+# Account — PIPL compliance (spec §12.2)
+# ---------------------------------------------------------------------------
+
+@app.command("account:preview")
+def account_preview(
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """预览账户删除将清除的数据。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _get_authed(client, "/api/account/preview", token=login["access_token"])
+    typer.echo(f"👤 用户: {result.get('username', '')}")
+    counts = result.get("data_counts", {})
+    typer.echo(f"📊 数据统计 (共 {result.get('total_records', 0)} 条记录):")
+    for table, count in counts.items():
+        typer.echo(f"  {table}: {count} 条")
+
+
+@app.command("account:delete")
+def account_delete(
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+    confirm: bool = typer.Option(False, "--confirm", help="跳过确认提示，直接删除"),
+):
+    """永久删除账户及全部数据（PIPL §47，不可逆）。"""
+    if not confirm:
+        typer.echo("⚠️  警告：此操作将永久删除您的账户及所有关联数据，不可恢复！")
+        typer.echo(f"   用户: {username}")
+        typer.echo("   如需继续，请输入 DELETE 确认，或使用 --confirm 跳过此提示")
+        typed = typer.prompt("请输入 DELETE 确认删除", default="")
+        if typed.strip() != "DELETE":
+            typer.echo("❌ 已取消")
+            raise typer.Exit(0)
+
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _delete_authed(client, "/api/account", token=login["access_token"])
+    typer.echo(f"✅ {result.get('message', '账户已删除')}")
+    typer.echo(f"   时间: {result.get('timestamp', '')}")
+
+
+# ---------------------------------------------------------------------------
+# Schemas — JSON schema definitions (no auth required)
+# ---------------------------------------------------------------------------
+
+@app.command("schemas:list")
+def schemas_list():
+    """列出所有可用的实体 Schema 定义。"""
+    with httpx.Client() as client:
+        result = _get(client, "/api/schemas")
+    items = result.get("items", [])
+    typer.echo(f"共 {len(items)} 个 Schema:")
+    for item in items:
+        typer.echo(f"  [{item.get('node_type', item.get('type', ''))}] {item.get('display_name', item.get('name', ''))} — {item.get('description', '')[:50]}")
+
+
+@app.command("schemas:get")
+def schemas_get(
+    node_type: str = typer.Argument(..., help="实体类型 (如 herb/medicine/formula)"),
+):
+    """查看指定实体的 Schema 定义。"""
+    with httpx.Client() as client:
+        result = _get(client, f"/api/schemas/{node_type}")
+    typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 if __name__ == "__main__":
     app()
