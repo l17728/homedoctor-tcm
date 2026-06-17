@@ -1,6 +1,17 @@
-"""Application configuration via pydantic-settings."""
+"""Application configuration via pydantic-settings.
+
+Secret resolution for ``LLM_API_KEY`` (and other sensitive values) follows
+the priority chain defined in :mod:`app.secrets`:
+
+    env var → OS keyring → local file → default
+
+This keeps Docker deployments (env var) working unchanged while enabling
+OS-native keychain storage on local developer machines (spec §12.1 P0).
+"""
 
 from pydantic_settings import BaseSettings
+
+from app.secrets import get_secret
 
 
 class Settings(BaseSettings):
@@ -14,6 +25,9 @@ class Settings(BaseSettings):
     APP_NAME: str = "家庭医生"
     CONFIG_DIR: str = "config/schemas"
 
+    # When False, the OS keyring is never consulted for secret resolution.
+    KEYRING_ENABLED: bool = True
+
     LLM_API_KEY: str = ""
     LLM_BASE_URL: str = "https://api.modelarts-maas.com/openai/v1"
     LLM_MODEL: str = "Kimi-K2.6"
@@ -25,6 +39,18 @@ class Settings(BaseSettings):
     DB_ENCRYPTION_KEY: str = ""
 
     model_config = {"env_prefix": "HOMEDOCTOR_"}
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # If LLM_API_KEY was not provided via env (Docker path), resolve it
+        # through the secret chain: keyring → file. The env var is already
+        # checked inside get_secret(), so this is a no-op when it is set.
+        if not self.LLM_API_KEY:
+            self.LLM_API_KEY = get_secret(
+                "llm_api_key",
+                "HOMEDOCTOR_LLM_API_KEY",
+                use_keyring=self.KEYRING_ENABLED,
+            )
 
 
 settings = Settings()
