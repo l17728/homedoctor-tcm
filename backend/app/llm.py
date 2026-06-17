@@ -9,6 +9,7 @@ Features:
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import json
@@ -482,6 +483,308 @@ async def _apply_hallucination_defenses(
             answer = JUDGE_WARNING + answer
 
     return answer, metadata
+
+
+# ---------------------------------------------------------------------------
+# V2: Multi-model voting + aggregation (spec §8.3 / §13.2 P0 / §10.4)
+# ---------------------------------------------------------------------------
+#
+# Parallel querying of multiple LLM models followed by consensus-based
+# aggregation. Per spec §10.4: "2-3个云端模型并行回答 + 1个聚合器",
+# "聚合逻辑：共识优先，分歧倾向保守建议". The existing sequential
+# fallback chain (``chat_completion``) is retained for simple/cheap queries;
+# this module adds the high-quality parallel path for complex 辨证 queries.
+
+DEFAULT_VOTING_MODELS: list[str] = ["Kimi-K2.6", "GLM-5", "qwen3-235b-a22b"]
+
+# Safety/disclaimer keywords used by the response quality scorer.
+_SAFETY_KEYWORDS: tuple[str, ...] = (
+    "仅供参考", "不替代", "就医", "遵医嘱", "咨询", "医生",
+)
+# Specificity keywords (dosage forms / units / frequency) — signals a more
+# concrete, actionable answer. NOTE: presence here is a *quality* signal for
+# selecting the best response; actual dosage safety is enforced separately by
+# the safety engine (spec §15).
+_SPECIFICITY_KEYWORDS: tuple[str, ...] = (
+    "克", "g", "mg", "ml", "毫升", "粒", "片", "袋", "次", "日",
+)
+
+
+def _get_voting_models(models: list[str] | None = None) -> list[str]:
+    """Return the list of models to query in parallel for voting.
+
+    Priority: explicit *models* arg → first 3 distinct models from the
+    configured fallback chain → :data:`DEFAULT_VOTING_MODELS`.
+    """
+    if models:
+        return [m for m in models if m]
+    chain = [m for m in _get_model_chain() if m]
+    voting: list[str] = []
+    for m in chain:
+        if m not in voting:
+            voting.append(m)
+        if len(voting) >= 3:
+            break
+    return voting if voting else list(DEFAULT_VOTING_MODELS)
+
+
+async def _query_single_model(
+    model: str,
+    messages: list[dict[str, str]],
+    constitution: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Query a single LLM model with full exception isolation.
+
+    Never raises — failures are captured in the ``error`` field so that
+    :func:`asyncio.gather` in :func:`chat_completion_voting` always completes.
+
+    Returns ``{"model": str, "answer": str, "error": str | None}``.
+    """
+    result: dict[str, Any] = {"model": model, "answer": "", "error": None}
+    if not has_api_key():
+        result["error"] = "LLM_API_KEY not configured"
+        return result
+
+    headers = {
+        "Authorization": f"Bearer {settings.LLM_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": build_system_prompt(constitution)},
+            *messages,
+        ],
+        "temperature": 0.7,
+        "max_tokens": 2048,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(CHAT_COMPLETIONS_URL, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            result["answer"] = content
+    except httpx.HTTPStatusError as e:
+        result["error"] = f"HTTP {e.response.status_code}"
+        logger.warning("Voting: model %s failed (%s)", model, result["error"])
+    except Exception as e:  # noqa: BLE001 — intentional broad capture for isolation
+        result["error"] = str(e) or e.__class__.__name__
+        logger.warning("Voting: model %s failed (%s)", model, result["error"])
+
+    return result
+
+
+def _score_response(answer: str) -> float:
+    """Heuristic quality score in ``[0.0, 1.0]``.
+
+    Components (per task spec):
+    - Length (0-0.4): longer answers tend to be more detailed; normalized
+      against a 500-char reference and capped at 1.0.
+    - Specificity (0-0.3): count of dosage-form / unit mentions (克, g, mg,
+      ml, 粒, 次, …) — signals a concrete, actionable response.
+    - Safety disclaimers (0-0.3): count of safety terms (仅供参考, 就医,
+      咨询医生, …) — rewards medically-responsible answers.
+    """
+    if not answer:
+        return 0.0
+
+    score = 0.0
+    score += min(len(answer) / 500.0, 1.0) * 0.4
+    spec_hits = sum(1 for kw in _SPECIFICITY_KEYWORDS if kw in answer)
+    score += min(spec_hits / 3.0, 1.0) * 0.3
+    safety_hits = sum(1 for kw in _SAFETY_KEYWORDS if kw in answer)
+    score += min(safety_hits / 2.0, 1.0) * 0.3
+
+    return round(score, 4)
+
+
+async def _aggregate_responses(
+    responses: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Aggregate multi-model responses into a single best answer + confidence.
+
+    Strategy (spec §10.4 — 共识优先，分歧倾向保守建议):
+    1. Extract herb names from each response.
+    2. Herbs mentioned by ≥2 models → high-confidence consensus.
+    3. Herbs mentioned by exactly 1 model → medium-confidence.
+    4. Select the primary answer: highest :func:`_score_response`, tie-broken
+       by length. If responses diverge (no consensus herbs), this naturally
+       picks the longest/most-detailed (most conservative, spec-aligned).
+    5. Confidence score reflects agreement level (see code).
+
+    Returns dict with keys:
+        answer (str): the selected best answer text.
+        model_votes (list[dict]): per-model ``{model, answer, confidence,
+            score, error}``.
+        consensus_herbs (list[str]): herbs with ≥2 model votes.
+        confidence_score (float): overall agreement confidence in [0, 1].
+        metadata (dict): breakdown incl. ``high_confidence_herbs``,
+            ``medium_confidence_herbs``, ``best_score``, ``best_model``,
+            ``responded``, ``requested``, and ``reason``.
+    """
+    valid = [r for r in responses if r.get("answer")]
+
+    if not valid:
+        return {
+            "answer": _error_message(),
+            "model_votes": [
+                {
+                    "model": r.get("model", "unknown"),
+                    "answer": r.get("answer", ""),
+                    "confidence": 0.0,
+                    "score": 0.0,
+                    "error": r.get("error"),
+                }
+                for r in responses
+            ],
+            "consensus_herbs": [],
+            "confidence_score": 0.0,
+            "metadata": {
+                "reason": "all_models_failed",
+                "responded": 0,
+                "requested": len(responses),
+            },
+        }
+
+    if len(valid) == 1:
+        sole = valid[0]
+        sole_herbs = _extract_herb_names(sole["answer"])
+        return {
+            "answer": sole["answer"],
+            "model_votes": [
+                {
+                    "model": sole["model"],
+                    "answer": sole["answer"],
+                    "confidence": 0.5,
+                    "score": _score_response(sole["answer"]),
+                    "error": sole.get("error"),
+                }
+            ],
+            "consensus_herbs": sole_herbs,
+            "confidence_score": 0.5,
+            "metadata": {
+                "reason": "single_model_no_voting",
+                "high_confidence_herbs": [],
+                "medium_confidence_herbs": sole_herbs,
+                "best_score": _score_response(sole["answer"]),
+                "best_model": sole["model"],
+                "responded": 1,
+                "requested": len(responses),
+            },
+        }
+
+    herb_sets: list[list[str]] = [
+        list(set(_extract_herb_names(r["answer"]))) for r in valid
+    ]
+    herb_counts: dict[str, int] = {}
+    for herbs in herb_sets:
+        for h in herbs:
+            herb_counts[h] = herb_counts.get(h, 0) + 1
+
+    high_conf_herbs = sorted(h for h, c in herb_counts.items() if c >= 2)
+    medium_conf_herbs = sorted(h for h, c in herb_counts.items() if c == 1)
+    consensus_herbs = high_conf_herbs
+
+    scored: list[tuple[dict[str, Any], float, list[str]]] = []
+    for r, herbs in zip(valid, herb_sets):
+        s = _score_response(r["answer"])
+        scored.append((r, s, herbs))
+    scored.sort(key=lambda t: (-t[1], -len(t[0]["answer"])))
+    best_resp, best_score, _best_herbs = scored[0]
+
+    n = len(valid)
+    if n >= 3:
+        if high_conf_herbs and not medium_conf_herbs:
+            confidence = 0.9
+        elif high_conf_herbs:
+            confidence = 0.7
+        else:
+            confidence = 0.4
+    elif n == 2:
+        confidence = 0.7 if high_conf_herbs else 0.5
+    else:
+        confidence = 0.5
+
+    high_set = set(high_conf_herbs)
+    model_votes: list[dict[str, Any]] = []
+    for r, s, herbs in scored:
+        herbs_set = set(herbs)
+        if herbs_set and herbs_set.issubset(high_set):
+            per_conf = 0.9
+        elif herbs_set & high_set:
+            per_conf = 0.7
+        else:
+            per_conf = 0.5
+        model_votes.append(
+            {
+                "model": r["model"],
+                "answer": r["answer"],
+                "confidence": per_conf,
+                "score": s,
+                "error": r.get("error"),
+            }
+        )
+
+    return {
+        "answer": best_resp["answer"],
+        "model_votes": model_votes,
+        "consensus_herbs": consensus_herbs,
+        "confidence_score": confidence,
+        "metadata": {
+            "high_confidence_herbs": high_conf_herbs,
+            "medium_confidence_herbs": medium_conf_herbs,
+            "best_score": best_score,
+            "best_model": best_resp["model"],
+            "responded": len(valid),
+            "requested": len(responses),
+            "reason": "voting",
+        },
+    }
+
+
+async def chat_completion_voting(
+    question: str,
+    history: list[dict[str, str]] | None = None,
+    models: list[str] | None = None,
+    constitution: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Multi-model voting + aggregation (spec §8.3 / §13.2 V2 P0).
+
+    Queries multiple LLM models **in parallel** via :func:`asyncio.gather`,
+    then aggregates responses per spec §10.4 (共识优先，分歧倾向保守建议).
+
+    Args:
+        question: The user's question text.
+        history: Optional prior conversation messages
+            (``[{"role": ..., "content": ...}, ...]``). *question* is appended
+            as the latest user message.
+        models: Optional explicit list of model names to query. Defaults to the
+            first three distinct models from the configured fallback chain
+            (Kimi-K2.6, GLM-5, Qwen3-235B).
+        constitution: Optional user constitution dict forwarded to the system
+            prompt builder.
+
+    Returns:
+        Dict with keys: ``answer``, ``model_votes``, ``consensus_herbs``,
+        ``confidence_score``, ``metadata``. See :func:`_aggregate_responses`.
+
+    Graceful degradation:
+        - If only 1 model responds → use it directly (no voting).
+        - If all models fail → return an error message in ``answer``.
+    """
+    messages = list(history or [])
+    messages.append({"role": "user", "content": question})
+
+    voting_models = _get_voting_models(models)
+
+    # Parallel query — _query_single_model never raises, so gather is safe.
+    results = await asyncio.gather(
+        *(_query_single_model(m, messages, constitution) for m in voting_models)
+    )
+
+    return await _aggregate_responses(list(results))
 
 
 _TCM_CONCEPT_TERMS = frozenset({
