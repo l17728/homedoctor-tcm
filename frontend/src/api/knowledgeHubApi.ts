@@ -361,8 +361,11 @@ export async function getEntityRelationships(
 }
 
 export async function getEntityTypes(): Promise<TypeCounts> {
-  const data = await request<TypeCounts>('/api/knowledge-hub/types');
-  return data ?? {};
+  const data = await request<{ facets: TypeCounts; total: number } | TypeCounts>('/api/knowledge-hub/types');
+  if (data && typeof data === 'object' && 'facets' in data) {
+    return (data as { facets: TypeCounts }).facets;
+  }
+  return (data as TypeCounts) ?? {};
 }
 
 export interface ImportTextParams {
