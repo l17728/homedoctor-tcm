@@ -21,6 +21,9 @@ class SchemaField:
         self.group: str = data.get("group", "")
         self.order: int = data.get("order", 0)
         self.enum_values: list[str] = data.get("enumValues", [])
+        # ref/anchor metadata for derived edge sync (port of /fighting refs.ts/anchors.ts)
+        self.ref_type: str | None = data.get("refType")
+        self.anchor: str | None = data.get("anchor")
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -34,6 +37,10 @@ class SchemaField:
         }
         if self.enum_values:
             d["enumValues"] = self.enum_values
+        if self.ref_type:
+            d["refType"] = self.ref_type
+        if self.anchor:
+            d["anchor"] = self.anchor
         return d
 
 
@@ -100,6 +107,20 @@ class FileSchemaRegistry:
     def list_schema_dicts(self) -> list[dict[str, Any]]:
         """List all schemas as dicts."""
         return [s.to_dict() for s in self.list_schemas()]
+
+    def get_ref_fields(self, node_type: str) -> list[SchemaField]:
+        """Return ref-typed fields for a node type (port of /fighting refs.ts)."""
+        schema = self.get_schema(node_type)
+        if not schema:
+            return []
+        return [f for f in schema.fields if f.type == "ref" and f.ref_type]
+
+    def get_anchor_fields(self, node_type: str) -> list[SchemaField]:
+        """Return anchor-typed fields for a node type (port of /fighting anchors.ts)."""
+        schema = self.get_schema(node_type)
+        if not schema:
+            return []
+        return [f for f in schema.fields if f.anchor]
 
 
 # Global singleton

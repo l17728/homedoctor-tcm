@@ -4,7 +4,7 @@
   "fields": [
     {"id": "name", "name": "name", "type": "string", "label": "方剂名", "required": true, "group": "基本信息", "order": 1},
     {"id": "source", "name": "source", "type": "string", "label": "来源", "required": false, "group": "基本信息", "order": 2},
-    {"id": "category", "name": "category", "type": "enum", "label": "分类", "required": false, "group": "基本信息", "order": 3, "enumValues": ["解表剂", "泻下剂", "和解剂", "清热剂", "温里剂", "补益剂", "安神剂", "开窍剂", "理气剂", "理血剂", "治风剂", "治燥剂", "祛湿剂", "祛痰剂", "消食剂", "驱虫剂", "痈疡剂"]},
+    {"id": "category", "name": "category", "type": "enum", "label": "分类", "required": false, "group": "基本信息", "order": 3, "enumValues": ["解表剂", "泻下剂", "和解剂", "清热剂", "温里剂", "补益剂", "安神剂", "开窍剂", "理气剂", "理血剂", "治风剂", "治燥剂", "祛湿剂", "祛痰剂", "消食剂", "驱虫剂", "痈疡剂"], "anchor": "方剂分类"},
     {"id": "efficacy", "name": "efficacy", "type": "text", "label": "功效", "required": false, "group": "功效主治", "order": 4},
     {"id": "indications", "name": "indications", "type": "text", "label": "主治", "required": false, "group": "功效主治", "order": 5}
   ]

@@ -1,0 +1,12 @@
+{
+  "nodeType": "symptom",
+  "label": "症状",
+  "identityKeys": ["名称"],
+  "derivedToKG": true,
+  "fields": [
+    {"id": "名称", "name": "名称", "type": "string", "label": "症状名", "required": true, "group": "基本信息", "order": 1},
+    {"id": "分类", "name": "分类", "type": "enum", "label": "分类", "enumValues": ["全身","头面","胸腹","腰背","四肢","二阴","精神","其它"], "group": "基本信息", "order": 2},
+    {"id": "相关方剂", "name": "相关方剂", "type": "ref", "refType": "formula", "label": "相关方剂", "group": "关联", "order": 1},
+    {"id": "相关中药", "name": "相关中药", "type": "ref", "refType": "herb", "label": "相关中药", "group": "关联", "order": 2}
+  ]
+}

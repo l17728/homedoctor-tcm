@@ -1,0 +1,16 @@
+{
+  "nodeType": "formula",
+  "label": "方剂",
+  "identityKeys": ["名称"],
+  "derivedToKG": true,
+  "fields": [
+    {"id": "名称", "name": "名称", "type": "string", "label": "方名", "required": true, "group": "基本信息", "order": 1},
+    {"id": "来源", "name": "来源", "type": "string", "label": "出处", "group": "基本信息", "order": 2},
+    {"id": "分类", "name": "分类", "type": "enum", "label": "分类", "enumValues": ["解表剂","泻下剂","和解剂","清热剂","温里剂","补益剂","安神剂","开窍剂","理气剂","理血剂","治风剂","治燥剂","祛湿剂","祛痰剂","消食剂","驱虫剂","痈疡剂"], "group": "基本信息", "order": 3},
+    {"id": "组成", "name": "组成", "type": "ref", "refType": "herb", "label": "组成药物", "group": "组成", "order": 1},
+    {"id": "功效", "name": "功效", "type": "textarea", "label": "功效", "group": "功效主治", "order": 1},
+    {"id": "主治", "name": "主治", "type": "textarea", "label": "主治", "anchor": "症状", "group": "功效主治", "order": 2},
+    {"id": "用法", "name": "用法", "type": "textarea", "label": "用法用量", "group": "用法", "order": 1},
+    {"id": "加减变化", "name": "加减变化", "type": "textarea", "label": "加减变化", "group": "加减", "order": 1}
+  ]
+}

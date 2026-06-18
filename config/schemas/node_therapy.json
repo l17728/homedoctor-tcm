@@ -1,0 +1,15 @@
+{
+  "nodeType": "therapy",
+  "label": "外治理疗",
+  "identityKeys": ["名称"],
+  "derivedToKG": true,
+  "fields": [
+    {"id": "名称", "name": "名称", "type": "string", "label": "疗法名", "required": true, "group": "基本信息", "order": 1},
+    {"id": "分类", "name": "分类", "type": "enum", "label": "分类", "enumValues": ["针刺","艾灸","推拿","拔罐","刮痧","刺血","敷贴","熏洗","其它"], "group": "基本信息", "order": 2},
+    {"id": "描述", "name": "描述", "type": "textarea", "label": "疗法描述", "group": "详细信息", "order": 1},
+    {"id": "适应症", "name": "适应症", "type": "textarea", "label": "适应症", "anchor": "症状", "group": "详细信息", "order": 2},
+    {"id": "禁忌", "name": "禁忌", "type": "textarea", "label": "禁忌", "group": "安全信息", "order": 1},
+    {"id": "操作步骤", "name": "操作步骤", "type": "textarea", "label": "操作步骤", "group": "操作", "order": 1},
+    {"id": "持续时间", "name": "持续时间", "type": "string", "label": "持续时间", "group": "操作", "order": 2}
+  ]
+}

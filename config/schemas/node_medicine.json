@@ -1,0 +1,14 @@
+{
+  "nodeType": "medicine",
+  "label": "西药",
+  "identityKeys": ["名称"],
+  "derivedToKG": true,
+  "fields": [
+    {"id": "名称", "name": "名称", "type": "string", "label": "药品名", "required": true, "group": "基本信息", "order": 1},
+    {"id": "品牌", "name": "品牌", "type": "string", "label": "品牌/厂家", "group": "基本信息", "order": 2},
+    {"id": "类型", "name": "类型", "type": "enum", "label": "类型", "enumValues": ["处方药","非处方药","中成药","保健品","其它"], "group": "基本信息", "order": 3},
+    {"id": "规格", "name": "规格", "type": "string", "label": "规格", "group": "详细信息", "order": 1},
+    {"id": "用法用量", "name": "用法用量", "type": "textarea", "label": "用法用量", "group": "详细信息", "order": 2},
+    {"id": "禁忌", "name": "禁忌", "type": "textarea", "label": "禁忌", "group": "安全信息", "order": 1}
+  ]
+}

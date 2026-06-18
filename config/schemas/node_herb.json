@@ -1,0 +1,23 @@
+{
+  "nodeType": "herb",
+  "label": "中药",
+  "identityKeys": ["名称"],
+  "derivedToKG": true,
+  "fields": [
+    {"id": "名称", "name": "名称", "type": "string", "label": "药名", "required": true, "group": "基本信息", "order": 1},
+    {"id": "别名", "name": "别名", "type": "string", "label": "别名", "group": "基本信息", "order": 2},
+    {"id": "功效分类", "name": "功效分类", "type": "enum", "label": "分类", "enumValues": ["解表药","清热药","泻下药","祛风湿药","化湿药","利水渗湿药","温里药","理气药","消食药","驱虫药","止血药","活血化瘀药","化痰止咳平喘药","安神药","平肝息风药","开窍药","补虚药","收涩药","攻毒杀虫止痒药","拔毒化腐生肌药"], "group": "基本信息", "order": 3},
+    {"id": "药性", "name": "药性", "type": "enum", "label": "药性", "enumValues": ["寒","凉","平","温","热"], "group": "性味归经", "order": 1},
+    {"id": "药味", "name": "药味", "type": "string", "label": "药味", "group": "性味归经", "order": 2},
+    {"id": "归经", "name": "归经", "type": "array", "label": "归经", "anchor": "经络", "group": "性味归经", "order": 3},
+    {"id": "功效", "name": "功效", "type": "textarea", "label": "功效", "group": "功效主治", "order": 1},
+    {"id": "主治", "name": "主治", "type": "textarea", "label": "主治", "anchor": "症状", "group": "功效主治", "order": 2},
+    {"id": "毒性", "name": "毒性", "type": "enum", "label": "毒性", "enumValues": ["无毒","有毒","大毒","小毒"], "group": "安全信息", "order": 1},
+    {"id": "最小剂量", "name": "最小剂量", "type": "number", "label": "最小剂量(g)", "group": "安全信息", "order": 2},
+    {"id": "最大剂量", "name": "最大剂量", "type": "number", "label": "最大剂量(g)", "group": "安全信息", "order": 3},
+    {"id": "禁忌", "name": "禁忌", "type": "textarea", "label": "禁忌", "group": "安全信息", "order": 4},
+    {"id": "相反", "name": "相反", "type": "ref", "refType": "herb", "label": "相反", "group": "配伍禁忌", "order": 1},
+    {"id": "相畏", "name": "相畏", "type": "ref", "refType": "herb", "label": "相畏", "group": "配伍禁忌", "order": 2},
+    {"id": "中西药交互", "name": "中西药交互", "type": "ref", "refType": "medicine", "label": "中西药交互", "group": "配伍禁忌", "order": 3}
+  ]
+}
