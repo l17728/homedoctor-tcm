@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Layout, Menu, Button, Dropdown, Tooltip, Drawer, theme } from 'antd';
+import { Layout, Menu, Button, Dropdown, Tooltip, Drawer, Breadcrumb, theme } from 'antd';
 import {
   HomeOutlined,
   BookOutlined,
@@ -31,6 +31,68 @@ import {
 } from '../api/familyMemberApi';
 
 const { Header, Sider, Content } = Layout;
+
+interface BreadcrumbItem {
+  title: string;
+  path: string;
+}
+
+const ROUTE_BREADCRUMBS: { path: string; items: string[] }[] = [
+  { path: '/', items: ['首页'] },
+  { path: '/chat', items: ['AI助手'] },
+  { path: '/triage', items: ['急症分诊'] },
+  { path: '/settings', items: ['设置'] },
+  { path: '/classics', items: ['经典读诵'] },
+  { path: '/herbs', items: ['知识库', '中药'] },
+  { path: '/formulas', items: ['知识库', '方剂'] },
+  { path: '/therapies', items: ['知识库', '外治理疗'] },
+  { path: '/knowledge-graph', items: ['知识库', '知识图谱'] },
+  { path: '/bookmarks', items: ['知识库', '书签'] },
+  { path: '/comparison', items: ['知识库', '对比分析'] },
+  { path: '/knowledge-import', items: ['知识库', '知识导入'] },
+  { path: '/formulation', items: ['知识库', '智能配伍'] },
+  { path: '/medicines', items: ['用药管理', '药箱'] },
+  { path: '/reminders', items: ['用药管理', '吃药提醒'] },
+  { path: '/medication-plans', items: ['用药管理', '用药套餐'] },
+  { path: '/medication-schedule', items: ['用药管理', '服药计划'] },
+  { path: '/safety', items: ['用药管理', '药箱安全检查'] },
+  { path: '/constitution', items: ['健康管理', '体质自测'] },
+  { path: '/profile', items: ['健康管理', '健康档案'] },
+  { path: '/health-log', items: ['健康管理', '每日打卡'] },
+  { path: '/reports', items: ['健康管理', '报告中心'] },
+  { path: '/seasonal', items: ['健康管理', '季节养生'] },
+  { path: '/favorites', items: ['健康管理', '收藏'] },
+  { path: '/family', items: ['健康管理', '家庭成员'] },
+  { path: '/remote-assist', items: ['家庭共享', '远程协助'] },
+  { path: '/share-cards', items: ['家庭共享', '分享卡'] },
+];
+
+function getBreadcrumbItems(pathname: string): BreadcrumbItem[] {
+  const match = ROUTE_BREADCRUMBS
+    .filter((r) => pathname === r.path || (r.path !== '/' && pathname.startsWith(r.path + '/')))
+    .sort((a, b) => b.path.length - a.path.length)[0];
+
+  if (!match) return [{ title: '首页', path: '/' }];
+
+  const items: BreadcrumbItem[] = [];
+  match.items.forEach((title, idx) => {
+    if (match.items.length === 1) {
+      items.push({ title, path: match.path });
+    } else {
+      items.push({
+        title,
+        path: idx === match.items.length - 1 ? match.path : '/',
+      });
+    }
+  });
+
+  const hasSubPath = pathname !== match.path && pathname.startsWith(match.path + '/');
+  if (hasSubPath) {
+    items.push({ title: '详情', path: pathname });
+  }
+
+  return items;
+}
 
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
@@ -409,6 +471,17 @@ export default function AppLayout() {
             minHeight: 280,
           }}
         >
+          <Breadcrumb
+            style={{ marginBottom: 16 }}
+            items={getBreadcrumbItems(location.pathname).map((item, idx, arr) => ({
+              title:
+                idx === arr.length - 1 ? (
+                  item.title
+                ) : (
+                  <a onClick={() => navigate(item.path)}>{item.title}</a>
+                ),
+            }))}
+          />
           <div style={{ maxWidth: 1400, margin: '0 auto' }}>
             <Outlet />
           </div>

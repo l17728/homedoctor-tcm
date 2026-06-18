@@ -1,7 +1,12 @@
 """Tests for auth endpoints: register, login, me."""
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
+from jose import jwt
+
+from app.config import settings
 
 
 @pytest.mark.asyncio
@@ -98,4 +103,75 @@ async def test_me_with_invalid_token(client: AsyncClient):
     response = await client.get("/api/auth/me", headers={
         "Authorization": "Bearer invalid.token.here",
     })
+    assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# JWT edge cases — expired, malformed, wrong-signature tokens (audit gap P1.1)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_expired_jwt_rejected(client: AsyncClient, auth_headers: dict):
+    """A JWT with a past expiry must be rejected with 401 (not accepted)."""
+    # Decode the user id from the valid token issued by the auth_headers fixture.
+    valid_token = auth_headers["Authorization"].removeprefix("Bearer ")
+    payload = jwt.decode(
+        valid_token,
+        settings.SECRET_KEY,
+        algorithms=[settings.JWT_ALGORITHM],
+        options={"verify_exp": False},
+    )
+    # Re-sign a token whose expiry is already in the past.
+    expired_payload = dict(payload)
+    expired_payload["exp"] = datetime.now(timezone.utc) - timedelta(hours=1)
+    expired_token = jwt.encode(
+        expired_payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM
+    )
+
+    response = await client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {expired_token}"}
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_malformed_token_rejected_without_500(client: AsyncClient):
+    """A structurally malformed token must yield 401, never a 500 server error."""
+    malformed_tokens = [
+        "not.a.valid.jwt",
+        "Bearer not.a.valid.jwt",
+        "!!!garbage!!!",
+        "a.b.c.d.e",
+        "",
+    ]
+    for raw in malformed_tokens:
+        response = await client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {raw}"}
+        )
+        assert response.status_code == 401, (
+            f"malformed token {raw!r} returned {response.status_code}, expected 401"
+        )
+        assert response.status_code != 500, (
+            f"malformed token {raw!r} caused a 500 server error (must be 401)"
+        )
+
+
+@pytest.mark.asyncio
+async def test_wrong_signature_token_rejected(client: AsyncClient, auth_headers: dict):
+    """A token signed with a different SECRET_KEY must be rejected with 401."""
+    valid_token = auth_headers["Authorization"].removeprefix("Bearer ")
+    payload = jwt.decode(
+        valid_token,
+        settings.SECRET_KEY,
+        algorithms=[settings.JWT_ALGORITHM],
+        options={"verify_exp": False},
+    )
+    # Re-encode with a foreign secret — signature will not validate.
+    forged_token = jwt.encode(
+        payload, "a-completely-different-secret-key", algorithm=settings.JWT_ALGORITHM
+    )
+
+    response = await client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {forged_token}"}
+    )
     assert response.status_code == 401

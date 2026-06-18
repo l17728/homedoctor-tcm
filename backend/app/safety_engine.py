@@ -69,6 +69,32 @@ TOXIC_COMPONENT_GROUPS: dict[str, list[str]] = {
 HEPATOTOXIC_HERBS: list[str] = ["雷公藤", "黄药子", "苍耳子", "千里光", "艾叶", "川楝子", "苦楝皮"]
 NEPHROTOXIC_HERBS: list[str] = ["关木通", "广防己", "青木香", "马兜铃", "寻骨风", "天仙藤"]
 
+ALLERGY_CROSS_REACT: dict[str, list[str]] = {
+    "青霉素": ["穿心莲", "功劳木"],
+    "磺胺": ["黄芩苷"],
+    "头孢": ["穿心莲"],
+}
+
+PROCESSING_MAP: dict[str, list[str]] = {
+    "附子": ["制附子", "黑顺片", "白附片"],
+    "半夏": ["法半夏", "姜半夏", "清半夏"],
+    "川乌": ["制川乌"],
+    "草乌": ["制草乌"],
+    "天南星": ["制天南星", "胆南星"],
+    "甘遂": ["醋甘遂"],
+    "巴豆": ["巴豆霜"],
+    "斑蝥": ["米斑蝥"],
+}
+
+_REVERSE_PROCESSING_MAP: dict[str, str] = {
+    variant: base for base, variants in PROCESSING_MAP.items() for variant in variants
+}
+
+
+def _find_base_herb_for_processing(name: str) -> str | None:
+    """If *name* is a processed variant, return its raw (more toxic) base herb."""
+    return _REVERSE_PROCESSING_MAP.get(name)
+
 
 # ---------------------------------------------------------------------------
 # Main entry point
@@ -108,9 +134,10 @@ async def run_safety_check(
             dedup.add(key)
             warnings.append(w)
 
-    # --- Resolve herbs: look up DB info ---
+    # --- Resolve herbs: look up DB info (Expert #14: processing-state aware) ---
     herb_info: dict[str, dict] = {}
     unknown_herbs: list[str] = []
+    processed_variants_found: dict[str, str] = {}
     for name in herb_names:
         row = await db.query_one(
             "SELECT * FROM herbs WHERE name = ?", (name,)
@@ -118,7 +145,6 @@ async def run_safety_check(
         if row:
             herb_info[name] = row
         else:
-            # Try aliases
             row = await db.query_one(
                 "SELECT * FROM herbs WHERE aliases LIKE ?", (f"%{name}%",)
             )
@@ -126,6 +152,10 @@ async def run_safety_check(
                 herb_info[name] = row
             else:
                 unknown_herbs.append(name)
+
+        base_herb = _find_base_herb_for_processing(name)
+        if base_herb:
+            processed_variants_found[name] = base_herb
 
     unknown_medicines: list[str] = []
     for med in medicine_names:
@@ -145,6 +175,11 @@ async def run_safety_check(
     for w in layer1b_warnings:
         _add(w)
 
+    # --- Layer 1c: 食物禁忌检查 (food-drug / food-herb interactions) ---
+    layer1c_warnings = await _check_food_interactions(db, herb_names, medicine_names)
+    for w in layer1c_warnings:
+        _add(w)
+
     # --- Layer 2: 剂量范围检查 ---
     layer2_warnings = await _check_dosage(herb_names, herb_info, dosages)
     for w in layer2_warnings:
@@ -162,6 +197,19 @@ async def run_safety_check(
 
     # --- Layer 4: AI 辅助分析 (placeholder) ---
     # No-op for MVP. Future: send structured prompt to AI, parse response.
+
+    # --- Processing-state awareness (Expert #14) ---
+    for processed_name, base_herb in processed_variants_found.items():
+        _add(SafetyWarning(
+            layer=3,
+            severity="low",
+            title="炮制减毒提示",
+            detail=f"{processed_name}为{base_herb}的炮制品，毒性已降低，"
+                   f"但配伍禁忌规则仍按{base_herb}生品标准执行",
+            herbs=[processed_name],
+            action="告知医生",
+            source="炮制状态识别",
+        ))
 
     # --- Determine safety ---
     has_blocking = any(w.severity in ("critical", "high") for w in warnings)
@@ -300,6 +348,53 @@ async def _check_herb_drug_interactions(
                     title=f"中西药交互（{r.get('source', '')}）",
                     detail=r["mechanism"],
                     herbs=[r["drug_b"]],
+                    action=action,
+                    source=r.get("source", ""),
+                ))
+
+    return warnings
+
+
+# ---------------------------------------------------------------------------
+# Layer 1c: 食物禁忌检查 (food-drug / food-herb interactions)
+# ---------------------------------------------------------------------------
+
+async def _check_food_interactions(
+    db: DbAdapter, herb_names: list[str], medicine_names: list[str]
+) -> list[SafetyWarning]:
+    """Check food-drug and food-herb interaction rules (rule_type='食物禁忌').
+
+    Matches where a herb name or medicine name appears as drug_a or drug_b
+    in a 食物禁忌 rule.
+    """
+    warnings: list[SafetyWarning] = []
+    all_items = list(herb_names) + list(medicine_names)
+    if not all_items:
+        return warnings
+
+    seen_ids: set[str] = set()
+    for item in all_items:
+        rows = await db.query(
+            """SELECT * FROM safety_rules WHERE enabled = 1
+               AND rule_type = '食物禁忌'
+               AND (drug_a = ? OR drug_b = ?)""",
+            (item, item),
+        )
+        for r in rows:
+            if r["id"] not in seen_ids:
+                seen_ids.add(r["id"])
+                sev = r["severity"]
+                action = "禁止" if sev == "critical" else "谨慎"
+                affected = [item]
+                other = r["drug_b"] if r["drug_a"] == item else r["drug_a"]
+                if other:
+                    affected.append(other)
+                warnings.append(SafetyWarning(
+                    layer=1,
+                    severity=sev,
+                    title=f"食物禁忌（{r.get('source', '')}）",
+                    detail=r["mechanism"],
+                    herbs=affected,
                     action=action,
                     source=r.get("source", ""),
                 ))
@@ -519,6 +614,25 @@ def _check_special_populations(
                         herbs=list(herb_names),
                         action="告知医生",
                         source="特殊人群检查-老年",
+                    ))
+
+    # --- Allergy cross-reactivity check (Clinical gap #6) ---
+    allergies = user_profile.get("allergies", []) if user_profile else []
+    if allergies and isinstance(allergies, list):
+        for allergy in allergies:
+            cross_herbs = ALLERGY_CROSS_REACT.get(allergy)
+            if not cross_herbs:
+                continue
+            for herb_name in herb_names:
+                if herb_name in cross_herbs:
+                    warnings.append(SafetyWarning(
+                        layer=3,
+                        severity="high",
+                        title="药物过敏交叉反应",
+                        detail=f"患者对{allergy}过敏，{herb_name}可能存在交叉过敏风险",
+                        herbs=[herb_name],
+                        action="谨慎",
+                        source="过敏交叉反应检查",
                     ))
 
     return warnings

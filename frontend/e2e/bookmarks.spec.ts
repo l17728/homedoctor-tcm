@@ -21,8 +21,8 @@ test.describe('Bookmarks Page — 我的书签', () => {
     await page.goto('/bookmarks');
 
     await expect(page).toHaveURL('/bookmarks');
-    // Page title "我的书签"
-    await expect(page.getByText('我的书签').first()).toBeVisible();
+    // Page title heading "我的书签"
+    await expect(page.getByRole('heading', { name: /我的书签/ })).toBeVisible();
 
     // "新建合集" button
     await expect(
@@ -86,8 +86,8 @@ test.describe('Bookmarks Page — 我的书签', () => {
     // Input with placeholder
     await expect(modal.getByPlaceholder(/补气类中药/)).toBeVisible();
 
-    // Cancel button to close
-    await modal.getByRole('button', { name: /取消/ }).click();
+    // Cancel button to close (chineseText handles AntD 2-char spacing)
+    await modal.getByRole('button', { name: chineseText('取消') }).click();
   });
 
   test('should show validation error when creating empty collection', async ({
@@ -100,8 +100,8 @@ test.describe('Bookmarks Page — 我的书签', () => {
 
     const modal = page.locator('.ant-modal').last();
 
-    // Click "创建" (OK) without filling title
-    await modal.getByRole('button', { name: /创建/ }).click();
+    // Click "创建" (OK) without filling title (chineseText handles AntD 2-char spacing)
+    await modal.getByRole('button', { name: chineseText('创建') }).click();
     await page.waitForTimeout(500);
 
     // Should show validation error "请输入合集名称"

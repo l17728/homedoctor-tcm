@@ -22,7 +22,7 @@ test.describe('Reports — Navigation & Layout', () => {
     await expect(page).toHaveURL('/reports');
 
     // Page title
-    await expect(page.getByText('报告中心')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /报告中心/ })).toBeVisible();
 
     // All three tabs visible
     await expect(page.getByRole('tab', { name: /体质报告/ })).toBeVisible();

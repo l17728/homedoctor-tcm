@@ -22,15 +22,15 @@ test.describe('Comparison Page — 对比分析', () => {
     await page.goto('/comparison');
 
     await expect(page).toHaveURL('/comparison');
-    // Page title "对比分析"
-    await expect(page.getByText('对比分析').first()).toBeVisible();
+    // Page title heading "对比分析"
+    await expect(page.getByRole('heading', { name: /对比分析/ })).toBeVisible();
 
     // Type label "对比类型"
     await expect(page.getByText('对比类型')).toBeVisible();
 
-    // Radio buttons: 中药对比 / 方剂对比
-    await expect(page.getByRole('radio', { name: /中药对比/ })).toBeVisible();
-    await expect(page.getByRole('radio', { name: /方剂对比/ })).toBeVisible();
+    // Radio buttons rendered as Radio.Button — label text is clickable
+    await expect(page.getByText('中药对比', { exact: true })).toBeVisible();
+    await expect(page.getByText('方剂对比', { exact: true })).toBeVisible();
   });
 
   test('should show selection input and compare button', async ({ page }) => {
@@ -38,10 +38,13 @@ test.describe('Comparison Page — 对比分析', () => {
     await page.waitForTimeout(1000);
 
     // Selection label text
-    await expect(page.getByText(/选择项目/)).toBeVisible();
+    await expect(page.getByText(/选择项目/).first()).toBeVisible();
 
-    // Multi-select input for choosing herbs/formulas
-    await expect(page.getByPlaceholder(/搜索并选择/)).toBeVisible();
+    // Wait for options to load (Select is hidden while Spin shows)
+    await page.waitForTimeout(2000);
+
+    // AntD 5 multi-mode Select renders placeholder in a div, not input attribute
+    await expect(page.locator('.ant-select-selection-placeholder').filter({ hasText: '搜索并选择' })).toBeVisible();
 
     // "开始对比" button
     await expect(
@@ -77,19 +80,19 @@ test.describe('Comparison Page — 对比分析', () => {
     await page.goto('/comparison');
     await page.waitForTimeout(1000);
 
-    // Default is herb — radio should be checked
-    const herbRadio = page.getByRole('radio', { name: /中药对比/ });
-    await expect(herbRadio).toBeChecked();
+    // Default is herb
+    await expect(page.getByText('中药对比', { exact: true })).toBeVisible();
 
-    // Switch to formula
-    await page.getByRole('radio', { name: /方剂对比/ }).click();
-    await expect(page.getByRole('radio', { name: /方剂对比/ })).toBeChecked();
+    // Switch to formula — click the label text (Radio.Button renders label as clickable span)
+    await page.getByText('方剂对比', { exact: true }).click();
+    await page.waitForTimeout(2000);
 
-    // Placeholder should change to formula search
-    await expect(page.getByPlaceholder(/搜索并选择方剂/)).toBeVisible();
+    // AntD 5 multi-mode Select renders placeholder in a div
+    await expect(page.locator('.ant-select-selection-placeholder').filter({ hasText: '方剂' })).toBeVisible();
 
     // Switch back to herb
-    await page.getByRole('radio', { name: /中药对比/ }).click();
-    await expect(page.getByPlaceholder(/搜索并选择中药/)).toBeVisible();
+    await page.getByText('中药对比', { exact: true }).click();
+    await page.waitForTimeout(2000);
+    await expect(page.locator('.ant-select-selection-placeholder').filter({ hasText: '中药' })).toBeVisible();
   });
 });

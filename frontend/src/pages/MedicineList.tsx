@@ -17,6 +17,7 @@ import {
   Tag,
   Alert,
   Spin,
+  Card,
 } from 'antd';
 import {
   PlusOutlined,
@@ -311,6 +312,90 @@ export default function MedicineList() {
         <Skeleton active />
       ) : medicines.length === 0 ? (
         <Empty description="暂无药品，点击添加" />
+      ) : isMobile ? (
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          {medicines.map((med) => {
+            const daysLeft = med.expiry_date
+              ? dayjs(med.expiry_date).diff(dayjs(), 'day')
+              : null;
+            return (
+              <Card key={med.id} size="small" style={{ borderRadius: 8 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    marginBottom: 8,
+                  }}
+                >
+                  <div>
+                    <Typography.Text strong style={{ fontSize: 18 }}>
+                      {med.name}
+                    </Typography.Text>
+                    {med.type && (
+                      <Tag
+                        color="blue"
+                        style={{ marginLeft: 8, fontSize: 14 }}
+                      >
+                        {med.type}
+                      </Tag>
+                    )}
+                  </div>
+                  {med.status && (
+                    <StatusTag status={med.status} colorMap={DRUG_STATUS_COLOR} />
+                  )}
+                </div>
+                <div style={{ fontSize: 15, color: '#666', marginBottom: 12 }}>
+                  <span style={{ marginRight: 16 }}>
+                    数量：
+                    {med.quantity == null ? (
+                      '—'
+                    ) : (
+                      <Tag color={med.quantity <= 5 ? 'orange' : 'green'}>
+                        {med.quantity <= 5 ? `低库存 ${med.quantity}` : med.quantity}
+                      </Tag>
+                    )}
+                  </span>
+                  {med.expiry_date && (
+                    <span>
+                      过期：
+                      {daysLeft! < 0 ? (
+                        <Tag color="red">已过期</Tag>
+                      ) : daysLeft! <= 30 ? (
+                        <Tag color="orange">{daysLeft}天后</Tag>
+                      ) : (
+                        <span>{med.expiry_date}</span>
+                      )}
+                    </span>
+                  )}
+                </div>
+                <Space size="middle">
+                  <Button
+                    icon={<EditOutlined />}
+                    onClick={() => handleEdit(med)}
+                    style={{ minHeight: 44 }}
+                  >
+                    编辑
+                  </Button>
+                  <Popconfirm
+                    title="确定删除该药品吗？"
+                    onConfirm={() => handleDelete(med.id)}
+                    okText="确定"
+                    cancelText="取消"
+                  >
+                    <Button
+                      danger
+                      icon={<DeleteOutlined />}
+                      style={{ minHeight: 44 }}
+                    >
+                      删除
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              </Card>
+            );
+          })}
+        </Space>
       ) : (
         <Table
           dataSource={medicines}

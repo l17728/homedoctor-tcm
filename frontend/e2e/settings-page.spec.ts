@@ -9,42 +9,49 @@
  * - Account management section + version number visible
  */
 import { test, expect } from '@playwright/test';
-import { register, chineseText } from './helpers';
+import { registerViaApi, setAuthState } from './api-auth';
+import { logout, chineseText } from './helpers';
 
-test.describe('Settings Page — Layout & Display', () => {
+let token: string;
+let user: string;
+
+test.beforeAll(async () => {
+  const auth = await registerViaApi('set');
+  token = auth.token;
+  user = auth.user;
+});
+
+test.describe('Settings — Layout & Display', () => {
   test.beforeEach(async ({ page }) => {
-    await register(page, `set_${Date.now()}`);
-    await page.goto('/settings');
+    await setAuthState(page, token, user);
   });
 
   test('should load settings page with display settings section', async ({
     page,
   }) => {
+    await page.goto('/settings');
     await expect(page).toHaveURL('/settings');
     await expect(page.getByRole('heading', { name: '设置' })).toBeVisible();
+    await expect(
+      page.getByText('显示设置', { exact: true }).first(),
+    ).toBeVisible();
 
-    // Display settings card
-    await expect(page.getByText('显示设置', { exact: true }).first()).toBeVisible();
-
-    // Two switches: dark mode + elderly mode
-    const switches = page.locator('.ant-card').first().locator('.ant-switch');
+    const switches = page.locator('.ant-switch');
     await expect(switches.first()).toBeVisible();
   });
 
   test('should show and toggle dark mode switch', async ({ page }) => {
-    // Locate dark mode switch — first switch in 显示设置 card
+    await page.goto('/settings');
     const displayCard = page.locator('.ant-card').filter({ hasText: '显示设置' });
     const darkSwitch = displayCard.locator('.ant-switch').first();
 
     await expect(darkSwitch).toBeVisible();
 
-    // Record initial state, then toggle
     const wasChecked = await darkSwitch.evaluate((el) =>
       el.classList.contains('ant-switch-checked'),
     );
     await darkSwitch.click();
 
-    // State should flip
     if (wasChecked) {
       await expect(darkSwitch).not.toHaveClass(/ant-switch-checked/);
     } else {
@@ -55,72 +62,85 @@ test.describe('Settings Page — Layout & Display', () => {
   test('should show confirmation modal when toggling elderly mode', async ({
     page,
   }) => {
+    await page.goto('/settings');
     const displayCard = page.locator('.ant-card').filter({ hasText: '显示设置' });
-    // Elderly mode switch is the second switch in the card
     const elderlySwitch = displayCard.locator('.ant-switch').nth(1);
 
     await expect(elderlySwitch).toBeVisible();
     await elderlySwitch.click();
 
-    // Confirmation modal should appear
-    await expect(page.getByText('切换到长辈模式')).toBeVisible();
-
-    // Cancel to avoid actually switching layout
+    await expect(page.locator('.ant-modal-confirm')).toBeVisible();
     await page.getByRole('button', { name: chineseText('取消') }).click();
-    await expect(page.getByText('切换到长辈模式')).not.toBeVisible();
+    await expect(page.locator('.ant-modal-confirm')).not.toBeVisible();
   });
 });
 
-test.describe('Settings Page — Backup & Export', () => {
+test.describe('Settings — Backup & Export', () => {
   test.beforeEach(async ({ page }) => {
-    await register(page, `set_${Date.now()}`);
-    await page.goto('/settings');
+    await setAuthState(page, token, user);
   });
 
-  test('should show backup section with create button', async ({ page }) => {
-    await expect(page.getByText('数据备份', { exact: true }).first()).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: /创建备份/ }),
-    ).toBeVisible();
-  });
-
-  test('should show export section with export button', async ({ page }) => {
-    await expect(page.getByText('数据导出', { exact: true }).first()).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: /导出数据/ }),
-    ).toBeVisible();
-  });
-});
-
-test.describe('Settings Page — Account & Version', () => {
-  test.beforeEach(async ({ page }) => {
-    await register(page, `set_${Date.now()}`);
-    await page.goto('/settings');
-  });
-
-  test('should show account management section with action buttons', async ({
+  test('should show backup and export sections with buttons', async ({
     page,
   }) => {
+    await page.goto('/settings');
+
+    await expect(
+      page.getByText('数据备份', { exact: true }).first(),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /创建备份/ })).toBeVisible();
+
+    await expect(
+      page.getByText('数据导出', { exact: true }).first(),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /导出数据/ })).toBeVisible();
+  });
+});
+
+test.describe('Settings — Account & Version', () => {
+  test.beforeEach(async ({ page }) => {
+    await setAuthState(page, token, user);
+  });
+
+  test('should show account management section and version 0.4.0', async ({
+    page,
+  }) => {
+    await page.goto('/settings');
+
     await expect(
       page.getByText('账户管理', { exact: true }).first(),
     ).toBeVisible();
-
-    // Warning alert about irreversible operations
     await expect(page.getByText(/不可撤销/)).toBeVisible();
-
-    // Account action buttons
     await expect(
       page.getByRole('button', { name: /查看数据概况/ }),
     ).toBeVisible();
     await expect(
       page.getByRole('button', { name: /删除账户/ }),
     ).toBeVisible();
-  });
 
-  test('should display version number 0.4.0 in about section', async ({
-    page,
-  }) => {
     await expect(page.getByText('关于', { exact: true }).first()).toBeVisible();
     await expect(page.getByText(/0\.4\.0/)).toBeVisible();
+  });
+});
+
+test.describe('Settings — Auth Guard', () => {
+  test('should redirect to login when not authenticated', async ({ page }) => {
+    await page.goto('/settings');
+    await page.waitForURL(/\/login/);
+  });
+
+  test('should deny access after logout', async ({ page }) => {
+    await page.goto('/login');
+    await page.evaluate(
+      ([t, u]) => {
+        localStorage.setItem('token', t);
+        localStorage.setItem('user', u);
+      },
+      [token, user],
+    );
+    await page.goto('/');
+    await logout(page);
+    await page.goto('/settings');
+    await page.waitForURL(/\/login/);
   });
 });

@@ -347,7 +347,8 @@ async def test_safety_check_seeded_formula_safe(client, auth_headers):
     assert resp.status_code == 200
     data = resp.json()
     assert data["safe"] is True
-    assert len(data["warnings"]) == 0
+    blocking = [w for w in data["warnings"] if w["severity"] in ("critical", "high")]
+    assert len(blocking) == 0
 
 
 # ---------------------------------------------------------------------------

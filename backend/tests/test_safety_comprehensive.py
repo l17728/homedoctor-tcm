@@ -6,9 +6,12 @@ Layer 2:  剂量范围检查 — 5 tests
 Layer 3:  特殊人群检查 — 8 tests
 Layer 5:  免责声明 — 3 tests
 Integration — 5 tests
+Performance — 1 test (audit gap P2.7)
 """
 
 from __future__ import annotations
+
+import time
 
 import pytest
 from httpx import AsyncClient
@@ -838,3 +841,29 @@ async def test_full_lifecycle_structure(client: AsyncClient, db: DbAdapter):
         assert "source" in w
         assert w["layer"] in (1, 2, 3, 4, 5)
         assert w["severity"] in ("critical", "high", "medium", "low")
+
+
+# ===========================================================================
+# Performance — 20-herb check must complete under 2s (audit gap P2.7)
+# ===========================================================================
+
+@pytest.mark.asyncio
+async def test_20_herb_check_completes_under_2s(client: AsyncClient, db: DbAdapter):
+    """A 20-herb safety check must return within 2 seconds (no external AI call)."""
+    await _seed_extra_herbs(db)
+    await db.execute("COMMIT")
+    herbs = [
+        "附子", "半夏", "甘遂", "藜芦", "人参", "硫磺", "朴硝", "丁香", "郁金",
+        "五灵脂", "川乌", "麻黄", "五味子", "葛根", "银杏叶", "石膏", "大黄",
+        "丹参", "三七", "红花",
+    ]
+    assert len(herbs) == 20
+
+    start = time.perf_counter()
+    resp = await client.post("/api/safety/check-v2", json={"herbs": herbs})
+    elapsed = time.perf_counter() - start
+
+    assert resp.status_code == 200
+    assert elapsed < 2.0, f"20-herb check took {elapsed:.3f}s, must be < 2s"
+    data = resp.json()
+    assert isinstance(data["warnings"], list)

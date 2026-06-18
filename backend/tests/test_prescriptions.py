@@ -4,6 +4,16 @@ import pytest
 from httpx import AsyncClient
 
 
+def _extract_pdf_text(pdf_bytes: bytes) -> str:
+    """Extract text from PDF bytes using PyMuPDF (fitz)."""
+    import fitz
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    text = "".join(page.get_text() for page in doc)
+    doc.close()
+    return text
+
+
 # ---------------------------------------------------------------------------
 # POST /api/prescriptions/generate
 # ---------------------------------------------------------------------------
@@ -243,3 +253,48 @@ def test_pdf_generator_empty_formula():
 
     pdf = generate_prescription_pdf(formula={"name": "测试方"})
     assert pdf[:4] == b"%PDF"
+
+
+# ---------------------------------------------------------------------------
+# PDF content correctness — verify rendered text, not just the file header
+# (audit gap P1.3). Uses PyMuPDF to extract Chinese text from the CID font.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_pdf_contains_formula_name_and_herbs(
+    client: AsyncClient, auth_headers: dict
+):
+    """The generated prescription PDF must contain the formula name and its herb names.
+
+    formula-001 (四君子汤) composition: 人参, 白术, 茯苓, 甘草. Extracting the
+    PDF text confirms these are actually rendered — not just that bytes exist.
+    """
+    response = await client.post(
+        "/api/prescriptions/generate",
+        json={
+            "formula_id": "formula-001",
+            "patient_name": "张三",
+            "patient_gender": "男",
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    text = _extract_pdf_text(response.content)
+    assert "四君子汤" in text
+    for herb in ("人参", "白术", "茯苓", "甘草"):
+        assert herb in text, f"herb {herb} missing from prescription PDF text"
+
+
+@pytest.mark.asyncio
+async def test_pdf_contains_disclaimer(client: AsyncClient, auth_headers: dict):
+    """Every prescription PDF must carry a disclaimer (仅供参考 / 咨询)."""
+    response = await client.post(
+        "/api/prescriptions/generate",
+        json={"formula_id": "formula-001"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    text = _extract_pdf_text(response.content)
+    assert "仅供参考" in text or "咨询" in text, (
+        "prescription PDF missing required disclaimer text"
+    )

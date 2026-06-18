@@ -10,7 +10,7 @@
  * - Auth guard
  */
 import { test, expect } from '@playwright/test';
-import { register, logout } from './helpers';
+import { register, logout, chineseText } from './helpers';
 
 test.describe('Medication Plans — Navigation & Layout', () => {
   test.beforeEach(async ({ page }) => {
@@ -22,7 +22,7 @@ test.describe('Medication Plans — Navigation & Layout', () => {
     await expect(page).toHaveURL('/medication-plans');
 
     // Page title
-    await expect(page.getByText('用药套餐')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /用药套餐/ })).toBeVisible();
 
     // Create plan button
     await expect(
@@ -80,8 +80,8 @@ test.describe('Medication Plans — Create Modal', () => {
 
     await page.getByRole('button', { name: /新建套餐/ }).click();
 
-    // Click create (创建) without filling name
-    await page.getByRole('button', { name: /创建/ }).click();
+    // Click create (创建, 2-char Chinese → may have auto-space) without filling name
+    await page.getByRole('button', { name: chineseText('创建') }).click();
 
     // Validation error for plan name
     await expect(page.getByText(/请输入套餐名称/).first()).toBeVisible();

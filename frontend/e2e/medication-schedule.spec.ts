@@ -22,7 +22,7 @@ test.describe('Medication Schedule — Navigation & Layout', () => {
     await expect(page).toHaveURL('/medication-schedule');
 
     // Page title
-    await expect(page.getByText('我的服药计划')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /我的服药计划/ })).toBeVisible();
 
     // Generate plan button (生成计划 or 重新生成)
     await expect(
@@ -38,7 +38,8 @@ test.describe('Medication Schedule — Navigation & Layout', () => {
   test('should show template select placeholder', async ({ page }) => {
     await page.goto('/medication-schedule');
 
-    await expect(page.getByPlaceholder('选择常用模板')).toBeVisible();
+    // AntD Select renders placeholder as text, not as a native placeholder attribute
+    await expect(page.getByText('选择常用模板')).toBeVisible();
   });
 
   test('should show medicine selection section', async ({ page }) => {

@@ -102,3 +102,27 @@ async def test_node_detail_endpoint(client: AsyncClient, auth_headers: dict):
 
     missing = await client.get("/api/kg/node/no-such-id", headers=auth_headers)
     assert missing.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Rebuild integrity — no orphan edges after rebuild (audit gap P2.8)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_rebuild_produces_no_orphan_edges(db: DbAdapter):
+    """After rebuild, every edge's source_id and target_id must exist in graph_nodes."""
+    await rebuild_all_edges(db)
+
+    edges = await db.query("SELECT edge_type, source_id, target_id FROM graph_edges")
+    assert len(edges) > 0, "rebuild should produce at least some edges"
+
+    node_ids = {
+        row["id"] for row in await db.query("SELECT id FROM graph_nodes")
+    }
+
+    orphans = [
+        (e["edge_type"], e["source_id"], e["target_id"])
+        for e in edges
+        if e["source_id"] not in node_ids or e["target_id"] not in node_ids
+    ]
+    assert orphans == [], f"{len(orphans)} orphan edges reference missing nodes: {orphans[:3]}"

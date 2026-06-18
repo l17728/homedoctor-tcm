@@ -24,7 +24,7 @@ test.describe('Triage — Navigation & Layout', () => {
     await expect(page).toHaveURL('/triage');
 
     // Page title
-    await expect(page.getByText('急症分诊')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /急症分诊/ })).toBeVisible();
 
     // Warning alert about not replacing professional diagnosis
     await expect(page.getByText(/不能替代专业医疗诊断/)).toBeVisible();
@@ -41,9 +41,10 @@ test.describe('Triage — Navigation & Layout', () => {
     // InputNumber with placeholder
     await expect(page.getByPlaceholder('请输入')).toBeVisible();
 
-    // Unit radio buttons (月龄 / 岁)
-    await expect(page.getByRole('radio', { name: '月龄' })).toBeVisible();
-    await expect(page.getByRole('radio', { name: '岁' })).toBeVisible();
+    // Unit radio buttons (月龄 / 岁) — AntD Radio.Button input is visually hidden,
+    // so we match the visible label text instead
+    await expect(page.getByText('月龄', { exact: true })).toBeVisible();
+    await expect(page.getByText('岁', { exact: true })).toBeVisible();
   });
 });
 
@@ -125,7 +126,7 @@ test.describe('Triage — Auth Guard', () => {
   test('should redirect to login when not authenticated', async ({ page }) => {
     await page.goto('/triage');
     await page.waitForURL(/\/login/);
-    await expect(page.getByText(chineseText('登录'))).toBeVisible();
+    await expect(page.getByText(chineseText('登录')).first()).toBeVisible();
   });
 
   test('should deny access after logout', async ({ page }) => {

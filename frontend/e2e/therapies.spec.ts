@@ -20,8 +20,8 @@ test.describe('Therapies Page — 外治理疗', () => {
     await page.goto('/therapies');
 
     await expect(page).toHaveURL('/therapies');
-    // Page title "外治理疗"
-    await expect(page.getByText('外治理疗').first()).toBeVisible();
+    // Page title heading "外治理疗"
+    await expect(page.getByRole('heading', { name: /外治理疗/ })).toBeVisible();
 
     // Search input
     await expect(page.getByPlaceholder('搜索疗法名称、适应症')).toBeVisible();

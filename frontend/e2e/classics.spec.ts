@@ -21,8 +21,8 @@ test.describe('Classics Bookshelf — 经典读诵书柜', () => {
     await page.goto('/classics');
 
     await expect(page).toHaveURL('/classics');
-    // Page title "经典读诵"
-    await expect(page.getByText('经典读诵')).toBeVisible();
+    // Page title heading "经典读诵" (use heading role to avoid sidebar menu match)
+    await expect(page.getByRole('heading', { name: /经典读诵/ })).toBeVisible();
     // Description text
     await expect(page.getByText(/千年医典/)).toBeVisible();
   });
@@ -148,8 +148,8 @@ test.describe('Classics Reader — 经典阅读器', () => {
     await page.waitForURL(/\/classics\/[^/]+/);
     await page.waitForTimeout(2000);
 
-    // The classic text container should be visible
-    const textContainer = page.locator('.cls-classic-text');
+    // The classic text container (div, not the h4 title which shares the class)
+    const textContainer = page.locator('div.cls-classic-text');
     await expect(textContainer).toBeVisible();
 
     // If there are chapter items, clicking one should load text
@@ -215,6 +215,6 @@ test.describe('Classics Reader — 经典阅读器', () => {
     await page.getByRole('button', { name: /返回书柜/ }).click();
     await page.waitForURL('/classics');
     await expect(page).toHaveURL('/classics');
-    await expect(page.getByText('经典读诵')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /经典读诵/ })).toBeVisible();
   });
 });

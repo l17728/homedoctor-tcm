@@ -23,7 +23,7 @@ test.describe('Health Log — Navigation & Layout', () => {
     await expect(page).toHaveURL('/health-log');
 
     // Page title
-    await expect(page.getByText('每日健康打卡')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /每日健康打卡/ })).toBeVisible();
 
     // Date label
     await expect(page.getByText('打卡日期')).toBeVisible();

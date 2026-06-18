@@ -301,12 +301,12 @@ async def test_summary_with_conflicts(db):
 
 
 # ---------------------------------------------------------------------------
-# Test 8: 5-day coverage — Monday through Friday all have slots
+# Test 8: 7-day coverage — Monday through Sunday all have slots
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_five_day_coverage(db):
-    """排程应覆盖周一到周五，每天至少有一个时段."""
+async def test_seven_day_coverage(db):
+    """排程应覆盖周一到周日，每天至少有一个时段."""
     medications = [
         _med("黄芪", frequency="每日3次"),
         _med("当归", frequency="每日2次"),
@@ -314,7 +314,7 @@ async def test_five_day_coverage(db):
 
     schedule = await generate_weekly_schedule(db, medications)
 
-    assert len(schedule.days) == 5
+    assert len(schedule.days) == 7
 
     for i, day_schedule in enumerate(schedule.days):
         assert day_schedule.day == DAY_NAMES[i], (
@@ -326,8 +326,8 @@ async def test_five_day_coverage(db):
 
 
 @pytest.mark.asyncio
-async def test_alternate_day_medication_skips_tue_thu(db):
-    """隔日1次的药物在周二、周四不出现."""
+async def test_alternate_day_medication_skips_tue_thu_sat(db):
+    """隔日1次的药物在周二、周四、周六不出现（隔日=周一/三/五/日）."""
     medications = [
         _med("黄芪", frequency="隔日1次"),
     ]
@@ -354,6 +354,14 @@ async def test_alternate_day_medication_skips_tue_thu(db):
     fri_names = _slot_names(schedule, day_idx=4)
     assert "黄芪" in fri_names, "周五应服用隔日药"
 
+    # Saturday (idx 5): should NOT have 黄芪
+    sat_names = _slot_names(schedule, day_idx=5)
+    assert "黄芪" not in sat_names, "周六不应服用隔日药"
+
+    # Sunday (idx 6): should have 黄芪
+    sun_names = _slot_names(schedule, day_idx=6)
+    assert "黄芪" in sun_names, "周日应服用隔日药"
+
 
 # ---------------------------------------------------------------------------
 # Test 9: User profile — pregnancy flag affects scheduling
@@ -371,7 +379,7 @@ async def test_pregnancy_flag_triggers_safety_warning(db):
     schedule = await generate_weekly_schedule(db, medications, user_profile)
 
     # The schedule should still be generated
-    assert len(schedule.days) == 5
+    assert len(schedule.days) == 7
 
     # But the safety summary should contain pregnancy warning
     # (附子 is in the pregnancy_dangerous list in safety_engine.py)
@@ -390,7 +398,7 @@ async def test_user_profile_children_warning(db):
     schedule = await generate_weekly_schedule(db, medications, user_profile)
 
     # Schedule still generated
-    assert len(schedule.days) == 5
+    assert len(schedule.days) == 7
     # Summary should mention safety concerns
     assert len(schedule.summary) > 0
 
@@ -404,7 +412,7 @@ async def test_empty_medications_returns_empty_schedule(db):
     """空药物列表应返回空排程但不报错."""
     schedule = await generate_weekly_schedule(db, [])
 
-    assert len(schedule.days) == 5
+    assert len(schedule.days) == 7
     assert schedule.safety_verified is True
     assert len(schedule.conflicts_found) == 0
 

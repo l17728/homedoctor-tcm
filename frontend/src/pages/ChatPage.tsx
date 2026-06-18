@@ -348,7 +348,9 @@ export default function ChatPage() {
 
       <div
         style={{
-          height: isMobile ? 'calc(100vh - 280px)' : 'calc(100vh - 320px)',
+          height: isMobile
+            ? 'calc(100dvh - 280px)'
+            : 'calc(100dvh - 320px)',
           overflowY: 'auto',
           marginBottom: 16,
           padding: isMobile ? 8 : 16,

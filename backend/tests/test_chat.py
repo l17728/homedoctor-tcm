@@ -51,7 +51,7 @@ async def test_chat_multiple_emergency_keywords(client: AsyncClient, auth_header
     """Multiple emergency keywords should all be detected."""
     response = await client.post(
         "/api/chat",
-        json={"message": "患者出现昏迷和抽搐，疑似中毒"},
+        json={"message": "患者出现昏迷和抽搐，疑似中毒", "history": []},
         headers=auth_headers,
     )
     assert response.status_code == 200
@@ -343,3 +343,43 @@ async def test_safety_keywords_module():
     result = check_emergency_keywords("患者大出血，已休克")
     assert "大出血" in result
     assert "休克" in result
+
+
+# ---------------------------------------------------------------------------
+# Emergency synonym interception at the chat endpoint (audit gap P1.5).
+# Synonyms (胸口疼↔胸痛, 喘不上气↔呼吸困难) must trigger the safety layer
+# end-to-end through POST /api/chat, not only in the keyword module.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_chat_synonym_chest_pain_intercepted(
+    client: AsyncClient, auth_headers: dict
+):
+    """'我胸口疼得厉害' (synonym of 胸痛) triggers the emergency safety layer."""
+    response = await client.post(
+        "/api/chat",
+        json={"message": "我胸口疼得厉害", "history": []},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["safety_warning"] is not None
+    assert "120" in data["safety_warning"]
+    assert data["model_used"] == "safety-layer"
+
+
+@pytest.mark.asyncio
+async def test_chat_synonym_breathing_difficulty_intercepted(
+    client: AsyncClient, auth_headers: dict
+):
+    """'喘不上气' (synonym of 呼吸困难) triggers the emergency safety layer."""
+    response = await client.post(
+        "/api/chat",
+        json={"message": "老人突然喘不上气了", "history": []},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["safety_warning"] is not None
+    assert "120" in data["safety_warning"]
+    assert data["model_used"] == "safety-layer"

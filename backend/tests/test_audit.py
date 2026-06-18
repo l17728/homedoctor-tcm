@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from app.audit import (
@@ -124,3 +126,40 @@ async def test_get_audit_trail_filter_by_entity(db):
 @pytest.mark.asyncio
 async def test_empty_chain_verifies(db):
     assert await verify_chain(db, "nonexistent-tenant") is True
+
+
+# ---------------------------------------------------------------------------
+# Concurrency — the hash chain must remain intact under concurrent appends
+# (audit gap P1.4). log_audit performs a read-then-write (latest hash lookup
+# then INSERT) without a serializing lock, so concurrent writers can race and
+# produce multiple entries chained off the same prev_hash. This test documents
+# that gap: it is marked xfail until log_audit guards the read-modify-write
+# with a lock/transaction. When fixed, this will XPASS and the marker should
+# be removed.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.xfail(
+    reason="log_audit read-modify-write is not serialized; concurrent appends "
+           "can break the hash chain (prev_hash races). Track fix in audit.py.",
+    strict=False,
+)
+@pytest.mark.asyncio
+async def test_concurrent_audit_writes_maintain_chain(db):
+    """50 concurrent log_audit calls must leave a verifiable chain."""
+    tenant = "concurrent-tenant"
+    await asyncio.gather(*[
+        log_audit(
+            db,
+            tenant_id=tenant,
+            user_id="u-1",
+            action="create",
+            entity_type="medicine",
+            entity_id=f"m-{i}",
+            changes={"index": i},
+        )
+        for i in range(50)
+    ])
+
+    trail = await get_audit_trail(db, tenant_id=tenant)
+    assert len(trail) == 50, f"expected 50 entries, got {len(trail)}"
+    assert await verify_chain(db, tenant) is True

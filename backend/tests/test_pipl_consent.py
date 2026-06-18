@@ -126,3 +126,44 @@ async def test_consent_status_returns_stored_consent(client: AsyncClient, auth_h
     assert status["consent_privacy"] is True
     assert status["consent_health_data"] is True
     assert status["consent_date"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Health-data consent enforcement (audit gap P2.11).
+# Spec §12.2 requires health features to need separate consent. Currently the
+# profile/health endpoints do NOT check consent_health_data, so a user who
+# declined health consent can still write health data. This test documents the
+# expected behaviour and is marked xfail until enforcement is added to the
+# routers/middleware. When implemented it will XPASS and the marker should be
+# removed.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.xfail(
+    reason="health-data endpoints do not yet enforce consent_health_data; "
+           "PIPL §12.2 requires blocking/warning health writes without consent.",
+    strict=False,
+)
+@pytest.mark.asyncio
+async def test_health_features_blocked_without_consent(client: AsyncClient):
+    """A user who declined health-data consent must be blocked from health writes."""
+    response = await client.post("/api/auth/register", json={
+        "username": "nohealthconsent-block",
+        "password": "password123",
+        "consent_privacy": True,
+        "consent_health_data": False,
+    })
+    assert response.status_code == 201
+    token = response.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Writing health profile data should be refused (403) or warned because the
+    # user did not consent to health-data processing.
+    profile_resp = await client.put(
+        "/api/profile",
+        json={"display_name": "测试", "allergies": ["花粉"], "height_cm": 170},
+        headers=headers,
+    )
+    assert profile_resp.status_code in (403, 422), (
+        "health-data write must be blocked without consent_health_data, got "
+        f"{profile_resp.status_code}"
+    )

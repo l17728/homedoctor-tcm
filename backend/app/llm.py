@@ -256,7 +256,7 @@ async def _validate_and_augment(content: str) -> str:
     herbs table. If unknown names are found, appends a safety warning.
     """
     try:
-        mentioned = _extract_herb_names(content)
+        mentioned = await _extract_herb_names_with_db(content)
         if not mentioned:
             return content
 
@@ -333,7 +333,7 @@ async def _check_grounding(
             return content, ungrounded
 
     try:
-        mentioned = _extract_herb_names(content)
+        mentioned = await _extract_herb_names_with_db(content, db)
         if not mentioned:
             return content, ungrounded
 
@@ -803,11 +803,15 @@ _CJK_PATTERN = re.compile(r"^[\u4e00-\u9fff]+$")
 
 
 def _extract_herb_names(text: str) -> list[str]:
-    """Extract potential Chinese herb names from LLM output text.
+    """Extract potential Chinese herb names from LLM output text (bracket-only).
 
     Conservative extraction — only flags names that:
+    - Appear inside brackets like 「」【】《》
     - Are 2-4 pure CJK characters (typical herb name length)
     - Are NOT common TCM diagnostic/concept terms
+
+    For full-text matching against the herbs database, use
+    :func:`_extract_herb_names_with_db` instead (spec §8.5 / Expert #10).
     """
     candidates: set[str] = set()
 
@@ -817,6 +821,46 @@ def _extract_herb_names(text: str) -> list[str]:
             candidates.add(name)
 
     return list(candidates)
+
+
+async def _extract_herb_names_with_db(
+    text: str, db: Any = None
+) -> list[str]:
+    """Extract herb names using BOTH bracket matching AND full-text DB lookup.
+
+    Expert #10 fix: the bracket-only :func:`_extract_herb_names` misses herbs
+    that the LLM mentions in natural prose without brackets (e.g. "可以用黄芪
+    煲汤"). This async variant queries all herb names from the database and
+    checks if any appear as substrings in *text*.
+
+    Returns a deduplicated list preserving discovery order (bracket hits first,
+    then full-text DB matches).
+    """
+    extracted: list[str] = list(_extract_herb_names(text))
+
+    if db is None:
+        try:
+            from app.database import get_db
+            db = get_db()
+        except RuntimeError:
+            return extracted
+        except Exception:
+            return extracted
+
+    try:
+        all_herbs = await db.query("SELECT name FROM herbs")
+        existing = set(extracted)
+        for row in all_herbs:
+            name = row["name"]
+            if name and name in text and name not in existing:
+                # Avoid TCM concept terms that happen to be herb names
+                if name not in _TCM_CONCEPT_TERMS:
+                    extracted.append(name)
+                    existing.add(name)
+    except Exception as e:
+        logger.debug("Full-text herb extraction skipped: %s", e)
+
+    return extracted
 
 
 def _is_potential_herb_name(name: str) -> bool:

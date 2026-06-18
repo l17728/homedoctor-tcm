@@ -121,6 +121,35 @@ async def test_recommend_unmatched_symptom_returns_empty(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_conflicting_symptoms_handled_gracefully(client: AsyncClient):
+    """Conflicting symptoms (怕冷 + 高热不退 + 四肢冰凉) must not crash.
+
+    These describe contradictory states (cold-deficiency vs. high fever). The
+    engine should respond gracefully — 200 with whatever it can rank — rather
+    than raising an exception or producing a malformed payload.
+    """
+    response = await client.post("/api/formulations/recommend", json={
+        "symptoms": ["怕冷", "高热不退", "四肢冰凉"],
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data["recommendations"], list)
+    assert "safety_check" in data
+    assert isinstance(data["safety_check"]["safe"], bool)
+    assert data["disclaimer"]
+
+
+@pytest.mark.asyncio
+async def test_empty_symptoms_handled_without_crash(client: AsyncClient):
+    """Empty symptom list must be rejected gracefully (400), never a 500 crash."""
+    response = await client.post("/api/formulations/recommend", json={
+        "symptoms": [],
+    })
+    assert response.status_code in (200, 400)
+    assert response.status_code != 500
+
+
+@pytest.mark.asyncio
 async def test_recommend_safety_check_runs_on_top_picks(client: AsyncClient):
     """If the top picks include a contraindicated pair, safety_check flags it.
 

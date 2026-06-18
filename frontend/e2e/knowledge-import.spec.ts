@@ -19,11 +19,11 @@ test.describe('Knowledge Import Page — 知识导入', () => {
     await page.goto('/knowledge-import');
 
     await expect(page).toHaveURL('/knowledge-import');
-    // Page title "知识导入"
-    await expect(page.getByText('知识导入').first()).toBeVisible();
+    // Page title heading "知识导入"
+    await expect(page.getByRole('heading', { name: /知识导入/ })).toBeVisible();
 
-    // Upload Dragger area
-    await expect(page.locator('.ant-upload-dragger')).toBeVisible();
+    // Upload Dragger area (AntD 5 uses .ant-upload-drag class)
+    await expect(page.locator('.ant-upload-drag')).toBeVisible();
 
     // Upload hint text
     await expect(page.getByText(/点击或拖拽文件到此处/)).toBeVisible();
@@ -35,7 +35,7 @@ test.describe('Knowledge Import Page — 知识导入', () => {
     // File type support tags
     await expect(page.getByText('PDF').first()).toBeVisible();
     await expect(page.getByText('Word').first()).toBeVisible();
-    await expect(page.getByText(/TXT.*Markdown/)).toBeVisible();
+    await expect(page.getByText(/TXT.*Markdown/).first()).toBeVisible();
     await expect(page.getByText(/图片.*OCR/)).toBeVisible();
 
     // Should mention size limit
@@ -63,8 +63,8 @@ test.describe('Knowledge Import Page — 知识导入', () => {
   test('should have upload area that accepts file input', async ({ page }) => {
     await page.goto('/knowledge-import');
 
-    // The Dragger should have a hidden file input
-    const fileInput = page.locator('.ant-upload-dragger input[type="file"]');
+    // The Dragger should have a hidden file input (AntD 5 uses .ant-upload-drag)
+    const fileInput = page.locator('.ant-upload-drag input[type="file"]');
     await expect(fileInput).toHaveCount(1);
 
     // Verify accepted file types

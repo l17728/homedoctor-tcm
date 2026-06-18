@@ -93,7 +93,7 @@ export default function LoginPage() {
         background: '#f0f2f5',
       }}
     >
-      <Card style={{ width: 400 }}>
+      <Card style={{ width: '90%', maxWidth: 400 }}>
         <Title level={3} style={{ textAlign: 'center', marginBottom: 24 }}>
           家庭医生
         </Title>

@@ -1,58 +1,74 @@
 /**
  * Extended E2E test helpers for 家庭医生 (Family Doctor) project.
  *
- * This file supplements helpers.ts with a registration flow that handles
- * the PIPL consent checkboxes and birth year field required by the
- * current login page (added after the original helpers.ts was written).
+ * Registers via backend API + caches token at module level so each Playwright
+ * worker makes at most ONE registration call. Subsequent tests in the same
+ * worker reuse the cached token via localStorage.
  *
- * Usage: import { registerWithConsent } from './test-helpers';
+ * Usage: import { registerWithConsent as register } from './test-helpers';
  */
 import { type Page } from '@playwright/test';
-import { chineseText, DEFAULT_PASSWORD } from './helpers';
+import { DEFAULT_PASSWORD } from './helpers';
 
-/**
- * Register a new user via the UI, handling PIPL consent checkboxes.
- *
- * The login page registration form requires:
- * 1. Username + password + confirm password
- * 2. Privacy policy checkbox (mandatory — shows "请同意隐私政策" error if unchecked)
- * 3. Health data consent checkbox (optional)
- * 4. Birth year spinbutton (optional, for minor protection)
- *
- * Waits for redirect to the home page.
- */
+interface BackendAuthResponse {
+  access_token: string;
+  token_type: string;
+  user: { id: string; username: string };
+}
+
+// Module-level cache: shared across all tests in the same Playwright worker.
+// Each worker process imports this module once, so only ONE API registration
+// happens per worker regardless of how many tests/files it runs.
+let cachedToken: string | null = null;
+let cachedUser: { id: string; username: string } | null = null;
+
+async function setAuthAndNavigate(page: Page): Promise<void> {
+  await page.goto('/login');
+  await page.evaluate(
+    ({ token, user }) => {
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
+    },
+    { token: cachedToken!, user: cachedUser! },
+  );
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+}
+
 export async function registerWithConsent(
   page: Page,
   username: string,
   password: string = DEFAULT_PASSWORD,
 ): Promise<void> {
-  await page.goto('/login');
-  // Switch to register tab (AntD Tabs component)
-  await page.getByRole('tab', { name: chineseText('注册') }).click();
-  await page.waitForTimeout(300);
-
-  // Scope to active tab pane — AntD keeps both login/register forms in DOM
-  const activePane = page.locator('.ant-tabs-tabpane-active');
-  await activePane.getByPlaceholder('用户名').fill(username);
-  await activePane.getByPlaceholder('密码', { exact: true }).fill(password);
-  await activePane.getByPlaceholder('确认密码').fill(password);
-
-  // Check the mandatory privacy policy consent checkbox
-  const privacyCheckbox = activePane.getByRole('checkbox', {
-    name: /隐私政策.*用户协议/,
-  });
-  await privacyCheckbox.check();
-
-  // Optionally check health data consent checkbox
-  const healthCheckbox = activePane.getByRole('checkbox', {
-    name: /健康数据/,
-  });
-  const healthVisible = await healthCheckbox.isVisible().catch(() => false);
-  if (healthVisible) {
-    await healthCheckbox.check();
+  if (cachedToken && cachedUser) {
+    await setAuthAndNavigate(page);
+    return;
   }
 
-  // Click register button
-  await activePane.getByRole('button', { name: chineseText('注册') }).click();
-  await page.waitForURL('/', { timeout: 15000 });
+  const response = await page.request.post('/api/auth/register', {
+    data: {
+      username,
+      password,
+      consent_privacy: true,
+      consent_health_data: true,
+    },
+  });
+
+  let authData: BackendAuthResponse;
+
+  if (response.ok()) {
+    authData = (await response.json()) as BackendAuthResponse;
+  } else {
+    const loginResponse = await page.request.post('/api/auth/login', {
+      data: { username, password },
+    });
+    if (!loginResponse.ok()) {
+      throw new Error(`Auth failed for ${username}`);
+    }
+    authData = (await loginResponse.json()) as BackendAuthResponse;
+  }
+
+  cachedToken = authData.access_token;
+  cachedUser = authData.user;
+  await setAuthAndNavigate(page);
 }

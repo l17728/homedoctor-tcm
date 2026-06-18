@@ -1,6 +1,6 @@
 """智能用药排程引擎 — spec §15 安全排程.
 
-用户选择一组药物 → 系统生成周一到周五的服药清单 → 表格可视化几点吃什么药
+用户选择一组药物 → 系统生成周一到周日的服药清单 → 表格可视化几点吃什么药
 → 标注哪些不能一起吃、哪些要一起吃、哪些要隔多久 → 严格的保证符合各种规则.
 
 Algorithm overview:
@@ -57,7 +57,7 @@ class DaySchedule:
 
 @dataclass
 class WeeklySchedule:
-    """Complete weekly medication schedule (周一~周五)."""
+    """Complete weekly medication schedule (周一~周日)."""
 
     days: list[DaySchedule]
     conflicts_found: list[dict]    # all conflict pairs detected
@@ -116,7 +116,7 @@ NOTE_PREFERENCE: dict[str, str] = {
     "夜间": "睡前",
 }
 
-DAY_NAMES: list[str] = ["周一", "周二", "周三", "周四", "周五"]
+DAY_NAMES: list[str] = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
 # Synergy hints — medications that SHOULD be taken together
 SYNERGY_HINTS: dict[str, str] = {
@@ -594,7 +594,7 @@ def _build_day_slots(
 ) -> list[MedicationSlot]:
     """Build MedicationSlot list for a single day.
 
-    Handles alternate-day medications (隔日1次): taken on Mon/Wed/Fri (day_idx 0,2,4).
+    Handles alternate-day medications (隔日1次): taken on Mon/Wed/Fri/Sun (day_idx 0,2,4,6).
     """
     slots: list[MedicationSlot] = []
     med_by_name = {m.name: m for m in medications}
@@ -623,7 +623,7 @@ def _build_day_slots(
                 continue
 
             # Skip alternate-day meds on non-alternate days
-            if _is_alternate_day(med) and day_idx not in (0, 2, 4):
+            if _is_alternate_day(med) and day_idx not in (0, 2, 4, 6):
                 continue
 
             reason = med_reasons.get(name, {}).get(period, "")
@@ -647,7 +647,7 @@ def _build_day_slots(
                 p for p in SLOT_ORDER
                 if any(
                     med_by_name.get(n) and
-                    (not _is_alternate_day(med_by_name[n]) or day_idx in (0, 2, 4)) and
+                    (not _is_alternate_day(med_by_name[n]) or day_idx in (0, 2, 4, 6)) and
                     n in slot_assignments.get(p, [])
                     for n in [a]
                 )
@@ -656,7 +656,7 @@ def _build_day_slots(
                 p for p in SLOT_ORDER
                 if any(
                     med_by_name.get(n) and
-                    (not _is_alternate_day(med_by_name[n]) or day_idx in (0, 2, 4)) and
+                    (not _is_alternate_day(med_by_name[n]) or day_idx in (0, 2, 4, 6)) and
                     n in slot_assignments.get(p, [])
                     for n in [b]
                 )
@@ -695,7 +695,7 @@ def _build_summary(
 ) -> str:
     """Build a human-readable summary of the weekly schedule."""
     lines: list[str] = []
-    lines.append(f"📋 本周用药排程共涉及{len(medications)}种药物，覆盖周一至周五。")
+    lines.append(f"📋 本周用药排程共涉及{len(medications)}种药物，覆盖周一至周日。")
 
     # Conflicts
     hard_conflicts = [
@@ -781,7 +781,7 @@ async def generate_weekly_schedule(
     medications: list[MedicationInput],
     user_profile: dict | None = None,
 ) -> WeeklySchedule:
-    """Generate a safe weekly medication schedule (周一~周五).
+    """Generate a safe weekly medication schedule (周一~周日).
 
     Algorithm:
       1. Extract herb/medicine names from medications
@@ -967,7 +967,7 @@ EXPERT_REVIEW_PROMPT = """你是中医+西药临床药学专家。请评审以�
 药物清单：
 {medications}
 
-服药时刻表（周一~周五）：
+服药时刻表（周一~周日）：
 {schedule_text}
 
 安全检查结果：

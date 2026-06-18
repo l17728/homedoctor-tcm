@@ -70,6 +70,73 @@ const FREQUENCY_OPTIONS = [
   { label: '自定义', value: 'custom' },
 ];
 
+/**
+ * Multi-time selector — replaces TimePicker.RangePicker which only
+ * supports exactly 2 times. This component allows N independent times.
+ * Value/onChange use dayjs.Dayjs[] to stay compatible with Form validation.
+ */
+interface MultiTimePickerProps {
+  value?: dayjs.Dayjs[];
+  onChange?: (value: dayjs.Dayjs[]) => void;
+}
+
+function MultiTimePicker({ value = [], onChange }: MultiTimePickerProps) {
+  const times = value ?? [];
+
+  const handleChange = (idx: number, time: dayjs.Dayjs | null) => {
+    const next = [...times];
+    if (time) next[idx] = time;
+    onChange?.(next);
+  };
+
+  const handleAdd = () => {
+    // 默认添加 08:00
+    const last = times[times.length - 1];
+    const next = last ? last.add(4, 'hour') : dayjs().hour(8).minute(0).second(0);
+    onChange?.([...times, next]);
+  };
+
+  const handleRemove = (idx: number) => {
+    const next = times.filter((_, i) => i !== idx);
+    onChange?.(next);
+  };
+
+  return (
+    <div>
+      <Space direction="vertical" style={{ width: '100%' }} size="small">
+        {times.map((t, idx) => (
+          <Space key={idx} style={{ width: '100%' }} align="center">
+            <TimePicker
+              value={t}
+              format="HH:mm"
+              minuteStep={5}
+              style={{ flex: 1 }}
+              onChange={(time) => handleChange(idx, time)}
+              allowClear={false}
+            />
+            <Button
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleRemove(idx)}
+              disabled={times.length <= 1}
+              aria-label="删除该时间"
+            />
+          </Space>
+        ))}
+        <Button
+          type="dashed"
+          icon={<PlusOutlined />}
+          onClick={handleAdd}
+          style={{ width: '100%' }}
+        >
+          添加时间
+        </Button>
+      </Space>
+    </div>
+  );
+}
+
 export default function RemindersPage() {
   const isMobile = useIsMobile();
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -502,7 +569,7 @@ export default function RemindersPage() {
             <Select options={FREQUENCY_OPTIONS} />
           </Form.Item>
           <Form.Item label="提醒时间" name="times" rules={[{ required: true, message: '请至少选择一个时间' }]}>
-            <TimePicker.RangePicker format="HH:mm" style={{ width: '100%' }} />
+            <MultiTimePicker />
           </Form.Item>
           <Form.Item label="开始日期" name="startDate" rules={[{ required: true, message: '请选择开始日期' }]}>
             <DatePicker style={{ width: '100%' }} />

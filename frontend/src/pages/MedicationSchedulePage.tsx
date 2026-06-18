@@ -18,6 +18,7 @@ import {
   Tooltip,
   Popover,
   Divider,
+  Steps,
   message,
   theme,
 } from 'antd';
@@ -37,6 +38,8 @@ import {
   HistoryOutlined,
   CopyOutlined,
   FileAddOutlined,
+  ArrowLeftOutlined,
+  ArrowRightOutlined,
 } from '@ant-design/icons';
 import { getMedicines, type Medicine } from '../api/medicineApi';
 import {
@@ -335,6 +338,9 @@ export default function MedicationSchedulePage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [submittingCustom, setSubmittingCustom] = useState(false);
   const [customForm] = Form.useForm<CustomMedication>();
+
+  // 步骤导航（选择药物 → 设置频率 → 生成计划）
+  const [currentStep, setCurrentStep] = useState(0);
 
   // 加载药箱
   const loadCabinet = useCallback(async () => {
@@ -714,160 +720,110 @@ export default function MedicationSchedulePage() {
           >
             加载上次计划
           </Button>
-          <Button
-            type="primary"
-            size="large"
-            icon={<ScheduleOutlined />}
-            onClick={handleGenerate}
-            loading={generating}
-            disabled={selectedMeds.length === 0}
-          >
-            {schedule ? '重新生成' : '生成计划'}
-          </Button>
         </Space>
       </div>
 
-      {/* 第一步：选择药物 */}
+      {/* 步骤式选择流程：选择药物 → 设置频率 → 生成计划 */}
       <Card
         className="no-print"
         style={{ marginBottom: 16, borderRadius: 12 }}
         styles={{ body: { padding: isMobile ? 16 : 24 } }}
       >
-        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <MedicineBoxOutlined style={{ color: token.colorPrimary, fontSize: 18 }} />
-          <Text strong style={{ fontSize: 17 }}>从药箱选择药物</Text>
-          <Text type="secondary" style={{ fontSize: 14 }}>
-            （点击卡片选择/取消，已选 {selectedMeds.length} 种）
-          </Text>
-        </div>
+        <Steps
+          current={currentStep}
+          size="small"
+          style={{ marginBottom: 24 }}
+          items={[
+            { title: '选择药物' },
+            { title: '设置频率' },
+            { title: '生成计划' },
+          ]}
+        />
 
-        {cabinetLoading ? (
-          <Skeleton active paragraph={{ rows: 3 }} />
-        ) : cabinetMeds.length === 0 && customMeds.length === 0 ? (
-          <Empty
-            description="药箱为空，请先添加药物到药箱，或使用下方「添加自定义药物」"
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            style={{ margin: '16px 0' }}
-          />
-        ) : (
-          <Row gutter={[8, 8]}>
-            {cabinetMeds.map((m) => {
-              const checked = selectedIds.has(m.id);
-              return (
-                <Col xs={24} sm={12} lg={8} xl={6} key={m.id}>
-                  <div
-                    className={`medsched-med-pick ${checked ? 'selected' : ''}`}
-                    onClick={() => toggleMed(m.id)}
-                    role="checkbox"
-                    aria-checked={checked}
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        toggleMed(m.id);
-                      }
-                    }}
-                  >
-                    <Checkbox checked={checked} tabIndex={-1} />
-                    <span className="medsched-med-name">{m.name}</span>
-                    {m.type && (
-                      <Tag color={MED_TYPE_COLOR[m.type] ?? 'default'} style={{ margin: 0 }}>
-                        {m.type}
+        {/* ===== Step 0: 选择药物 ===== */}
+        {currentStep === 0 && (
+          <>
+            <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <MedicineBoxOutlined style={{ color: token.colorPrimary, fontSize: 18 }} />
+              <Text strong style={{ fontSize: 17 }}>从药箱选择药物</Text>
+              <Text type="secondary" style={{ fontSize: 14 }}>
+                （点击卡片选择/取消，已选 {selectedMeds.length} 种）
+              </Text>
+            </div>
+
+            {cabinetLoading ? (
+              <Skeleton active paragraph={{ rows: 3 }} />
+            ) : cabinetMeds.length === 0 && customMeds.length === 0 ? (
+              <Empty
+                description="药箱为空，请先添加药物到药箱，或使用下方「添加自定义药物」"
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                style={{ margin: '16px 0' }}
+              />
+            ) : (
+              <Row gutter={[8, 8]}>
+                {cabinetMeds.map((m) => {
+                  const checked = selectedIds.has(m.id);
+                  return (
+                    <Col xs={24} sm={12} lg={8} xl={6} key={m.id}>
+                      <div
+                        className={`medsched-med-pick ${checked ? 'selected' : ''}`}
+                        onClick={() => toggleMed(m.id)}
+                        role="checkbox"
+                        aria-checked={checked}
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            toggleMed(m.id);
+                          }
+                        }}
+                      >
+                        <Checkbox checked={checked} tabIndex={-1} />
+                        <span className="medsched-med-name">{m.name}</span>
+                        {m.type && (
+                          <Tag color={MED_TYPE_COLOR[m.type] ?? 'default'} style={{ margin: 0 }}>
+                            {m.type}
+                          </Tag>
+                        )}
+                        {m.dosage && (
+                          <span className="medsched-med-dosage">{m.dosage}</span>
+                        )}
+                      </div>
+                    </Col>
+                  );
+                })}
+                {customMeds.map((c) => (
+                  <Col xs={24} sm={12} lg={8} xl={6} key={c.localId}>
+                    <div
+                      className="medsched-med-pick selected"
+                      style={{ borderColor: token.colorPrimary, background: COLOR_INFO_BG }}
+                    >
+                      <ExperimentOutlined style={{ color: COLOR_INFO }} />
+                      <span className="medsched-med-name">{c.name}</span>
+                      <Tag color={MED_TYPE_COLOR[c.type] ?? 'default'} style={{ margin: 0 }}>
+                        {c.type}
                       </Tag>
-                    )}
-                    {m.dosage && (
-                      <span className="medsched-med-dosage">{m.dosage}</span>
-                    )}
-                  </div>
-                </Col>
-              );
-            })}
-            {customMeds.map((c) => (
-              <Col xs={24} sm={12} lg={8} xl={6} key={c.localId}>
-                <div
-                  className="medsched-med-pick selected"
-                  style={{ borderColor: token.colorPrimary, background: COLOR_INFO_BG }}
-                >
-                  <ExperimentOutlined style={{ color: COLOR_INFO }} />
-                  <span className="medsched-med-name">{c.name}</span>
-                  <Tag color={MED_TYPE_COLOR[c.type] ?? 'default'} style={{ margin: 0 }}>
-                    {c.type}
-                  </Tag>
-                  <span className="medsched-med-dosage">{c.dosage}</span>
-                  <Button
-                    type="text"
-                    size="small"
-                    danger
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeMed({ localId: c.localId });
-                    }}
-                    style={{ padding: '0 4px', height: 'auto' }}
-                  >
-                    ×
-                  </Button>
-                </div>
-              </Col>
-            ))}
-          </Row>
-        )}
+                      <span className="medsched-med-dosage">{c.dosage}</span>
+                      <Button
+                        type="text"
+                        size="small"
+                        danger
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeMed({ localId: c.localId });
+                        }}
+                        style={{ padding: '0 4px', height: 'auto' }}
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  </Col>
+                ))}
+              </Row>
+            )}
 
-        {/* 已选药物标签 */}
-        {selectedMeds.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <Text type="secondary" style={{ fontSize: 14 }}>本次参与排程：</Text>
-            <Space wrap size={[6, 6]} style={{ marginTop: 6 }}>
-              {selectedMeds.map((m, i) => {
-                const id = cabinetMeds.find((c) => c.name === m.name)?.id;
-                const custom = customMeds.find((c) => c.name === m.name);
-                return (
-                  <Tag
-                    key={`${m.name}-${i}`}
-                    color={MED_TYPE_COLOR[m.type] ?? 'blue'}
-                    closable
-                    onClose={() => removeMed({ id, localId: custom?.localId })}
-                    style={{ fontSize: 14, padding: '2px 8px' }}
-                  >
-                    {m.name} · {m.dosage}
-                  </Tag>
-                );
-              })}
-            </Space>
-          </div>
-        )}
+            <Divider style={{ margin: '16px 0' }} />
 
-        <Divider style={{ margin: '16px 0' }} />
-
-        {/* 频率 & 说明 + 自定义入口 */}
-        <Row gutter={[12, 12]} align="middle">
-          <Col xs={24} sm={8}>
-            <Text strong style={{ fontSize: 15, display: 'block', marginBottom: 6 }}>
-              服用频率
-            </Text>
-            <Select
-              value={frequency}
-              onChange={setFrequency}
-              options={FREQUENCY_OPTIONS}
-              style={{ width: '100%' }}
-              size="large"
-            />
-          </Col>
-          <Col xs={24} sm={10}>
-            <Text strong style={{ fontSize: 15, display: 'block', marginBottom: 6 }}>
-              服用说明
-            </Text>
-            <Select
-              mode="tags"
-              value={notes ? [notes] : []}
-              onChange={(vals) => setNotes(vals[0] ?? '')}
-              options={NOTES_OPTIONS.map((n) => ({ label: n, value: n }))}
-              placeholder="选择或输入说明"
-              style={{ width: '100%' }}
-              size="large"
-              maxCount={1}
-            />
-          </Col>
-          <Col xs={24} sm={6}>
             <Button
               block
               size="large"
@@ -876,12 +832,153 @@ export default function MedicationSchedulePage() {
                 customForm.resetFields();
                 setDrawerOpen(true);
               }}
-              style={{ marginTop: isMobile ? 0 : 28, height: 48 }}
+              style={{ height: 48 }}
             >
               添加自定义药物
             </Button>
-          </Col>
-        </Row>
+
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+              <Button
+                type="primary"
+                size="large"
+                icon={<ArrowRightOutlined />}
+                disabled={selectedMeds.length === 0}
+                onClick={() => setCurrentStep(1)}
+              >
+                下一步：设置频率
+              </Button>
+            </div>
+          </>
+        )}
+
+        {/* ===== Step 1: 设置频率 ===== */}
+        {currentStep === 1 && (
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <Text strong style={{ fontSize: 17 }}>设置服用频率与说明</Text>
+            </div>
+
+            <Row gutter={[12, 12]} align="middle">
+              <Col xs={24} sm={12}>
+                <Text strong style={{ fontSize: 15, display: 'block', marginBottom: 6 }}>
+                  服用频率
+                </Text>
+                <Select
+                  value={frequency}
+                  onChange={setFrequency}
+                  options={FREQUENCY_OPTIONS}
+                  style={{ width: '100%' }}
+                  size="large"
+                />
+              </Col>
+              <Col xs={24} sm={12}>
+                <Text strong style={{ fontSize: 15, display: 'block', marginBottom: 6 }}>
+                  服用说明
+                </Text>
+                <Select
+                  mode="tags"
+                  value={notes ? [notes] : []}
+                  onChange={(vals) => setNotes(vals[0] ?? '')}
+                  options={NOTES_OPTIONS.map((n) => ({ label: n, value: n }))}
+                  placeholder="选择或输入说明"
+                  style={{ width: '100%' }}
+                  size="large"
+                  maxCount={1}
+                />
+              </Col>
+            </Row>
+
+            {/* 已选药物标签 */}
+            {selectedMeds.length > 0 && (
+              <div style={{ marginTop: 20 }}>
+                <Text type="secondary" style={{ fontSize: 14 }}>本次参与排程：</Text>
+                <Space wrap size={[6, 6]} style={{ marginTop: 6 }}>
+                  {selectedMeds.map((m, i) => {
+                    const id = cabinetMeds.find((c) => c.name === m.name)?.id;
+                    const custom = customMeds.find((c) => c.name === m.name);
+                    return (
+                      <Tag
+                        key={`${m.name}-${i}`}
+                        color={MED_TYPE_COLOR[m.type] ?? 'blue'}
+                        closable
+                        onClose={() => removeMed({ id, localId: custom?.localId })}
+                        style={{ fontSize: 14, padding: '2px 8px' }}
+                      >
+                        {m.name} · {m.dosage}
+                      </Tag>
+                    );
+                  })}
+                </Space>
+              </div>
+            )}
+
+            <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between' }}>
+              <Button
+                size="large"
+                icon={<ArrowLeftOutlined />}
+                onClick={() => setCurrentStep(0)}
+              >
+                上一步
+              </Button>
+              <Button
+                type="primary"
+                size="large"
+                icon={<ArrowRightOutlined />}
+                onClick={() => setCurrentStep(2)}
+              >
+                下一步：生成计划
+              </Button>
+            </div>
+          </>
+        )}
+
+        {/* ===== Step 2: 生成计划 ===== */}
+        {currentStep === 2 && (
+          <>
+            <div style={{ marginBottom: 16 }}>
+              <Text strong style={{ fontSize: 17 }}>确认并生成计划</Text>
+            </div>
+
+            <Alert
+              type="info"
+              showIcon
+              message={`将生成包含 ${selectedMeds.length} 种药物的本周服药计划`}
+              description={
+                <Space direction="vertical" size={4} style={{ marginTop: 4 }}>
+                  <Text style={{ fontSize: 14 }}>
+                    频率：{FREQUENCY_OPTIONS.find((f) => f.value === frequency)?.label ?? frequency}
+                  </Text>
+                  {notes && <Text style={{ fontSize: 14 }}>说明：{notes}</Text>}
+                  <Text type="secondary" style={{ fontSize: 13 }}>
+                    {selectedMeds.map((m) => m.name).join('、')}
+                  </Text>
+                </Space>
+              }
+              style={{ marginBottom: 24, borderRadius: 10 }}
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <Button
+                size="large"
+                icon={<ArrowLeftOutlined />}
+                onClick={() => setCurrentStep(1)}
+              >
+                上一步
+              </Button>
+              <Button
+                type="primary"
+                size="large"
+                icon={<ScheduleOutlined />}
+                onClick={handleGenerate}
+                loading={generating}
+                disabled={selectedMeds.length === 0}
+                style={{ minWidth: 200, height: 48 }}
+              >
+                {schedule ? '重新生成' : '生成计划'}
+              </Button>
+            </div>
+          </>
+        )}
       </Card>
 
       {/* 第二步：生成中 */}

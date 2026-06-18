@@ -9,6 +9,7 @@
  * - Graph stats text visible
  */
 import { test, expect } from '@playwright/test';
+import { chineseText } from './helpers';
 import { registerWithConsent as register } from './test-helpers';
 
 test.describe('Knowledge Graph Page — 知识图谱', () => {
@@ -20,8 +21,8 @@ test.describe('Knowledge Graph Page — 知识图谱', () => {
     await page.goto('/knowledge-graph');
 
     await expect(page).toHaveURL('/knowledge-graph');
-    // Title "知识图谱"
-    await expect(page.getByText('知识图谱').first()).toBeVisible();
+    // Page title heading "知识图谱" (heading role avoids sidebar menu match)
+    await expect(page.getByRole('heading', { name: /知识图谱/ })).toBeVisible();
     // Subtitle
     await expect(page.getByText(/中药.*方剂.*症状.*疗法/)).toBeVisible();
   });
@@ -80,11 +81,11 @@ test.describe('Knowledge Graph Page — 知识图谱', () => {
     await page.getByRole('button', { name: /重建图谱/ }).click();
     await page.waitForTimeout(500);
 
-    // Popconfirm should appear with confirm/cancel buttons
+    // Popconfirm should appear with confirm/cancel text (chineseText handles AntD 2-char spacing)
     await expect(page.getByText('确认重建')).toBeVisible();
-    await expect(page.getByRole('button', { name: /取消/ })).toBeVisible();
+    await expect(page.getByText(chineseText('取消'))).toBeVisible();
 
     // Cancel the confirmation
-    await page.getByRole('button', { name: /取消/ }).click();
+    await page.getByText(chineseText('取消')).click();
   });
 });
