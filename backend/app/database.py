@@ -384,6 +384,22 @@ DDL_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_classic_chapters_classic ON classic_chapters(classic_id)",
     "CREATE INDEX IF NOT EXISTS idx_classic_annotations_user_chapter ON classic_annotations(user_id, chapter_id)",
     "CREATE INDEX IF NOT EXISTS idx_classic_study_notes_user_classic ON classic_study_notes(user_id, classic_id)",
+    # -- 健康分享卡 & 月度家庭健康报告 (spec §13.3 V3)
+    # 结构化数据是权威来源；分享卡为派生视图，持久化以便列表/删除/回顾。
+    """CREATE TABLE IF NOT EXISTS share_cards (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        family_id TEXT NOT NULL,
+        member_id TEXT,
+        card_type TEXT NOT NULL,
+        card_data TEXT NOT NULL DEFAULT '{}',
+        month TEXT,
+        is_monthly_report INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_share_cards_user ON share_cards(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_share_cards_family ON share_cards(family_id)",
+    "CREATE INDEX IF NOT EXISTS idx_share_cards_monthly ON share_cards(is_monthly_report, month)",
 ]
 
 FTS_STATEMENTS = [
