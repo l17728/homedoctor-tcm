@@ -35,6 +35,7 @@ import {
 import { saveKnowledgeCard } from '../api/favoriteApi';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -53,6 +54,7 @@ const containsTreatmentAdvice = (content: string): boolean =>
   TREATMENT_ADVICE_KEYWORDS.some((kw) => content.includes(kw));
 
 export default function ChatPage() {
+  const isMobile = useIsMobile();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -346,10 +348,10 @@ export default function ChatPage() {
 
       <div
         style={{
-          height: 'calc(100vh - 320px)',
+          height: isMobile ? 'calc(100vh - 280px)' : 'calc(100vh - 320px)',
           overflowY: 'auto',
           marginBottom: 16,
-          padding: 16,
+          padding: isMobile ? 8 : 16,
           background: '#fafafa',
           borderRadius: 8,
         }}
@@ -374,7 +376,7 @@ export default function ChatPage() {
                   size="small"
                   style={{
                     background: msg.role === 'user' ? '#e6f7ff' : '#f6ffed',
-                    maxWidth: '80%',
+                    maxWidth: isMobile ? '90%' : '80%',
                     marginLeft: msg.role === 'user' ? 'auto' : 0,
                     marginRight: msg.role === 'user' ? 0 : 'auto',
                   }}

@@ -30,6 +30,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getFormula, type Formula, type ModificationItem } from '../api/formulaApi';
 import { createFavorite, deleteFavorite, checkFavorite } from '../api/favoriteApi';
 import { request } from '../api/client';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Title, Text } = Typography;
 
@@ -84,6 +85,7 @@ function parseModifications(formula: Formula): ModificationItem[] {
 export default function FormulaDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [formula, setFormula] = useState<Formula | null>(null);
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
@@ -330,7 +332,7 @@ export default function FormulaDetail() {
         title="处方单预览"
         open={printOpen}
         onCancel={() => setPrintOpen(false)}
-        width={600}
+        width={isMobile ? '100%' : 600}
         className="no-print"
         footer={
           <Space>
