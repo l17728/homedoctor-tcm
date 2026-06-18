@@ -702,7 +702,14 @@ async def get_missed_alerts(
                 continue
 
             scheduled = now.replace(hour=int(sh), minute=int(sm), second=0, microsecond=0)
-            if now - scheduled < timedelta(hours=2):
+            delta = now - scheduled
+            if delta > timedelta(hours=12):
+                scheduled += timedelta(days=1)
+                delta = now - scheduled
+            elif delta < -timedelta(hours=12):
+                scheduled -= timedelta(days=1)
+                delta = now - scheduled
+            if delta < timedelta(hours=2):
                 continue
             if scheduled < cutoff:
                 continue
