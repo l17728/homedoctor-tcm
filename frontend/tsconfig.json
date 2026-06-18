@@ -21,5 +21,6 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src", "e2e"]
+  "include": ["src"],
+  "exclude": ["e2e", "node_modules"]
 }
