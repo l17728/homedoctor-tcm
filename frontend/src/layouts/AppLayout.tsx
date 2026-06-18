@@ -23,6 +23,7 @@ import {
   ReadOutlined,
   ExperimentOutlined,
   ShareAltOutlined,
+  ScheduleOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -129,6 +130,11 @@ export default function AppLayout() {
       key: '/medication-plans',
       icon: <MedicineBoxOutlined />,
       label: '用药套餐',
+    },
+    {
+      key: '/medication-schedule',
+      icon: <ScheduleOutlined />,
+      label: '服药计划',
     },
     {
       key: '/family',

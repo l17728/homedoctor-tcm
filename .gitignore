@@ -60,3 +60,4 @@ docker-compose.override.yml
 *.pem
 .secrets
 frontend/tsconfig.tsbuildinfo
+.playwright-mcp/

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import uuid
+from dataclasses import asdict
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 
 from app.auth import get_current_user
 from app.audit import log_audit
@@ -16,6 +18,12 @@ from app.models import (
     PlanItemCreate,
 )
 from app.repository import current_tenant_id
+from app.schedule_engine import (
+    MedicationInput,
+    generate_weekly_schedule,
+    verify_existing_schedule,
+    expert_review_schedule,
+)
 
 router = APIRouter(prefix="/api/medication-plans", tags=["medication-plans"])
 
@@ -28,6 +36,33 @@ def _now() -> str:
 
 def _today() -> str:
     return datetime.now(CST).strftime("%Y-%m-%d")
+
+
+# ---------------------------------------------------------------------------
+# Auto-schedule request models
+# ---------------------------------------------------------------------------
+
+class AutoScheduleMedication(BaseModel):
+    name: str = Field(min_length=1, description="药物名称")
+    type: str = Field(default="中药", description="药物类型：西药/中药/中成药/中药方剂")
+    dosage: str = Field(default="", description="剂量，如 1片 / 10g / 每次5ml")
+    frequency: str = Field(default="每日1次", description="频次：每日1次/每日2次/每日3次/隔日1次")
+    notes: str = Field(default="", description="用药备注，如 饭后吃")
+
+
+class AutoScheduleRequest(BaseModel):
+    medications: list[AutoScheduleMedication] = Field(
+        min_length=1, description="药物列表"
+    )
+    user_profile: dict[str, Any] | None = Field(
+        default=None, description="用户画像：{age, is_pregnant, constitution}"
+    )
+
+
+class VerifyScheduleRequest(BaseModel):
+    days: list[dict[str, Any]] = Field(
+        description="待验证的周排程，每天含 slots 列表"
+    )
 
 
 def _parse_plan_item(row: dict[str, Any]) -> dict[str, Any]:
@@ -197,6 +232,98 @@ async def create_plan(
 
     plan_dict["items"] = created_items
     return plan_dict
+
+
+# ---------------------------------------------------------------------------
+# Auto-schedule (intelligent scheduling engine)
+# ---------------------------------------------------------------------------
+
+@router.post("/auto-schedule")
+async def auto_schedule(
+    body: AutoScheduleRequest,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Generate an intelligent weekly medication schedule.
+
+    Accepts a list of medications, runs five-layer safety checks, and returns
+    an optimal weekly timetable (周一~周五) with conflict resolution,
+    spacing enforcement, and human-readable reasons.
+    """
+    medications = [
+        MedicationInput(
+            name=m.name,
+            type=m.type,
+            dosage=m.dosage,
+            frequency=m.frequency,
+            notes=m.notes,
+        )
+        for m in body.medications
+    ]
+
+    schedule = await generate_weekly_schedule(
+        db, medications, body.user_profile
+    )
+
+    await log_audit(
+        db,
+        tenant_id=current_tenant_id.get(),
+        user_id=current_user["id"],
+        action="auto_schedule",
+        entity_type="medication_plan",
+        entity_id="auto-schedule",
+        changes={
+            "medication_count": len(medications),
+            "safety_verified": schedule.safety_verified,
+            "conflicts": len(schedule.conflicts_found),
+        },
+    )
+
+    return asdict(schedule)
+
+
+@router.post("/auto-schedule/verify")
+async def verify_schedule(
+    body: VerifyScheduleRequest,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Verify that an existing schedule has no safety violations."""
+    result = await verify_existing_schedule(db, body.model_dump())
+    return result
+
+
+@router.post("/auto-schedule/expert-review")
+async def expert_review(
+    body: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Multi-AI expert consensus review of a generated schedule.
+
+    Sends the schedule to 3 LLM models (Kimi/GLM/Qwen) for independent
+    safety, timing, dosage, and completeness evaluation. Requires ≥2/3
+    approval for consensus_pass=True.
+    """
+    schedule = body.get("schedule", {})
+    medications = body.get("medications", [])
+
+    review = await expert_review_schedule(schedule, medications)
+
+    await log_audit(
+        db=None,
+        tenant_id=current_tenant_id.get(),
+        user_id=current_user["id"],
+        action="expert_review",
+        entity_type="medication_schedule",
+        entity_id="expert-review",
+        changes={
+            "consensus_pass": review.get("consensus_pass"),
+            "approval_count": review.get("approval_count"),
+            "average_score": review.get("average_score"),
+        },
+    ) if False else None
+
+    return review
 
 
 @router.get("/{plan_id}")

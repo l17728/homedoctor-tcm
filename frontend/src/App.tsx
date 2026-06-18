@@ -29,6 +29,7 @@ import ClassicsBookshelf from './pages/ClassicsBookshelf';
 import ClassicReader from './pages/ClassicReader';
 import TherapiesPage from './pages/TherapiesPage';
 import MedicationPlansPage from './pages/MedicationPlansPage';
+import MedicationSchedulePage from './pages/MedicationSchedulePage';
 import FormulationPage from './pages/FormulationPage';
 import BookmarksPage from './pages/BookmarksPage';
 import ComparisonPage from './pages/ComparisonPage';
@@ -87,6 +88,7 @@ function ThemedApp() {
           <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
           <Route path="therapies" element={<TherapiesPage />} />
           <Route path="medication-plans" element={<MedicationPlansPage />} />
+          <Route path="medication-schedule" element={<MedicationSchedulePage />} />
           <Route path="formulation" element={<FormulationPage />} />
           <Route path="bookmarks" element={<BookmarksPage />} />
           <Route path="comparison" element={<ComparisonPage />} />
