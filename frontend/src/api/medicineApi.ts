@@ -1,4 +1,4 @@
-import { request } from './client';
+import { request, requestUpload } from './client';
 
 export interface Medicine {
   id: string;
@@ -17,6 +17,23 @@ export interface PaginatedMedicines {
   page: number;
   pageSize: number;
   totalPages: number;
+}
+
+export interface OcrRecognitionResult {
+  name?: string;
+  type?: string;
+  specification?: string;
+  dosage_instructions?: string;
+  raw_text: string;
+  confidence: 'high' | 'medium' | 'low';
+  message?: string;
+}
+
+export interface BarcodeLookupResult {
+  valid: boolean;
+  barcode: string;
+  format?: string;
+  reason?: string;
 }
 
 const STORAGE_KEY = 'family_doctor_medicines';
@@ -184,4 +201,24 @@ export async function deleteMedicine(id: string): Promise<void> {
     const filtered = medicines.filter((m) => m.id !== id);
     saveMedicines(filtered);
   }
+}
+
+export async function recognizeMedicineImage(
+  file: File,
+): Promise<OcrRecognitionResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return requestUpload<OcrRecognitionResult>(
+    '/api/medicines/ocr-recognize',
+    formData,
+  );
+}
+
+export async function lookupBarcode(
+  barcode: string,
+): Promise<BarcodeLookupResult> {
+  return request<BarcodeLookupResult>('/api/medicines/barcode-lookup', {
+    method: 'POST',
+    body: JSON.stringify({ barcode }),
+  });
 }

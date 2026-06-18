@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Table,
   Button,
@@ -15,16 +15,25 @@ import {
   Typography,
   Space,
   Tag,
+  Alert,
+  Spin,
 } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  CameraOutlined,
+} from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
   getMedicines,
   createMedicine,
   updateMedicine,
   deleteMedicine,
+  recognizeMedicineImage,
   type Medicine,
   type PaginatedMedicines,
+  type OcrRecognitionResult,
 } from '../api/medicineApi';
 import { PAGE_SIZE, DRUG_STATUS_COLOR } from '../constants';
 import StatusTag from '../components/StatusTag';
@@ -55,6 +64,9 @@ export default function MedicineList() {
   );
   const [form] = Form.useForm<FormValues>();
   const [pagination, setPagination] = useState({ current: 1, pageSize: PAGE_SIZE, total: 0 });
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [lowConfidenceFields, setLowConfidenceFields] = useState<Set<string>>(new Set());
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadMedicines = async (page?: number) => {
     setLoading(true);
@@ -83,12 +95,65 @@ export default function MedicineList() {
 
   const handleAdd = () => {
     setEditingMedicine(null);
+    setLowConfidenceFields(new Set());
     form.resetFields();
     setDrawerOpen(true);
   };
 
+  const handlePhotoAdd = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    setOcrLoading(true);
+    try {
+      const result: OcrRecognitionResult = await recognizeMedicineImage(file);
+
+      setEditingMedicine(null);
+      setLowConfidenceFields(new Set());
+      form.resetFields();
+
+      const lowFields = new Set<string>();
+
+      if (result.name) {
+        form.setFieldValue('name', result.name);
+        if (result.confidence === 'low') lowFields.add('name');
+      }
+      if (result.dosage_instructions) {
+        form.setFieldValue('dosage', result.dosage_instructions);
+        if (result.confidence === 'low') lowFields.add('dosage');
+      }
+      if (result.specification || result.raw_text) {
+        const noteParts: string[] = [];
+        if (result.specification) noteParts.push(`规格：${result.specification}`);
+        if (result.raw_text) noteParts.push(`OCR识别原文：\n${result.raw_text.substring(0, 200)}`);
+        form.setFieldValue('notes', noteParts.join('\n'));
+      }
+
+      setLowConfidenceFields(lowFields);
+      setDrawerOpen(true);
+
+      if (result.confidence === 'high') {
+        message.success('识别成功，请确认信息后保存');
+      } else if (result.confidence === 'medium') {
+        message.warning('部分识别，请核实标黄字段');
+      } else {
+        message.warning('识别置信度较低，请仔细核实');
+      }
+    } catch {
+      message.error('识别失败，请重试或手动添加');
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+
   const handleEdit = (record: Medicine) => {
     setEditingMedicine(record);
+    setLowConfidenceFields(new Set());
     form.setFieldsValue({
       name: record.name,
       type: record.type,
@@ -222,9 +287,25 @@ export default function MedicineList() {
         <Title level={3} style={{ margin: 0 }}>
           药箱管理
         </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
-          添加
-        </Button>
+        <Space>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/bmp"
+            style={{ display: 'none' }}
+            onChange={handleFileSelect}
+          />
+          <Button
+            icon={<CameraOutlined />}
+            onClick={handlePhotoAdd}
+            loading={ocrLoading}
+          >
+            拍照添加
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+            添加
+          </Button>
+        </Space>
       </div>
       {loading ? (
         <Skeleton active />
@@ -258,13 +339,32 @@ export default function MedicineList() {
           </Button>
         }
       >
+        {ocrLoading && (
+          <div style={{ textAlign: 'center', padding: '40px 0' }}>
+            <Spin tip="正在识别药品信息..." />
+          </div>
+        )}
+        {!ocrLoading && lowConfidenceFields.size > 0 && (
+          <Alert
+            type="warning"
+            message="以下字段识别置信度较低，请核实标黄字段"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+        )}
         <Form form={form} layout="vertical">
           <Form.Item
             label="药品名称"
             name="name"
             rules={[{ required: true, message: '请输入药品名称' }]}
           >
-            <Input />
+            <Input
+              style={
+                lowConfidenceFields.has('name')
+                  ? { backgroundColor: '#fffbe6', borderColor: '#ffe58f' }
+                  : undefined
+              }
+            />
           </Form.Item>
           <Form.Item
             label="类型"
@@ -284,7 +384,14 @@ export default function MedicineList() {
             />
           </Form.Item>
           <Form.Item label="用量" name="dosage">
-            <Input placeholder="如：每次1片，每日3次" />
+            <Input
+              placeholder="如：每次1片，每日3次"
+              style={
+                lowConfidenceFields.has('dosage')
+                  ? { backgroundColor: '#fffbe6', borderColor: '#ffe58f' }
+                  : undefined
+              }
+            />
           </Form.Item>
           <Form.Item label="库存数量" name="quantity">
             <InputNumber min={0} placeholder="如：30" style={{ width: '100%' }} />

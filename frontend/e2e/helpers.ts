@@ -98,6 +98,19 @@ export async function register(
   await activePane.getByPlaceholder('用户名').fill(username);
   await activePane.getByPlaceholder('密码', { exact: true }).fill(password);
   await activePane.getByPlaceholder('确认密码').fill(password);
+  // PIPL consent checkboxes (required by LoginPage since v0.4.0)
+  const consentPrivacy = activePane.getByRole('checkbox', {
+    name: /我已阅读并同意/,
+  });
+  if (await consentPrivacy.isVisible().catch(() => false)) {
+    await consentPrivacy.check();
+  }
+  const consentHealth = activePane.getByRole('checkbox', {
+    name: /我同意收集健康数据/,
+  });
+  if (await consentHealth.isVisible().catch(() => false)) {
+    await consentHealth.check();
+  }
   await activePane.getByRole('button', { name: chineseText('注册') }).click();
   await page.waitForURL('/');
 }

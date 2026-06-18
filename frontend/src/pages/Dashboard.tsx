@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Button, Typography, Skeleton, Alert, Space, Empty, Timeline } from 'antd';
+import { Card, Row, Col, Statistic, Button, Typography, Skeleton, Alert, Space, Empty, Timeline, InputNumber, Tag, message } from 'antd';
 import {
   MedicineBoxOutlined,
   BookOutlined,
@@ -24,11 +24,14 @@ import { getProfile, type UserProfile } from '../api/profileApi';
 import {
   getTodayReminders,
   getReminderHistory,
+  checkInReminder,
   type TodayReminderSlot,
   type CheckInHistory,
 } from '../api/reminderApi';
+import { createHealthLog } from '../api/healthLogApi';
 import { request } from '../api/client';
 import { useNotifications } from '../hooks/useNotifications';
+import OnboardingWizard, { ONBOARDING_KEY } from '../components/OnboardingWizard';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -193,6 +196,26 @@ export default function Dashboard() {
   const [todayReminders, setTodayReminders] = useState<TodayReminderSlot[]>([]);
   const [checkInHistory, setCheckInHistory] = useState<CheckInHistory | null>(null);
 
+  // 新手引导
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+
+  // 今日待服药品 — 打卡状态
+  const [checkedInKeys, setCheckedInKeys] = useState<Set<string>>(new Set());
+  const [checkInBusy, setCheckInBusy] = useState<string | null>(null);
+
+  // 健康打卡 — 快速记录
+  const [hpSystolic, setHpSystolic] = useState<number | null>(null);
+  const [hpDiastolic, setHpDiastolic] = useState<number | null>(null);
+  const [hpSugar, setHpSugar] = useState<number | null>(null);
+  const [hpSaving, setHpSaving] = useState(false);
+  const [hpRecorded, setHpRecorded] = useState(false);
+
+  useEffect(() => {
+    if (!localStorage.getItem(ONBOARDING_KEY)) {
+      setOnboardingOpen(true);
+    }
+  }, []);
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -231,14 +254,61 @@ export default function Dashboard() {
     load();
   }, []);
 
+  const slotKey = (r: TodayReminderSlot) => `${r.reminder_id}:${r.time}`;
+
+  const handleCheckIn = async (r: TodayReminderSlot) => {
+    const key = slotKey(r);
+    setCheckInBusy(key);
+    try {
+      await checkInReminder(r.reminder_id, r.time, true);
+      setCheckedInKeys((prev) => new Set(prev).add(key));
+      message.success(`已记录：${r.medicine_name || r.herb_name || r.formula_name || r.title}`);
+    } catch {
+      message.error('打卡失败，请稍后重试');
+    } finally {
+      setCheckInBusy(null);
+    }
+  };
+
+  const handleSaveHealthLog = async () => {
+    if (hpSystolic == null && hpDiastolic == null && hpSugar == null) {
+      message.warning('请至少填写一项健康指标');
+      return;
+    }
+    setHpSaving(true);
+    try {
+      await createHealthLog({
+        log_date: new Date().toISOString().slice(0, 10),
+        systolic: hpSystolic,
+        diastolic: hpDiastolic,
+        blood_sugar: hpSugar,
+      });
+      setHpRecorded(true);
+      message.success('健康指标已记录');
+    } catch {
+      message.error('记录失败，请稍后重试');
+    } finally {
+      setHpSaving(false);
+    }
+  };
+
+  // 待服药品（状态=待服 且 本次会话尚未打卡）
+  const pendingReminders = todayReminders.filter(
+    (r) => r.status === '待服' && !checkedInKeys.has(slotKey(r)),
+  );
+  const takenToday = todayReminders.filter(
+    (r) => r.status === '已服' || checkedInKeys.has(slotKey(r)),
+  );
+  const allDone = todayReminders.length > 0 && pendingReminders.length === 0;
+
   if (loading) {
     return (
       <div>
         <Title level={3}>今日健康</Title>
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          {[1, 2, 3, 4].map((i) => (
-            <Col key={i} xs={24} sm={12} md={6}>
-              <Skeleton active paragraph={{ rows: 1 }} />
+          {[1, 2, 3].map((i) => (
+            <Col key={i} xs={24} lg={8}>
+              <Skeleton active paragraph={{ rows: 2 }} />
             </Col>
           ))}
         </Row>
@@ -249,45 +319,223 @@ export default function Dashboard() {
 
   return (
     <div>
-      <Title level={3}>今日健康</Title>
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="中药数"
-              value={stats?.herb_count ?? 0}
-              prefix={<BookOutlined />}
-            />
+      <Title level={3}>今日健康任务</Title>
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        {/* Card 1：今日待服药品 */}
+        <Col xs={24} lg={8}>
+          <Card
+            style={{ height: '100%' }}
+            title={
+              <span>
+                <MedicineBoxOutlined style={{ marginRight: 8, color: '#1890ff' }} />
+                今日待服药品
+              </span>
+            }
+          >
+            {todayReminders.length === 0 ? (
+              <Empty
+                description="今日暂无提醒"
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              >
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<PlusOutlined />}
+                  onClick={() => navigate('/reminders')}
+                >
+                  去设置提醒
+                </Button>
+              </Empty>
+            ) : allDone ? (
+              <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                <CheckCircleOutlined style={{ fontSize: 40, color: '#52c41a' }} />
+                <div style={{ marginTop: 8, fontSize: 16, fontWeight: 600, color: '#52c41a' }}>
+                  全部完成🎉
+                </div>
+                <Text type="secondary" style={{ fontSize: 14 }}>
+                  今日已服 {takenToday.length} 次，坚持真好！
+                </Text>
+              </div>
+            ) : (
+              <Space direction="vertical" style={{ width: '100%' }} size="small">
+                {pendingReminders.map((r) => {
+                  const name = r.medicine_name || r.herb_name || r.formula_name || r.title;
+                  return (
+                    <div
+                      key={slotKey(r)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        padding: '6px 0',
+                      }}
+                    >
+                      <div>
+                        <Text style={{ fontSize: 16 }}>{r.time}</Text>
+                        <Text style={{ fontSize: 16, marginLeft: 8 }}>{name}</Text>
+                        {r.dosage && (
+                          <Text type="secondary" style={{ fontSize: 13, marginLeft: 8 }}>
+                            {r.dosage}
+                          </Text>
+                        )}
+                      </div>
+                      <Button
+                        size="small"
+                        type="primary"
+                        loading={checkInBusy === slotKey(r)}
+                        onClick={() => handleCheckIn(r)}
+                      >
+                        打卡
+                      </Button>
+                    </div>
+                  );
+                })}
+                {takenToday.length > 0 && (
+                  <div style={{ borderTop: '1px solid #f0f0f0', marginTop: 4, paddingTop: 8 }}>
+                    <Text type="secondary" style={{ fontSize: 13 }}>
+                      已完成 {takenToday.length} 项：
+                    </Text>
+                    {takenToday.slice(0, 4).map((r) => {
+                      const name = r.medicine_name || r.herb_name || r.formula_name || r.title;
+                      return (
+                        <Tag key={slotKey(r)} style={{ marginLeft: 6 }}>
+                          <CheckCircleOutlined style={{ color: '#52c41a', marginRight: 2 }} />
+                          {name}
+                        </Tag>
+                      );
+                    })}
+                  </div>
+                )}
+              </Space>
+            )}
           </Card>
         </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="方剂数"
-              value={stats?.formula_count ?? 0}
-              prefix={<BookOutlined />}
-            />
+
+        {/* Card 2：健康打卡 */}
+        <Col xs={24} lg={8}>
+          <Card
+            style={{ height: '100%' }}
+            title={
+              <span>
+                <HeartOutlined style={{ marginRight: 8, color: '#ff4d4f' }} />
+                健康打卡
+              </span>
+            }
+          >
+            {hpRecorded ? (
+              <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                <CheckCircleOutlined style={{ fontSize: 40, color: '#52c41a' }} />
+                <div style={{ marginTop: 8, fontSize: 16, fontWeight: 600 }}>已记录✓</div>
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => {
+                    setHpRecorded(false);
+                    setHpSystolic(null);
+                    setHpDiastolic(null);
+                    setHpSugar(null);
+                  }}
+                >
+                  再记一条
+                </Button>
+              </div>
+            ) : (
+              <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                <div>
+                  <Text style={{ fontSize: 16, display: 'block', marginBottom: 6 }}>
+                    血压 (mmHg)
+                  </Text>
+                  <Space>
+                    <InputNumber
+                      placeholder="收缩压"
+                      min={60}
+                      max={260}
+                      value={hpSystolic}
+                      onChange={(v) => setHpSystolic(v)}
+                      style={{ width: 100 }}
+                    />
+                    <Text type="secondary">/</Text>
+                    <InputNumber
+                      placeholder="舒张压"
+                      min={40}
+                      max={160}
+                      value={hpDiastolic}
+                      onChange={(v) => setHpDiastolic(v)}
+                      style={{ width: 100 }}
+                    />
+                  </Space>
+                </div>
+                <div>
+                  <Text style={{ fontSize: 16, display: 'block', marginBottom: 6 }}>
+                    血糖 (mmol/L)
+                  </Text>
+                  <InputNumber
+                    placeholder="如 5.6"
+                    min={1}
+                    max={35}
+                    step={0.1}
+                    value={hpSugar}
+                    onChange={(v) => setHpSugar(v)}
+                    style={{ width: 120 }}
+                  />
+                </div>
+                <Button
+                  type="primary"
+                  block
+                  loading={hpSaving}
+                  onClick={handleSaveHealthLog}
+                >
+                  记录今日指标
+                </Button>
+              </Space>
+            )}
           </Card>
         </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="药箱数"
-              value={stats?.medicine_count ?? 0}
-              prefix={<MedicineBoxOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="今日提醒"
-              value={stats?.reminder_count ?? 0}
-              prefix={<BellOutlined />}
-            />
+
+        {/* Card 3：今日养生 */}
+        <Col xs={24} lg={8}>
+          <Card
+            style={{ height: '100%' }}
+            title={
+              <span>
+                <SunOutlined style={{ marginRight: 8, color: '#faad14' }} />
+                今日养生
+                {dailyHealth?.solar_term && (
+                  <Text type="secondary" style={{ fontSize: 14, marginLeft: 8 }}>
+                    {dailyHealth.solar_term} · {dailyHealth.date}
+                  </Text>
+                )}
+              </span>
+            }
+          >
+            {dailyHealth ? (
+              <>
+                <Paragraph style={{ marginBottom: 8 }}>{dailyHealth.season_advice}</Paragraph>
+                {Array.isArray(dailyHealth.health_tips) && dailyHealth.health_tips.length > 0 && (
+                  <ul style={{ marginTop: 4, paddingLeft: 20, marginBottom: 0 }}>
+                    {dailyHealth.health_tips.slice(0, 3).map((tip, idx) => (
+                      <li key={idx}>
+                        <Text style={{ fontSize: 14 }}>{tip}</Text>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            ) : (
+              <Empty description="暂无养生建议" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            )}
           </Card>
         </Col>
       </Row>
+
+      {/* 知识库统计 — 淡化展示 */}
+      <div style={{ marginBottom: 24, textAlign: 'center' }}>
+        <Text type="secondary" style={{ fontSize: 13 }}>
+          知识库：{stats?.herb_count ?? 0}味中药 · {stats?.formula_count ?? 0}首方剂 ·{' '}
+          {stats?.medicine_count ?? 0}项药箱
+        </Text>
+      </div>
 
       <Card
         style={{ marginBottom: 24 }}
@@ -425,32 +673,6 @@ export default function Dashboard() {
               />
             ))}
           </Space>
-        </Card>
-      )}
-
-      {dailyHealth && (
-        <Card
-          style={{ marginBottom: 24 }}
-          title={
-            <span>
-              <SunOutlined style={{ marginRight: 8, color: '#faad14' }} />
-              {dailyHealth.solar_term} · {dailyHealth.date}
-            </span>
-          }
-        >
-          <Paragraph>{dailyHealth.season_advice}</Paragraph>
-          {Array.isArray(dailyHealth.health_tips) && dailyHealth.health_tips.length > 0 && (
-            <div>
-              <Text strong>健康提示：</Text>
-              <ul style={{ marginTop: 8, paddingLeft: 20 }}>
-                {dailyHealth.health_tips.map((tip, idx) => (
-                  <li key={idx}>
-                    <Text>{tip}</Text>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </Card>
       )}
 
@@ -679,6 +901,11 @@ export default function Dashboard() {
           </Empty>
         </Card>
       )}
+
+      <OnboardingWizard
+        open={onboardingOpen}
+        onComplete={() => setOnboardingOpen(false)}
+      />
     </div>
   );
 }
