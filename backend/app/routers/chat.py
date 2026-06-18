@@ -257,8 +257,20 @@ async def chat_stream(
         messages = [*body.history, {"role": "user", "content": body.message}]
 
     async def generate():
+        full_response = ""
         async for chunk in chat_completion_stream(messages, constitution):
+            full_response += chunk
             yield f"data: {json.dumps({'content': chunk})}\n\n"
+
+        try:
+            from app.llm import _validate_and_augment
+            validated = _validate_and_augment(full_response, db)
+            suffix = validated[len(full_response):]
+            if suffix and suffix.strip():
+                yield f"data: {json.dumps({'content': suffix})}\n\n"
+        except Exception:
+            pass
+
         tail = "\n\n" + DISCLAIMER
         yield f"data: {json.dumps({'content': tail, 'done': True})}\n\n"
 

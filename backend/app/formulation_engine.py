@@ -360,6 +360,9 @@ async def generate_tea_recipe(
                 name = row.get("name") or ""
                 if not name or name in existing_names or name in exclude_set:
                     continue
+                toxicity = (row.get("toxicity") or "").strip()
+                if toxicity and toxicity != "无毒":
+                    continue
                 picked.append({
                     "id": row.get("id"),
                     "name": name,
@@ -383,11 +386,27 @@ async def generate_tea_recipe(
     # Append 甘草 (使药) if available and not already picked, for harmonization.
     picked_names = {h["name"] for h in picked}
     if TEA_HARMONIZER not in picked_names and len(picked) < 5:
-        envoy = await db.query_one(
-            "SELECT * FROM herbs WHERE name = ?", (TEA_HARMONIZER,)
+        interaction_conflict = await db.query_one(
+            """SELECT COUNT(*) AS c FROM safety_rules
+               WHERE enabled = 1 AND rule_type = '中西药交互'
+               AND drug_a IN (
+                   SELECT name FROM medicines WHERE name IN (
+                       SELECT drug_a FROM safety_rules WHERE drug_b = ? AND rule_type = '中西药交互'
+                   )
+               )""",
+            (TEA_HARMONIZER,),
         )
-        if envoy and envoy["name"] not in picked_names:
-            picked.append({
+        conflict_count = interaction_conflict["c"] if interaction_conflict else 0
+        user_meds = exclude_set
+        has_interaction_risk = any(
+            med in {"降压药", "利尿药", "地高辛", "华法林"} for med in user_meds
+        )
+        if not has_interaction_risk:
+            envoy = await db.query_one(
+                "SELECT * FROM herbs WHERE name = ?", (TEA_HARMONIZER,)
+            )
+            if envoy and envoy["name"] not in picked_names:
+                picked.append({
                 "id": envoy.get("id"),
                 "name": envoy["name"],
                 "aliases": envoy.get("aliases") or "",

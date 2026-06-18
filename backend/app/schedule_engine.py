@@ -500,14 +500,22 @@ def _assign_slots(
                 break
 
             if not assigned:
-                # Fallback: assign to the last preferred period even if conflicted
-                # (with a warning). This should rarely happen with 5 slots.
-                fallback = preferred_period
-                slot_assignments[fallback].append(med.name)
-                med_periods[fallback] = (
-                    f"⚠️ {med.name}无法找到无冲突时段，暂安排在{fallback}，"
-                    f"请咨询医生调整用药方案"
+                has_hard_conflict = any(
+                    info.get("gap_required") == float("inf")
+                    for info in conflict_lookup.get(med.name, [])
                 )
+                if has_hard_conflict:
+                    med_periods[preferred_period] = (
+                        f"🚫 {med.name}存在致命配伍禁忌，无法安全排入任何时段，"
+                        f"请务必咨询执业医师或药师调整用药方案"
+                    )
+                else:
+                    fallback = preferred_period
+                    slot_assignments[fallback].append(med.name)
+                    med_periods[fallback] = (
+                        f"⚠️ {med.name}无法找到完全无冲突时段，暂安排在{fallback}，"
+                        f"请注意间隔时间，建议咨询医生"
+                    )
 
         med_reasons[med.name] = med_periods
 
@@ -1090,14 +1098,14 @@ def _parse_review_json(raw: str) -> dict:
                 "dosage_score": data.get("dosage_score", 3),
                 "completeness_score": data.get("completeness_score", 3),
                 "overall_score": data.get("overall_score", 3),
-                "approved": data.get("approved", True),
+                "approved": data.get("approved", False),
                 "concerns": data.get("concerns", []),
                 "suggestions": data.get("suggestions", []),
             }
         except (json.JSONDecodeError, KeyError):
             pass
 
-    has_approve = "通过" in raw or "approve" in raw.lower() or "安全" in raw
+    has_approve = "通过" in raw or "approve" in raw.lower()
     return {
         "safety_score": 3,
         "timing_score": 3,

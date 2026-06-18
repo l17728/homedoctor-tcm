@@ -109,7 +109,7 @@ async def chat_completion(
             {"role": "system", "content": build_system_prompt(constitution)},
             *messages,
         ],
-        "temperature": 0.7,
+        "temperature": 0.3,
         "max_tokens": 2048,
     }
 
@@ -161,7 +161,7 @@ async def chat_completion_stream(
             {"role": "system", "content": build_system_prompt(constitution)},
             *messages,
         ],
-        "temperature": 0.7,
+        "temperature": 0.3,
         "max_tokens": 2048,
         "stream": True,
     }
@@ -555,7 +555,7 @@ async def _query_single_model(
             {"role": "system", "content": build_system_prompt(constitution)},
             *messages,
         ],
-        "temperature": 0.7,
+        "temperature": 0.3,
         "max_tokens": 2048,
     }
 
