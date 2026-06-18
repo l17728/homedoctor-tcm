@@ -10,6 +10,7 @@ import {
   Badge,
   Tag,
   Spin,
+  Drawer,
   message,
   theme,
 } from 'antd';
@@ -44,6 +45,7 @@ import {
   type ClassicAnnotation,
   type AnnotationNoteType,
 } from '../api/classicApi';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -258,6 +260,8 @@ export default function ClassicReader() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { token } = theme.useToken();
+  const isMobile = useIsMobile();
+  const [tocOpen, setTocOpen] = useState(false);
 
   const [classic, setClassic] = useState<ClassicWithChapters | null>(null);
   const [chapter, setChapter] = useState<ChapterDetail | null>(null);
@@ -742,6 +746,11 @@ export default function ClassicReader() {
           >
             返回书柜
           </Button>
+          {isMobile && (
+            <Button icon={<ReadOutlined />} onClick={() => setTocOpen(true)}>
+              目录
+            </Button>
+          )}
           <div style={{ minWidth: 0 }}>
             <Title level={4} className="cls-classic-text" style={{ margin: 0, lineHeight: 1.3 }}>
               {classic?.title}
@@ -755,7 +764,8 @@ export default function ClassicReader() {
 
       {/* 主体三栏 */}
       <div style={{ display: 'flex', gap: 16, flex: 1, alignItems: 'flex-start' }}>
-        {/* 左：章节目录 */}
+        {/* 左：章节目录 — 桌面端固定栏，手机端 Drawer */}
+        {!isMobile && (
         <div
           style={{
             width: 220,
@@ -840,6 +850,7 @@ export default function ClassicReader() {
             />
           )}
         </div>
+        )}
 
         {/* 中：阅读区 */}
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1161,8 +1172,8 @@ export default function ClassicReader() {
           )}
         </div>
 
-        {/* 右：AI 问答侧栏 */}
-        {aiOpen ? (
+        {/* 右：AI 问答侧栏 — 桌面端固定栏，手机端 Drawer */}
+        {aiOpen && !isMobile ? (
           <div
             style={{
               width: 360,
@@ -1605,6 +1616,101 @@ export default function ClassicReader() {
           )}
         </div>
       ) : null}
+
+      {/* 手机端章节目录 Drawer */}
+      <Drawer
+        title="章节目录"
+        open={isMobile && tocOpen}
+        onClose={() => setTocOpen(false)}
+        placement="left"
+        width={260}
+        styles={{ body: { padding: 8 } }}
+      >
+        {classic && classic.chapters.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {classic.chapters.map((c) => (
+              <div
+                key={c.id}
+                className={`cls-chapter-item${c.id === activeChapterId ? ' is-active' : ''}`}
+                onClick={() => { switchChapter(c.id); setTocOpen(false); }}
+              >
+                <span
+                  style={{
+                    flexShrink: 0,
+                    width: 22,
+                    height: 22,
+                    borderRadius: '50%',
+                    background: c.id === activeChapterId ? '#2ba471' : token.colorFillTertiary,
+                    color: c.id === activeChapterId ? '#fff' : token.colorTextSecondary,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {c.chapter_number}
+                </span>
+                <span
+                  style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
+                  title={c.title}
+                >
+                  {c.title}
+                </span>
+                {annotationCounts[c.id] ? (
+                  <Badge count={annotationCounts[c.id]} style={{ backgroundColor: '#b08d57' }} size="small" />
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无章节" />
+        )}
+      </Drawer>
+
+      {/* 手机端 AI 问答 Drawer */}
+      {aiOpen && isMobile && (
+        <Drawer
+          title={<span style={{ color: '#fff' }}><RobotOutlined /> AI 问答</span>}
+          open={aiOpen && isMobile}
+          onClose={() => setAiOpen(false)}
+          placement="bottom"
+          height="70%"
+          styles={{ header: { background: 'linear-gradient(135deg, #2d5a44, #2ba471)' } }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, height: '100%', overflow: 'auto' }}>
+            {aiContext ? (
+              <div style={{ background: token.colorFillQuaternary, borderLeft: '3px solid #b08d57', borderRadius: 4, padding: '10px 12px' }}>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>选中文字</Text>
+                <Text style={{ fontSize: 14 }}>{aiContext.text}</Text>
+              </div>
+            ) : null}
+            <TextArea
+              value={aiQuestion}
+              onChange={(e) => setAiQuestion(e.target.value)}
+              placeholder="请输入你的问题…"
+              autoSize={{ minRows: 2 }}
+            />
+            <Button type="primary" icon={<ThunderboltOutlined />} loading={aiLoading} onClick={() => doAsk(null)} block>
+              提问
+            </Button>
+            {aiAnswer && (
+              <div className="cls-md-body" style={{ fontSize: 15, lineHeight: 1.8 }} dangerouslySetInnerHTML={{ __html: renderMarkdown(aiAnswer) }} />
+            )}
+            {qaHistory.length > 0 && (
+              <div>
+                <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>历史问答</Text>
+                {qaHistory.slice(-5).reverse().map((qa, i) => (
+                  <div key={i} style={{ marginBottom: 10, padding: 8, background: token.colorFillQuaternary, borderRadius: 6 }}>
+                    <Text strong style={{ fontSize: 14 }}>Q: {qa.question}</Text>
+                    <div className="cls-md-body" style={{ fontSize: 14, marginTop: 4 }} dangerouslySetInnerHTML={{ __html: renderMarkdown(qa.answer) }} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Drawer>
+      )}
     </div>
   );
 }
