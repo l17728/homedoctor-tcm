@@ -217,6 +217,7 @@ export default function AppLayout() {
       icon: <BookOutlined />,
       label: '知识探索',
       children: [
+        { key: '/knowledge-hub', label: '知识库' },
         { key: '/herbs', label: '中药' },
         { key: '/formulas', label: '方剂' },
         { key: '/therapies', label: '外治理疗' },

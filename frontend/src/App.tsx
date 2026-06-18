@@ -39,6 +39,7 @@ import HealthLogPage from './pages/HealthLogPage';
 import RemoteAssistPage from './pages/RemoteAssistPage';
 import ShareCardsPage from './pages/ShareCardsPage';
 import TriagePage from './pages/TriagePage';
+import KnowledgeHubPage from './pages/KnowledgeHubPage';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -88,6 +89,7 @@ function ThemedApp() {
           <Route path="classics" element={<ClassicsBookshelf />} />
           <Route path="classics/:id" element={<ClassicReader />} />
           <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
+          <Route path="knowledge-hub" element={<KnowledgeHubPage />} />
           <Route path="therapies" element={<TherapiesPage />} />
           <Route path="medication-plans" element={<MedicationPlansPage />} />
           <Route path="medication-schedule" element={<MedicationSchedulePage />} />
