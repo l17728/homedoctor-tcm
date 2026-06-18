@@ -64,9 +64,7 @@ function mapMedicine(row: any): Medicine {
     status: row.quantity != null
       ? row.quantity > 5
         ? '充足'
-        : row.quantity > 0
-          ? '低库存'
-          : '已过期'
+        : '低库存'
       : '充足',
     dosage: row.dosage_instructions ?? row.dosage ?? '',
     notes: row.contraindications ?? row.notes ?? '',

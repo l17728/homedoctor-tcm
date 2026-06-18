@@ -112,7 +112,7 @@ export default function OnboardingWizard({ open, onComplete }: Props) {
     try {
       for (const m of medicines) {
         try {
-          const med = await createMedicine({ name: m.name, type: m.type });
+          const med = await createMedicine({ name: m.name, type: m.type, quantity: 30 });
           created.push(med);
         } catch {
           // 单条失败不阻断流程
@@ -158,6 +158,9 @@ export default function OnboardingWizard({ open, onComplete }: Props) {
   const handleComplete = () => {
     localStorage.setItem(ONBOARDING_KEY, 'true');
     onComplete();
+    // Force a full page reload so the Dashboard re-fetches all data
+    // (stats, medicines, reminders) created during onboarding.
+    window.location.reload();
   };
 
   const handleSkip = () => {

@@ -418,6 +418,45 @@ DDL_STATEMENTS = [
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )""",
     "CREATE INDEX IF NOT EXISTS idx_health_logs_user_date ON health_logs(user_id, log_date)",
+    # -- 统一知识实体注册表 (spec §9 — 统一知识实体系统)
+    # 结构化数据是权威来源；本表为跨类型实体统一注册（中药/方剂/理疗/症状/文章/茶饮等）
+    """CREATE TABLE IF NOT EXISTS knowledge_entities (
+        id TEXT PRIMARY KEY,
+        entity_type TEXT NOT NULL,
+        source_table TEXT NOT NULL,
+        source_id TEXT,
+        title TEXT NOT NULL,
+        summary TEXT,
+        keywords TEXT DEFAULT '[]',
+        tags TEXT DEFAULT '[]',
+        category TEXT,
+        content_preview TEXT,
+        properties TEXT DEFAULT '{}',
+        source_type TEXT DEFAULT 'system',
+        status TEXT DEFAULT 'active',
+        view_count INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_ke_type ON knowledge_entities(entity_type)",
+    "CREATE INDEX IF NOT EXISTS idx_ke_category ON knowledge_entities(category)",
+    "CREATE INDEX IF NOT EXISTS idx_ke_status ON knowledge_entities(status)",
+    # -- 实体关系引擎 — entity_relationships
+    # 取代 graph_edges 成为权威关系存储；图谱可从此派生重建
+    """CREATE TABLE IF NOT EXISTS entity_relationships (
+        id TEXT PRIMARY KEY,
+        source_entity_id TEXT NOT NULL,
+        target_entity_id TEXT NOT NULL,
+        relationship_type TEXT NOT NULL,
+        properties TEXT DEFAULT '{}',
+        weight REAL DEFAULT 1.0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (source_entity_id) REFERENCES knowledge_entities(id),
+        FOREIGN KEY (target_entity_id) REFERENCES knowledge_entities(id)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_er_source ON entity_relationships(source_entity_id)",
+    "CREATE INDEX IF NOT EXISTS idx_er_target ON entity_relationships(target_entity_id)",
+    "CREATE INDEX IF NOT EXISTS idx_er_type ON entity_relationships(relationship_type)",
 ]
 
 FTS_STATEMENTS = [

@@ -1,0 +1,325 @@
+"""Knowledge Hub router — unified knowledge entity API (spec §9).
+
+Endpoints
+---------
+- ``GET  /api/knowledge-hub/search``                     — unified search
+- ``GET  /api/knowledge-hub/entities/{entity_id}``       — entity detail + relationships
+- ``GET  /api/knowledge-hub/entities/{entity_id}/relationships`` — all relationships
+- ``GET  /api/knowledge-hub/types``                      — entity type facets
+- ``POST /api/knowledge-hub/import``                     — text → AI process → entity
+- ``POST /api/knowledge-hub/import-file``                — file → parse → AI process
+- ``PUT  /api/knowledge-hub/entities/{entity_id}``       — update entity
+- ``POST /api/knowledge-hub/entities/{entity_id}/view``  — bump view_count
+- ``GET  /api/knowledge-hub/popular``                    — most viewed
+- ``GET  /api/knowledge-hub/recent``                     — recently added
+
+All endpoints require authentication (AGENTS.md §T1 — security boundary).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+from typing import Any
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
+from pydantic import BaseModel, Field
+
+from app.auth import get_current_user
+from app.database import DbAdapter, get_db
+from app.knowledge_entity import (
+    RELATIONSHIP_TYPES,
+    create_relationship,
+    get_entity,
+    get_relationships,
+    get_type_facets,
+    increment_view_count,
+    list_by_type,
+    list_popular,
+    list_recent,
+    process_imported_content,
+    search_entities,
+    update_entity,
+)
+from app.knowledge_parser import ALLOWED_EXTENSIONS, parse_file
+
+router = APIRouter(prefix="/api/knowledge-hub", tags=["knowledge-hub"])
+
+MAX_IMPORT_BYTES = 20 * 1024 * 1024
+
+
+def _ext(filename: str) -> str:
+    return os.path.splitext(filename.lower())[1]
+
+
+# ---------------------------------------------------------------------------
+# Request / Response models
+# ---------------------------------------------------------------------------
+
+class ImportRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500, description="知识条目标题")
+    content: str = Field(..., min_length=1, description="知识条目正文内容")
+    source_type: str = Field("import", description="来源类型标记，默认 import")
+
+
+class UpdateEntityRequest(BaseModel):
+    summary: str | None = Field(None, description="新的内容摘要")
+    tags: list[str] | None = Field(None, description="新的标签列表")
+    keywords: list[str] | None = Field(None, description="新的关键词列表")
+    category: str | None = Field(None, description="新的分类")
+    status: str | None = Field(None, description="状态：active / archived")
+
+
+class CreateRelationshipRequest(BaseModel):
+    source_entity_id: str = Field(..., description="源实体ID")
+    target_entity_id: str = Field(..., description="目标实体ID")
+    relationship_type: str = Field(..., description="关系类型代码或中文标签")
+    properties: dict[str, Any] = Field(default_factory=dict)
+    weight: float = Field(1.0, ge=0.0, le=10.0)
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/search")
+async def search_endpoint(
+    q: str = Query("", description="搜索关键词（匹配 title/summary/keywords/tags）"),
+    type: str | None = Query(None, alias="type", description="实体类型过滤"),
+    category: str | None = Query(None, description="分类过滤"),
+    tag: str | None = Query(None, description="标签过滤（模糊匹配）"),
+    page: int = Query(1, ge=1, le=1000),
+    page_size: int = Query(20, ge=1, le=100),
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """统一搜索 — 跨所有实体类型的全文搜索。
+
+    返回 ``{items, total, page, page_size, facets}``，其中 ``facets`` 是
+    ``{entity_type: count}``（不受 ``type`` 参数影响），便于前端展示类型标签。
+    """
+    return await search_entities(
+        db, q=q, entity_type=type, category=category, tag=tag,
+        page=page, page_size=page_size,
+    )
+
+
+@router.get("/types")
+async def types_endpoint(
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """实体类型 facets — 返回 ``{entity_type: count}``。
+
+    每个活跃实体的类型计数，便于前端渲染「全部 / 中药 / 方剂 / 理疗」标签。
+    """
+    facets = await get_type_facets(db)
+    return {"facets": facets, "total": sum(facets.values())}
+
+
+@router.get("/entities/{entity_id}")
+async def entity_detail_endpoint(
+    entity_id: str,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """实体详情 — 返回完整字段（JSON 字段已解析为对象）。"""
+    entity = await get_entity(db, entity_id)
+    if not entity:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="实体不存在")
+    relationships = await get_relationships(db, entity_id, direction="both")
+    return {**entity, "relationships": relationships}
+
+
+@router.get("/entities/{entity_id}/relationships")
+async def entity_relationships_endpoint(
+    entity_id: str,
+    direction: str = Query("both", pattern="^(both|outgoing|incoming)$"),
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """实体的所有关系 — 可指定方向（both/outgoing/incoming）。"""
+    entity = await get_entity(db, entity_id)
+    if not entity:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="实体不存在")
+    relationships = await get_relationships(db, entity_id, direction=direction)
+    return {"entity_id": entity_id, "direction": direction, "items": relationships, "total": len(relationships)}
+
+
+@router.post("/entities/{entity_id}/relationships", status_code=status.HTTP_201_CREATED)
+async def create_relationship_endpoint(
+    entity_id: str,
+    body: CreateRelationshipRequest,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """为实体创建一条关系。``source_entity_id`` 或 ``target_entity_id`` 必须等于 ``entity_id``。"""
+    if body.source_entity_id != entity_id and body.target_entity_id != entity_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="source_entity_id 或 target_entity_id 必须等于路径中的 entity_id",
+        )
+    src = await get_entity(db, body.source_entity_id)
+    tgt = await get_entity(db, body.target_entity_id)
+    if not src:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="源实体不存在")
+    if not tgt:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="目标实体不存在")
+
+    rel_id = await create_relationship(
+        db, body.source_entity_id, body.target_entity_id,
+        body.relationship_type, body.properties, body.weight,
+    )
+    return {"relationship_id": rel_id, "detail": "关系已创建"}
+
+
+@router.put("/entities/{entity_id}")
+async def update_entity_endpoint(
+    entity_id: str,
+    body: UpdateEntityRequest,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """更新实体可编辑字段（summary / tags / keywords / category / status）。"""
+    updated = await update_entity(
+        db, entity_id,
+        summary=body.summary, tags=body.tags, keywords=body.keywords,
+        category=body.category, status=body.status,
+    )
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="实体不存在")
+    return updated
+
+
+@router.post("/entities/{entity_id}/view")
+async def view_endpoint(
+    entity_id: str,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """浏览计数 +1 — 用户点开详情时由前端调用。"""
+    entity = await get_entity(db, entity_id)
+    if not entity:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="实体不存在")
+    await increment_view_count(db, entity_id)
+    refreshed = await get_entity(db, entity_id)
+    return {"entity_id": entity_id, "view_count": refreshed["view_count"] if refreshed else 0}
+
+
+@router.post("/import", status_code=status.HTTP_201_CREATED)
+async def import_endpoint(
+    body: ImportRequest,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """导入文本内容 → AI 分析 → 创建知识实体。
+
+    若 LLM 不可用（无 API key 或调用失败），仍会创建 ``entity_type='article'``
+    的实体，仅缺少 AI 提取的关键词/标签/关系。返回值包含 ``ai_analyzed`` 字段
+    指示是否经过了 AI 处理。
+    """
+    result = await process_imported_content(
+        db, title=body.title, content=body.content, source_type=body.source_type,
+    )
+    return result
+
+
+@router.post("/import-file", status_code=status.HTTP_201_CREATED)
+async def import_file_endpoint(
+    file: UploadFile = File(..., description="待导入文档（PDF/Word/TXT/图片）"),
+    title: str | None = Query(None, description="可选标题，缺省时从文件名派生"),
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """上传文件 → 解析文本 → AI 分析 → 创建知识实体。
+
+    支持 ``.pdf .docx .txt .md .jpg .jpeg .png .webp``，单文件上限 20MB。
+    """
+    ext = _ext(file.filename or "")
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"不支持的文件格式：{ext or '(无扩展名)'}",
+        )
+
+    raw = await file.read()
+    if len(raw) > MAX_IMPORT_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"文件过大：{len(raw)} 字节，上限 20MB",
+        )
+    if not raw:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="文件内容为空",
+        )
+
+    filename = file.filename or "unknown"
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=ext, prefix="kh_")
+    try:
+        with os.fdopen(tmp_fd, "wb") as fh:
+            fh.write(raw)
+        result = await parse_file(tmp_path, filename)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    if result.error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=result.error)
+
+    full_text = result.full_text
+    if not full_text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="未能从文件中提取到任何文本",
+        )
+
+    derived_title = title or os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").strip() or filename
+
+    processed = await process_imported_content(
+        db, title=derived_title, content=full_text, source_type="import_file",
+    )
+    processed["parse_metadata"] = result.metadata
+    processed["filename"] = filename
+    return processed
+
+
+@router.get("/popular")
+async def popular_endpoint(
+    limit: int = Query(10, ge=1, le=100),
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """热门实体 — 按 view_count 倒序。"""
+    items = await list_popular(db, limit=limit)
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/recent")
+async def recent_endpoint(
+    limit: int = Query(10, ge=1, le=100),
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """最近添加 — 按 created_at 倒序。"""
+    items = await list_recent(db, limit=limit)
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/relationship-types")
+async def relationship_types_endpoint(
+    current_user: dict = Depends(get_current_user),
+):
+    """返回支持的关系类型映射（代码 → 中文标签）。"""
+    return {"types": RELATIONSHIP_TYPES}

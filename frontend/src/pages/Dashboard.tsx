@@ -235,16 +235,21 @@ export default function Dashboard() {
           // non-critical
         }
 
+        // 404 is expected for new users — no constitution assessment yet
+        try {
+          setConstitution(await getLatestAssessment());
+        } catch {
+          // silently ignore — new users have no assessment
+        }
+
         const settled = await Promise.allSettled([
-          getLatestAssessment(),
           getProfile(),
           getTodayReminders(),
           getReminderHistory(7),
         ]);
-        if (settled[0].status === 'fulfilled') setConstitution(settled[0].value);
-        if (settled[1].status === 'fulfilled') setProfile(settled[1].value);
-        if (settled[2].status === 'fulfilled') setTodayReminders(settled[2].value);
-        if (settled[3].status === 'fulfilled') setCheckInHistory(settled[3].value);
+        if (settled[0].status === 'fulfilled') setProfile(settled[0].value);
+        if (settled[1].status === 'fulfilled') setTodayReminders(settled[1].value);
+        if (settled[2].status === 'fulfilled') setCheckInHistory(settled[2].value);
       } catch {
         // handled by fallback in API
       } finally {
