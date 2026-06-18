@@ -35,6 +35,7 @@ import BookmarksPage from './pages/BookmarksPage';
 import ComparisonPage from './pages/ComparisonPage';
 import KnowledgeImportPage from './pages/KnowledgeImportPage';
 import ReportsPage from './pages/ReportsPage';
+import HealthLogPage from './pages/HealthLogPage';
 import RemoteAssistPage from './pages/RemoteAssistPage';
 import ShareCardsPage from './pages/ShareCardsPage';
 import TriagePage from './pages/TriagePage';
@@ -95,6 +96,7 @@ function ThemedApp() {
           <Route path="comparison" element={<ComparisonPage />} />
           <Route path="knowledge-import" element={<KnowledgeImportPage />} />
           <Route path="reports" element={<ReportsPage />} />
+          <Route path="health-log" element={<HealthLogPage />} />
           <Route path="remote-assist" element={<RemoteAssistPage />} />
           <Route path="share-cards" element={<ShareCardsPage />} />
           <Route path="seasonal" element={<SeasonalHealthPage />} />

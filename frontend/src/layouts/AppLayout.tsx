@@ -12,18 +12,10 @@ import {
   UserOutlined,
   LogoutOutlined,
   BulbOutlined,
-  ClockCircleOutlined,
   HeartOutlined,
-  StarOutlined,
-  CalendarOutlined,
-  SafetyOutlined,
   TeamOutlined,
   RobotOutlined,
-  ApartmentOutlined,
-  ReadOutlined,
-  ExperimentOutlined,
   ShareAltOutlined,
-  ScheduleOutlined,
   AlertOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
@@ -93,6 +85,42 @@ export default function AppLayout() {
     [navigate],
   );
 
+  // 4 个可折叠分组键（不导航，仅展开/收起）
+  const GROUP_KEYS = ['group-medicine', 'group-knowledge', 'group-health', 'group-sharing'] as const;
+
+  // 路由 → 所属分组映射（用于默认展开当前路由所在分组）
+  const ROUTE_TO_GROUP: Record<string, string> = {
+    // 💊 用药管理
+    '/medicines': 'group-medicine',
+    '/reminders': 'group-medicine',
+    '/medication-plans': 'group-medicine',
+    '/medication-schedule': 'group-medicine',
+    '/safety': 'group-medicine',
+    // 📚 知识探索
+    '/herbs': 'group-knowledge',
+    '/formulas': 'group-knowledge',
+    '/therapies': 'group-knowledge',
+    '/classics': 'group-knowledge',
+    '/knowledge-graph': 'group-knowledge',
+    '/bookmarks': 'group-knowledge',
+    '/comparison': 'group-knowledge',
+    '/knowledge-import': 'group-knowledge',
+    '/formulation': 'group-knowledge',
+    // 🌿 健康管理
+    '/constitution': 'group-health',
+    '/profile': 'group-health',
+    '/health-log': 'group-health',
+    '/reports': 'group-health',
+    '/seasonal': 'group-health',
+    '/favorites': 'group-health',
+    '/family': 'group-health',
+    // 👨‍👩‍👧 家庭共享
+    '/remote-assist': 'group-sharing',
+    '/share-cards': 'group-sharing',
+  };
+
+  const isGroupKey = (key: string) => (GROUP_KEYS as readonly string[]).includes(key);
+
   const menuItems = [
     {
       key: '/',
@@ -100,96 +128,60 @@ export default function AppLayout() {
       label: '首页',
     },
     {
+      key: '/chat',
+      icon: <MessageOutlined />,
+      label: 'AI助手',
+    },
+    {
       key: '/triage',
       icon: <AlertOutlined />,
       label: '急症分诊',
+      danger: true,
     },
     {
-      key: 'knowledge',
+      key: 'group-medicine',
+      icon: <MedicineBoxOutlined />,
+      label: '用药管理',
+      children: [
+        { key: '/medicines', label: '药箱' },
+        { key: '/reminders', label: '吃药提醒' },
+        { key: '/medication-plans', label: '用药套餐' },
+        { key: '/medication-schedule', label: '服药计划' },
+        { key: '/safety', label: '药箱安全检查' },
+      ],
+    },
+    {
+      key: 'group-knowledge',
       icon: <BookOutlined />,
-      label: '知识库',
+      label: '知识探索',
       children: [
         { key: '/herbs', label: '中药' },
         { key: '/formulas', label: '方剂' },
         { key: '/therapies', label: '外治理疗' },
+        { key: '/classics', label: '经典读诵' },
+        { key: '/knowledge-graph', label: '知识图谱' },
         { key: '/bookmarks', label: '书签' },
         { key: '/comparison', label: '对比分析' },
         { key: '/knowledge-import', label: '知识导入' },
+        { key: '/formulation', label: '智能配伍' },
       ],
     },
     {
-      key: '/classics',
-      icon: <ReadOutlined />,
-      label: '经典读诵',
-    },
-    {
-      key: '/medicines',
-      icon: <MedicineBoxOutlined />,
-      label: '药箱',
-    },
-    {
-      key: '/reminders',
-      icon: <ClockCircleOutlined />,
-      label: '提醒',
-    },
-    {
-      key: '/medication-plans',
-      icon: <MedicineBoxOutlined />,
-      label: '用药套餐',
-    },
-    {
-      key: '/medication-schedule',
-      icon: <ScheduleOutlined />,
-      label: '服药计划',
-    },
-    {
-      key: '/family',
-      icon: <TeamOutlined />,
-      label: '家庭成员',
-    },
-    {
-      key: '/favorites',
-      icon: <StarOutlined />,
-      label: '收藏',
-    },
-    {
-      key: '/knowledge-graph',
-      icon: <ApartmentOutlined />,
-      label: '知识图谱',
-    },
-    {
-      key: '/seasonal',
-      icon: <CalendarOutlined />,
-      label: '季节养生',
-    },
-    {
-      key: '/safety',
-      icon: <SafetyOutlined />,
-      label: '安全检查',
-    },
-    {
-      key: '/formulation',
-      icon: <ExperimentOutlined />,
-      label: '智能配伍',
-    },
-    {
-      key: '/chat',
-      icon: <MessageOutlined />,
-      label: 'AI 助手',
-    },
-    {
-      key: 'health',
+      key: 'group-health',
       icon: <HeartOutlined />,
-      label: '健康',
+      label: '健康管理',
       children: [
-        { key: '/health-log', label: '每日打卡' },
         { key: '/constitution', label: '体质自测' },
         { key: '/profile', label: '健康档案' },
+        { key: '/health-log', label: '每日打卡' },
         { key: '/reports', label: '报告中心' },
+        { key: '/seasonal', label: '季节养生' },
+        { key: '/favorites', label: '收藏' },
+        { key: '/family', label: '家庭成员' },
       ],
     },
     {
-      key: 'sharing',
+      key: 'group-sharing',
       icon: <ShareAltOutlined />,
       label: '家庭共享',
       children: [
@@ -205,7 +197,7 @@ export default function AppLayout() {
   ];
 
   const handleMenuClick = ({ key }: { key: string }) => {
-    if (key !== 'knowledge' && key !== 'health' && key !== 'sharing') {
+    if (!isGroupKey(key)) {
       navigate(key);
       if (isMobile) setDrawerOpen(false);
     }
@@ -240,24 +232,20 @@ export default function AppLayout() {
     return prefix ?? location.pathname;
   })();
   const [openKeys, setOpenKeys] = useState<string[]>(() => {
-    if (
-      location.pathname.startsWith('/herbs') ||
-      location.pathname.startsWith('/formulas')
-    ) {
-      return ['knowledge'];
-    }
-    if (
-      location.pathname.startsWith('/constitution') ||
-      location.pathname.startsWith('/profile') ||
-      location.pathname.startsWith('/health-log')
-    ) {
-      return ['health'];
-    }
-    if (location.pathname.startsWith('/favorites')) {
-      return [];
-    }
-    return [];
+    // 默认展开当前路由所属的分组
+    const group = ROUTE_TO_GROUP[location.pathname];
+    return group ? [group] : [];
   });
+
+  // 手风琴行为：展开新分组时自动收起其他分组
+  const handleOpenChange = (keys: string[]) => {
+    const latest = keys.find((k) => !openKeys.includes(k));
+    if (latest && isGroupKey(latest)) {
+      setOpenKeys([latest]);
+    } else {
+      setOpenKeys(keys);
+    }
+  };
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -295,7 +283,7 @@ export default function AppLayout() {
             mode="inline"
             selectedKeys={[matchedKey]}
             openKeys={openKeys}
-            onOpenChange={setOpenKeys}
+            onOpenChange={handleOpenChange}
             items={menuItems}
             onClick={handleMenuClick}
           />
@@ -328,7 +316,7 @@ export default function AppLayout() {
           mode="inline"
           selectedKeys={[matchedKey]}
           openKeys={openKeys}
-          onOpenChange={setOpenKeys}
+          onOpenChange={handleOpenChange}
           items={menuItems}
           onClick={handleMenuClick}
         />

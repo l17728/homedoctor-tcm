@@ -186,6 +186,8 @@ DDL_STATEMENTS = [
         allergies TEXT DEFAULT '[]',
         health_conditions TEXT DEFAULT '[]',
         is_pregnant INTEGER DEFAULT 0,
+        liver_disease INTEGER DEFAULT 0,
+        kidney_disease INTEGER DEFAULT 0,
         blood_type TEXT,
         notes TEXT,
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -617,6 +619,19 @@ async def _migrate_reminders_member_id(db: DbAdapter) -> None:
         pass  # Table might not exist yet or column already added
 
 
+async def _migrate_user_profiles_liver_kidney(db: DbAdapter) -> None:
+    """Add liver_disease and kidney_disease columns to user_profiles if missing (backward compat)."""
+    try:
+        cols = await db.query("PRAGMA table_info(user_profiles)")
+        col_names = [c["name"] for c in cols]
+        if "liver_disease" not in col_names:
+            await db.execute("ALTER TABLE user_profiles ADD COLUMN liver_disease INTEGER DEFAULT 0")
+        if "kidney_disease" not in col_names:
+            await db.execute("ALTER TABLE user_profiles ADD COLUMN kidney_disease INTEGER DEFAULT 0")
+    except Exception:
+        pass  # Table might not exist yet or column already added
+
+
 async def init_db(db: DbAdapter) -> None:
     """Create all tables and FTS indexes."""
     for stmt in DDL_STATEMENTS:
@@ -629,6 +644,8 @@ async def init_db(db: DbAdapter) -> None:
             pass
     # Migration: add family_member_id to reminders for existing databases
     await _migrate_reminders_member_id(db)
+    # Migration: add liver_disease/kidney_disease to user_profiles for existing databases
+    await _migrate_user_profiles_liver_kidney(db)
 
 
 async def seed_safety_rules(db: DbAdapter) -> None:

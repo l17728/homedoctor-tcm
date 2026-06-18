@@ -54,6 +54,23 @@ DISCLAIMER = (
 
 
 # ---------------------------------------------------------------------------
+# Cumulative toxicity — multiple herbs sharing the same toxic compound
+# (checked after Layer 2 dosage, before Layer 3 special populations)
+# ---------------------------------------------------------------------------
+
+TOXIC_COMPONENT_GROUPS: dict[str, list[str]] = {
+    "乌头碱": ["附子", "川乌", "草乌", "天雄", "雪上一枝蒿"],
+    "马兜铃酸": ["关木通", "广防己", "青木香", "马兜铃", "天仙藤"],
+    "雷公藤甲素": ["雷公藤", "昆明山海棠"],
+    "汞": ["朱砂", "轻粉", "红粉"],
+    "砷": ["砒石", "雄黄"],
+}
+
+HEPATOTOXIC_HERBS: list[str] = ["雷公藤", "黄药子", "苍耳子", "千里光", "艾叶", "川楝子", "苦楝皮"]
+NEPHROTOXIC_HERBS: list[str] = ["关木通", "广防己", "青木香", "马兜铃", "寻骨风", "天仙藤"]
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -131,6 +148,11 @@ async def run_safety_check(
     # --- Layer 2: 剂量范围检查 ---
     layer2_warnings = await _check_dosage(herb_names, herb_info, dosages)
     for w in layer2_warnings:
+        _add(w)
+
+    # --- Cumulative toxicity (after dosage check, before special populations) ---
+    cumulative_warnings = await _check_cumulative_toxicity(herb_names, herb_info, dosages)
+    for w in cumulative_warnings:
         _add(w)
 
     # --- Layer 3: 特殊人群检查 ---
@@ -334,6 +356,33 @@ async def _check_dosage(
     return warnings
 
 
+async def _check_cumulative_toxicity(
+    herb_names: list[str],
+    herb_info: dict[str, dict],
+    dosages: dict[str, float],
+) -> list[SafetyWarning]:
+    """Check if multiple herbs share the same toxic compound.
+
+    Even if no single herb exceeds its dosage limit, combining two or more
+    herbs that contain the same toxic compound (e.g. 乌头碱 from both 附子
+    and 川乌) can cause cumulative poisoning.
+    """
+    warnings: list[SafetyWarning] = []
+    for compound, herbs in TOXIC_COMPONENT_GROUPS.items():
+        found = [h for h in herb_names if h in herbs]
+        if len(found) >= 2:
+            warnings.append(SafetyWarning(
+                layer=2,
+                severity="critical",
+                title=f"累积毒性风险（{compound}）",
+                detail=f"{', '.join(found)}均含{compound}，联合使用可能导致{compound}累积中毒",
+                herbs=found,
+                action="禁止",
+                source="累积毒性检查",
+            ))
+    return warnings
+
+
 # ---------------------------------------------------------------------------
 # Layer 3: 特殊人群检查
 # ---------------------------------------------------------------------------
@@ -351,6 +400,34 @@ def _check_special_populations(
 
     is_pregnant = user_profile.get("is_pregnant", False)
     age = user_profile.get("age")
+
+    # --- Liver disease check ---
+    if user_profile.get("liver_disease"):
+        for name in herb_names:
+            if name in HEPATOTOXIC_HERBS:
+                warnings.append(SafetyWarning(
+                    layer=3,
+                    severity="high",
+                    title="肝病患者慎用",
+                    detail=f"{name}具有肝毒性，肝功能不全患者禁用或慎用",
+                    herbs=[name],
+                    action="禁止",
+                    source="特殊人群-肝病",
+                ))
+
+    # --- Kidney disease check ---
+    if user_profile.get("kidney_disease"):
+        for name in herb_names:
+            if name in NEPHROTOXIC_HERBS:
+                warnings.append(SafetyWarning(
+                    layer=3,
+                    severity="high",
+                    title="肾病患者禁用",
+                    detail=f"{name}具有肾毒性，肾功能不全患者禁用",
+                    herbs=[name],
+                    action="禁止",
+                    source="特殊人群-肾病",
+                ))
 
     # --- Pregnancy check ---
     if is_pregnant:
