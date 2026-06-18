@@ -360,6 +360,7 @@ export default function FavoritesPage() {
           columns={columns}
           rowKey="id"
           size="middle"
+          scroll={{ x: 'max-content' }}
           pagination={{ pageSize: PAGE_SIZE, showSizeChanger: false }}
         />
       )}

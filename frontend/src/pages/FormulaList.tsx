@@ -9,10 +9,10 @@ import {
   Empty,
   Skeleton,
   Typography,
-  Space,
 } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
 import { getFormulas, type Formula, type PaginatedFormulas } from '../api/formulaApi';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Title } = Typography;
 
@@ -38,6 +38,7 @@ const CATEGORIES = [
 ];
 
 export default function FormulaList() {
+  const isMobile = useIsMobile();
   const [formulas, setFormulas] = useState<Formula[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -125,11 +126,11 @@ export default function FormulaList() {
   return (
     <div>
       <Title level={3}>方剂知识库</Title>
-      <Space style={{ marginBottom: 16 }} size="middle">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, alignItems: 'center' }}>
         <span>分类</span>
         <Select
           placeholder="全部分类"
-          style={{ width: 200 }}
+          style={{ flex: 1, minWidth: 160 }}
           allowClear
           value={category}
           onChange={handleCategoryChange}
@@ -138,7 +139,7 @@ export default function FormulaList() {
         <Input.Search
           placeholder="搜索"
           allowClear
-          style={{ width: 300 }}
+          style={{ flex: 1, minWidth: 160 }}
           onSearch={handleSearch}
           onChange={(e) => {
             if (!e.target.value) {
@@ -147,7 +148,7 @@ export default function FormulaList() {
             }
           }}
         />
-      </Space>
+      </div>
       {loading ? (
         <Skeleton active />
       ) : formulas.length === 0 ? (
@@ -158,6 +159,7 @@ export default function FormulaList() {
           columns={columns}
           rowKey="id"
           size="middle"
+          scroll={{ x: 'max-content' }}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,
@@ -178,7 +180,7 @@ export default function FormulaList() {
       )}
       <Drawer
         title={selectedFormula?.name}
-        width={480}
+        width={isMobile ? '100%' : 480}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         destroyOnClose

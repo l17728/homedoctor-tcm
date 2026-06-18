@@ -43,6 +43,7 @@ import {
 } from '../api/reminderApi';
 import { REMINDER_STATUS_COLOR } from '../constants';
 import StatusTag from '../components/StatusTag';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Title } = Typography;
 
@@ -66,6 +67,7 @@ const FREQUENCY_OPTIONS = [
 ];
 
 export default function RemindersPage() {
+  const isMobile = useIsMobile();
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [todaySlots, setTodaySlots] = useState<TodayReminderSlot[]>([]);
   const [history, setHistory] = useState<CheckInLog[]>([]);
@@ -342,6 +344,7 @@ export default function RemindersPage() {
               columns={columns}
               rowKey="id"
               size="middle"
+              scroll={{ x: 'max-content' }}
               pagination={false}
             />
           )}
@@ -350,7 +353,7 @@ export default function RemindersPage() {
 
       <Drawer
         title={editing ? '编辑提醒' : '添加提醒'}
-        width={480}
+        width={isMobile ? '100%' : 480}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         destroyOnClose

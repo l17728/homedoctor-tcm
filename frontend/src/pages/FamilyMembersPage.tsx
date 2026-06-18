@@ -29,6 +29,7 @@ import {
   type FamilyMember,
   type FamilyMemberCreate,
 } from '../api/familyMemberApi';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Title } = Typography;
 
@@ -55,6 +56,7 @@ interface FormValues {
 }
 
 export default function FamilyMembersPage() {
+  const isMobile = useIsMobile();
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -172,13 +174,14 @@ export default function FamilyMembersPage() {
           columns={columns}
           rowKey="id"
           size="middle"
+          scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 20 }}
         />
       )}
 
       <Drawer
         title={editing ? '编辑成员' : '添加成员'}
-        width={480}
+        width={isMobile ? '100%' : 480}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         destroyOnClose

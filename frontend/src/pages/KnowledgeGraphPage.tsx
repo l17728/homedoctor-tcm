@@ -32,6 +32,7 @@ import type {
   NodeType,
 } from '../api/graphApi';
 import { ApiError } from '../api/client';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Title, Text } = Typography;
 
@@ -103,6 +104,7 @@ function toG6(snapshot: GraphData) {
 
 export default function KnowledgeGraphPage() {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<Graph | null>(null);
   const idsRef = useRef<Set<string>>(new Set());
@@ -676,7 +678,7 @@ export default function KnowledgeGraphPage() {
           setDetailNode(null);
           setDetailType('');
         }}
-        width={480}
+        width={isMobile ? '100%' : 480}
         destroyOnClose
         maskClosable={false}
         extra={

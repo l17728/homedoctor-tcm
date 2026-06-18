@@ -9,12 +9,12 @@ import {
   Empty,
   Skeleton,
   Typography,
-  Space,
 } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
 import { getHerbs, type Herb, type PaginatedHerbs } from '../api/herbApi';
 import StatusTag from '../components/StatusTag';
 import { TOXICITY_COLOR } from '../constants';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Title } = Typography;
 
@@ -42,6 +42,7 @@ const CATEGORIES = [
 ];
 
 export default function HerbList() {
+  const isMobile = useIsMobile();
   const [herbs, setHerbs] = useState<Herb[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -130,11 +131,11 @@ export default function HerbList() {
   return (
     <div>
       <Title level={3}>中药知识库</Title>
-      <Space style={{ marginBottom: 16 }} size="middle">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16, alignItems: 'center' }}>
         <span>分类</span>
         <Select
           placeholder="全部分类"
-          style={{ width: 200 }}
+          style={{ flex: 1, minWidth: 160 }}
           allowClear
           value={category}
           onChange={handleCategoryChange}
@@ -143,7 +144,7 @@ export default function HerbList() {
         <Input.Search
           placeholder="搜索"
           allowClear
-          style={{ width: 300 }}
+          style={{ flex: 1, minWidth: 160 }}
           onSearch={handleSearch}
           onChange={(e) => {
             if (!e.target.value) {
@@ -152,7 +153,7 @@ export default function HerbList() {
             }
           }}
         />
-      </Space>
+      </div>
       {loading ? (
         <Skeleton active />
       ) : herbs.length === 0 ? (
@@ -163,6 +164,7 @@ export default function HerbList() {
           columns={columns}
           rowKey="id"
           size="middle"
+          scroll={{ x: 'max-content' }}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,
@@ -183,7 +185,7 @@ export default function HerbList() {
       )}
       <Drawer
         title={selectedHerb?.name}
-        width={480}
+        width={isMobile ? '100%' : 480}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         destroyOnClose

@@ -55,3 +55,43 @@ export async function request<T>(
 
   return (await response.json()) as T;
 }
+
+export async function requestUpload<T>(
+  url: string,
+  body: FormData,
+): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = localStorage.getItem('token');
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const memberId = localStorage.getItem('current_member_id');
+  if (memberId) {
+    headers['X-Member-Id'] = memberId;
+  }
+
+  const response = await fetch(url, { method: 'POST', headers, body });
+
+  if (response.status === 401) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+    throw new ApiError(401, '未授权，请重新登录');
+  }
+
+  if (!response.ok) {
+    let msg = '上传失败';
+    try {
+      const data = (await response.json()) as { message?: string; detail?: string };
+      msg = data.message ?? data.detail ?? msg;
+    } catch {
+    }
+    throw new ApiError(response.status, msg);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return (await response.json()) as T;
+}

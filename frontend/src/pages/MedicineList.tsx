@@ -28,6 +28,7 @@ import {
 } from '../api/medicineApi';
 import { PAGE_SIZE, DRUG_STATUS_COLOR } from '../constants';
 import StatusTag from '../components/StatusTag';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Title } = Typography;
 
@@ -45,6 +46,7 @@ interface FormValues {
 }
 
 export default function MedicineList() {
+  const isMobile = useIsMobile();
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -234,6 +236,7 @@ export default function MedicineList() {
           columns={columns}
           rowKey="id"
           size="middle"
+          scroll={{ x: 'max-content' }}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,
@@ -245,7 +248,7 @@ export default function MedicineList() {
       )}
       <Drawer
         title={editingMedicine ? '编辑药品' : '添加药品'}
-        width={480}
+        width={isMobile ? '100%' : 480}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         destroyOnClose

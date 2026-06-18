@@ -27,6 +27,15 @@ import FamilyMembersPage from './pages/FamilyMembersPage';
 import KnowledgeGraphPage from './pages/KnowledgeGraphPage';
 import ClassicsBookshelf from './pages/ClassicsBookshelf';
 import ClassicReader from './pages/ClassicReader';
+import TherapiesPage from './pages/TherapiesPage';
+import MedicationPlansPage from './pages/MedicationPlansPage';
+import FormulationPage from './pages/FormulationPage';
+import BookmarksPage from './pages/BookmarksPage';
+import ComparisonPage from './pages/ComparisonPage';
+import KnowledgeImportPage from './pages/KnowledgeImportPage';
+import ReportsPage from './pages/ReportsPage';
+import RemoteAssistPage from './pages/RemoteAssistPage';
+import ShareCardsPage from './pages/ShareCardsPage';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -76,6 +85,15 @@ function ThemedApp() {
           <Route path="classics" element={<ClassicsBookshelf />} />
           <Route path="classics/:id" element={<ClassicReader />} />
           <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
+          <Route path="therapies" element={<TherapiesPage />} />
+          <Route path="medication-plans" element={<MedicationPlansPage />} />
+          <Route path="formulation" element={<FormulationPage />} />
+          <Route path="bookmarks" element={<BookmarksPage />} />
+          <Route path="comparison" element={<ComparisonPage />} />
+          <Route path="knowledge-import" element={<KnowledgeImportPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="remote-assist" element={<RemoteAssistPage />} />
+          <Route path="share-cards" element={<ShareCardsPage />} />
           <Route path="seasonal" element={<SeasonalHealthPage />} />
           <Route path="safety" element={<SafetyCheckPage />} />
           <Route path="settings" element={<SettingsPage />} />

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Layout, Menu, Button, Dropdown, Tooltip, theme } from 'antd';
+import { Layout, Menu, Button, Dropdown, Tooltip, Drawer, theme } from 'antd';
 import {
   HomeOutlined,
   BookOutlined,
@@ -8,6 +8,7 @@ import {
   SettingOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  MenuOutlined,
   UserOutlined,
   LogoutOutlined,
   BulbOutlined,
@@ -20,10 +21,13 @@ import {
   RobotOutlined,
   ApartmentOutlined,
   ReadOutlined,
+  ExperimentOutlined,
+  ShareAltOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
+import { useIsMobile } from '../hooks/useIsMobile';
 import {
   getFamilyMembers,
   switchMember,
@@ -36,11 +40,13 @@ const { Header, Sider, Content } = Layout;
 
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
   const { toggleTheme, isDark } = useTheme();
   const { token: themeToken } = theme.useToken();
+  const isMobile = useIsMobile();
 
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [currentMemberId, setCurrentMemberId] = useState<string | null>(
@@ -98,6 +104,10 @@ export default function AppLayout() {
       children: [
         { key: '/herbs', label: '中药' },
         { key: '/formulas', label: '方剂' },
+        { key: '/therapies', label: '外治理疗' },
+        { key: '/bookmarks', label: '书签' },
+        { key: '/comparison', label: '对比分析' },
+        { key: '/knowledge-import', label: '知识导入' },
       ],
     },
     {
@@ -114,6 +124,11 @@ export default function AppLayout() {
       key: '/reminders',
       icon: <ClockCircleOutlined />,
       label: '提醒',
+    },
+    {
+      key: '/medication-plans',
+      icon: <MedicineBoxOutlined />,
+      label: '用药套餐',
     },
     {
       key: '/family',
@@ -141,6 +156,11 @@ export default function AppLayout() {
       label: '安全检查',
     },
     {
+      key: '/formulation',
+      icon: <ExperimentOutlined />,
+      label: '智能配伍',
+    },
+    {
       key: '/chat',
       icon: <MessageOutlined />,
       label: 'AI 助手',
@@ -152,6 +172,16 @@ export default function AppLayout() {
       children: [
         { key: '/constitution', label: '体质自测' },
         { key: '/profile', label: '健康档案' },
+        { key: '/reports', label: '报告中心' },
+      ],
+    },
+    {
+      key: 'sharing',
+      icon: <ShareAltOutlined />,
+      label: '家庭共享',
+      children: [
+        { key: '/remote-assist', label: '远程协助' },
+        { key: '/share-cards', label: '分享卡' },
       ],
     },
     {
@@ -162,8 +192,9 @@ export default function AppLayout() {
   ];
 
   const handleMenuClick = ({ key }: { key: string }) => {
-    if (key !== 'knowledge' && key !== 'health') {
+    if (key !== 'knowledge' && key !== 'health' && key !== 'sharing') {
       navigate(key);
+      if (isMobile) setDrawerOpen(false);
     }
   };
 
@@ -204,20 +235,55 @@ export default function AppLayout() {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider
-        collapsible
-        collapsed={collapsed}
-        onCollapse={setCollapsed}
-        width={200}
-        collapsedWidth={64}
-        style={{
-          overflow: 'auto',
-          height: '100vh',
-          position: 'fixed',
-          left: 0,
-          top: 0,
-          bottom: 0,
-        }}
+      {/* Desktop fixed sidebar */}
+      {!isMobile && (
+        <Sider
+          collapsible
+          collapsed={collapsed}
+          onCollapse={setCollapsed}
+          width={200}
+          collapsedWidth={64}
+          style={{
+            overflow: 'auto',
+            height: '100vh',
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            bottom: 0,
+          }}
+        >
+          <div
+            style={{
+              height: 32,
+              margin: 16,
+              textAlign: 'center',
+              color: '#fff',
+              fontSize: collapsed ? 14 : 18,
+              fontWeight: 600,
+            }}
+          >
+            {collapsed ? '医' : '家庭医生'}
+          </div>
+          <Menu
+            theme="dark"
+            mode="inline"
+            selectedKeys={[matchedKey]}
+            openKeys={openKeys}
+            onOpenChange={setOpenKeys}
+            items={menuItems}
+            onClick={handleMenuClick}
+          />
+        </Sider>
+      )}
+
+      {/* Mobile drawer menu */}
+      <Drawer
+        placement="left"
+        width={250}
+        open={isMobile && drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        styles={{ body: { padding: 0, background: '#001529' } }}
+        closable={false}
       >
         <div
           style={{
@@ -225,11 +291,11 @@ export default function AppLayout() {
             margin: 16,
             textAlign: 'center',
             color: '#fff',
-            fontSize: collapsed ? 14 : 18,
+            fontSize: 18,
             fontWeight: 600,
           }}
         >
-          {collapsed ? '医' : '家庭医生'}
+          家庭医生
         </div>
         <Menu
           theme="dark"
@@ -240,16 +306,17 @@ export default function AppLayout() {
           items={menuItems}
           onClick={handleMenuClick}
         />
-      </Sider>
+      </Drawer>
+
       <Layout
         style={{
-          marginLeft: collapsed ? 64 : 200,
+          marginLeft: isMobile ? 0 : collapsed ? 64 : 200,
           transition: 'all 0.2s',
         }}
       >
         <Header
           style={{
-            padding: '0 24px',
+            padding: isMobile ? '0 12px' : '0 24px',
             background: themeToken.colorBgContainer,
             display: 'flex',
             alignItems: 'center',
@@ -257,12 +324,21 @@ export default function AppLayout() {
             boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
           }}
         >
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
-          />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {isMobile ? (
+            <Button
+              type="text"
+              icon={<MenuOutlined />}
+              onClick={() => setDrawerOpen(true)}
+              style={{ fontSize: 18 }}
+            />
+          ) : (
+            <Button
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed(!collapsed)}
+            />
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 12 }}>
             {members.length > 0 && (
               <Dropdown
                 placement="bottomRight"
@@ -288,9 +364,11 @@ export default function AppLayout() {
                   icon={<TeamOutlined />}
                   style={{ minHeight: 40, minWidth: 44, justifyContent: 'center' }}
                 >
-                  {currentMemberId
-                    ? members.find((m) => m.id === currentMemberId)?.name ?? '成员'
-                    : '全部成员'}
+                  {isMobile
+                    ? null
+                    : currentMemberId
+                      ? members.find((m) => m.id === currentMemberId)?.name ?? '成员'
+                      : '全部成员'}
                 </Button>
               </Dropdown>
             )}
@@ -299,19 +377,19 @@ export default function AppLayout() {
               icon={<BulbOutlined />}
               onClick={toggleTheme}
             >
-              {isDark ? '浅色' : '深色'}
+              {isMobile ? null : isDark ? '浅色' : '深色'}
             </Button>
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
               <Button type="text" icon={<UserOutlined />}>
-                {user?.username ? `用户 ${user.username}` : '用户'}
+                {isMobile ? null : user?.username ? `用户 ${user.username}` : '用户'}
               </Button>
             </Dropdown>
           </div>
         </Header>
         <Content
           style={{
-            margin: '24px',
-            padding: 24,
+            margin: isMobile ? 12 : 24,
+            padding: isMobile ? 12 : 24,
             background: themeToken.colorBgContainer,
             borderRadius: 8,
             minHeight: 280,
@@ -344,8 +422,8 @@ export default function AppLayout() {
               onClick={() => navigate('/chat')}
               style={{
                 position: 'fixed',
-                bottom: 32,
-                right: 32,
+                bottom: isMobile ? 16 : 32,
+                right: isMobile ? 16 : 32,
                 width: 56,
                 height: 56,
                 zIndex: 1000,

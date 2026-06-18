@@ -403,6 +403,7 @@ export default function SettingsPage() {
           rowKey="filename"
           pagination={false}
           size="middle"
+          scroll={{ x: 'max-content' }}
           locale={{ emptyText: '暂无备份，点击上方按钮创建' }}
         />
       </Card>
