@@ -127,10 +127,15 @@ export async function checkInReminder(
   reminderId: string,
   time: string,
   taken: boolean,
+  date?: string,
+  retroactive?: boolean,
 ): Promise<void> {
+  const body: Record<string, unknown> = { time, taken };
+  if (date) body.date = date;
+  if (retroactive) body.retroactive = true;
   await request<void>(`/api/reminders/${reminderId}/check-in`, {
     method: 'POST',
-    body: JSON.stringify({ time, taken }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -153,6 +158,21 @@ export interface CheckInHistory {
   taken_count: number;
   adherence_rate: number;
   days: number;
+  slots: HistorySlot[];
+}
+
+export interface HistorySlot {
+  reminder_id: string;
+  title: string;
+  herb_name: string | null;
+  formula_name: string | null;
+  medicine_name: string | null;
+  dosage: string | null;
+  date: string;
+  time: string;
+  status: '已服' | '漏服' | '待服';
+  can_retroactive: boolean;
+  retroactive: boolean;
 }
 
 export async function getReminderHistory(days: number = 7): Promise<CheckInHistory> {
@@ -163,5 +183,6 @@ export async function getReminderHistory(days: number = 7): Promise<CheckInHisto
     taken_count: data.taken_count ?? 0,
     adherence_rate: data.adherence_rate ?? 0,
     days: data.days ?? days,
+    slots: data.slots ?? [],
   };
 }

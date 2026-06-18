@@ -533,3 +533,65 @@ class PrescriptionRequest(BaseModel):
 class HealthReportRequest(BaseModel):
     member_id: str | None = Field(default=None, max_length=200)
     report_type: str = Field(default="summary", max_length=50)
+
+
+# ---------------------------------------------------------------------------
+# 每日健康打卡 (Health Logs)
+# ---------------------------------------------------------------------------
+
+VALID_MOODS = {"好", "一般", "差"}
+
+
+class HealthLogCreate(BaseModel):
+    log_date: str = Field(min_length=10, max_length=10, description="日期 YYYY-MM-DD")
+    family_member_id: str | None = None
+    systolic: int | None = Field(default=None, ge=40, le=300, description="收缩压 mmHg")
+    diastolic: int | None = Field(default=None, ge=20, le=200, description="舒张压 mmHg")
+    blood_sugar: float | None = Field(default=None, ge=1.0, le=40.0, description="血糖 mmol/L")
+    weight: float | None = Field(default=None, ge=10.0, le=500.0, description="体重 kg")
+    sleep_hours: float | None = Field(default=None, ge=0.0, le=24.0, description="睡眠时长")
+    mood: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("mood")
+    @classmethod
+    def validate_mood(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_MOODS:
+            raise ValueError(f"心情必须是 {VALID_MOODS} 之一，收到 {v!r}")
+        return v
+
+    @model_validator(mode="after")
+    def validate_bp_pair(self):
+        if self.systolic is not None and self.diastolic is None:
+            raise ValueError("收缩压与舒张压必须同时填写")
+        if self.diastolic is not None and self.systolic is None:
+            raise ValueError("收缩压与舒张压必须同时填写")
+        if self.systolic is not None and self.diastolic is not None:
+            if self.systolic <= self.diastolic:
+                raise ValueError("收缩压必须大于舒张压")
+        return self
+
+    @model_validator(mode="after")
+    def validate_at_least_one_metric(self):
+        metrics = [self.systolic, self.blood_sugar, self.weight, self.sleep_hours, self.mood]
+        if all(m is None for m in metrics) and not self.notes:
+            raise ValueError("至少填写一项健康指标或备注")
+        return self
+
+
+class HealthLogUpdate(BaseModel):
+    log_date: str | None = Field(default=None, min_length=10, max_length=10)
+    systolic: int | None = Field(default=None, ge=40, le=300)
+    diastolic: int | None = Field(default=None, ge=20, le=200)
+    blood_sugar: float | None = Field(default=None, ge=1.0, le=40.0)
+    weight: float | None = Field(default=None, ge=10.0, le=500.0)
+    sleep_hours: float | None = Field(default=None, ge=0.0, le=24.0)
+    mood: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("mood")
+    @classmethod
+    def validate_mood(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_MOODS:
+            raise ValueError(f"心情必须是 {VALID_MOODS} 之一，收到 {v!r}")
+        return v

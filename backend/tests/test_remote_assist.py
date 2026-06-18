@@ -1,9 +1,12 @@
 """Tests for 子女远程协助 (remote family assistance, spec §22)."""
 
 import json
+from datetime import datetime, timezone, timedelta
 
 import pytest
 from httpx import AsyncClient
+
+CST = timezone(timedelta(hours=8))
 
 
 # ---------------------------------------------------------------------------
@@ -609,3 +612,112 @@ async def test_viewer_cannot_access_unrelated_user(
         f"/api/remote-assist/{viewer_id}/summary", headers=second_user_headers
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_missed_alerts_without_share_returns_403(
+    client: AsyncClient, auth_headers: dict, second_user_headers: dict
+):
+    sharer_id = await _get_user_id(client, auth_headers)
+    resp = await client.get(
+        f"/api/remote-assist/{sharer_id}/missed-alerts", headers=second_user_headers
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_missed_alerts_returns_structure(
+    client: AsyncClient, auth_headers: dict, second_user_headers: dict
+):
+    await _set_consent(client, auth_headers)
+    await client.post(
+        "/api/remote-assist/invite",
+        headers=auth_headers,
+        json={"invitee_username": "testuser2", "role": "家属查看"},
+    )
+    now_minus_5h = (datetime.now(CST) - timedelta(hours=5)).strftime("%H:%M")
+    await _create_reminder(client, auth_headers, "漏服药")
+    await client.post("/api/reminders", headers=auth_headers, json={
+        "title": "漏服检测",
+        "times": [now_minus_5h],
+        "start_date": "2020-01-01",
+    })
+
+    sharer_id = await _get_user_id(client, auth_headers)
+    resp = await client.get(
+        f"/api/remote-assist/{sharer_id}/missed-alerts", headers=second_user_headers
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "alerts" in data
+    assert "total" in data
+    assert "severity" in data
+    assert "window_hours" in data
+    assert data["window_hours"] == 48
+    assert data["total"] >= 0
+    if data["alerts"]:
+        alert = data["alerts"][0]
+        assert "reminder_title" in alert
+        assert "medicine_name" in alert
+        assert "missed_time" in alert
+        assert "hours_ago" in alert
+
+
+@pytest.mark.asyncio
+async def test_missed_alerts_excludes_taken(
+    client: AsyncClient, auth_headers: dict, second_user_headers: dict
+):
+    await _set_consent(client, auth_headers)
+    await client.post(
+        "/api/remote-assist/invite",
+        headers=auth_headers,
+        json={"invitee_username": "testuser2", "role": "家属查看"},
+    )
+    now_minus_5h = (datetime.now(CST) - timedelta(hours=5)).strftime("%H:%M")
+    rid = await _create_reminder(client, auth_headers, "已服药")
+    await client.post("/api/reminders", headers=auth_headers, json={
+        "title": "已服检测",
+        "times": [now_minus_5h],
+        "start_date": "2020-01-01",
+    })
+    today = datetime.now(CST).strftime("%Y-%m-%d")
+    await client.post(
+        f"/api/reminders/{rid}/check-in",
+        headers=auth_headers,
+        json={"taken": True, "date": today, "time": now_minus_5h},
+    )
+
+    sharer_id = await _get_user_id(client, auth_headers)
+    resp = await client.get(
+        f"/api/remote-assist/{sharer_id}/missed-alerts", headers=second_user_headers
+    )
+    data = resp.json()
+    titles = [a["reminder_title"] for a in data["alerts"]]
+    assert "已服药" not in titles
+
+
+@pytest.mark.asyncio
+async def test_missed_alerts_severity_critical_above_3(
+    client: AsyncClient, auth_headers: dict, second_user_headers: dict
+):
+    await _set_consent(client, auth_headers)
+    await client.post(
+        "/api/remote-assist/invite",
+        headers=auth_headers,
+        json={"invitee_username": "testuser2", "role": "家属查看"},
+    )
+    now_minus_5h = (datetime.now(CST) - timedelta(hours=5)).strftime("%H:%M")
+    for i in range(4):
+        await client.post("/api/reminders", headers=auth_headers, json={
+            "title": f"多次漏服{i}",
+            "times": [now_minus_5h],
+            "start_date": "2020-01-01",
+        })
+
+    sharer_id = await _get_user_id(client, auth_headers)
+    resp = await client.get(
+        f"/api/remote-assist/{sharer_id}/missed-alerts", headers=second_user_headers
+    )
+    data = resp.json()
+    assert data["total"] >= 4
+    assert data["severity"] == "critical"

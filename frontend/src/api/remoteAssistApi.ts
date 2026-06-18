@@ -206,3 +206,34 @@ export async function setShareConsent(
 export async function getShareConsent(): Promise<ConsentStatus> {
   return await request<ConsentStatus>('/api/remote-assist/consent');
 }
+
+export interface MissedAlertItem {
+  reminder_title: string;
+  medicine_name: string;
+  missed_time: string;
+  hours_ago: number;
+}
+
+export interface MissedAlertsResponse {
+  user_id: string;
+  sharer_name: string;
+  alerts: MissedAlertItem[];
+  total: number;
+  severity: 'warning' | 'critical';
+  window_hours: number;
+  checked_at: string;
+}
+
+export async function getMissedAlerts(userId: string): Promise<MissedAlertsResponse> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const raw = await request<any>(`/api/remote-assist/${userId}/missed-alerts`);
+  return {
+    user_id: raw.user_id ?? '',
+    sharer_name: raw.sharer_name ?? '未知',
+    alerts: raw.alerts ?? [],
+    total: raw.total ?? 0,
+    severity: raw.severity ?? 'warning',
+    window_hours: raw.window_hours ?? 48,
+    checked_at: raw.checked_at ?? '',
+  };
+}

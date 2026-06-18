@@ -642,6 +642,105 @@ async def check_alerts(
     }
 
 
+@router.get("/{user_id}/missed-alerts")
+async def get_missed_alerts(
+    user_id: str,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """获取过去 48 小时内漏服的提醒 (T3 家属漏服推送)。
+
+    返回每个漏服时段的药品名、漏服时间、距今小时数。
+    当 48 小时内漏服超过 3 次时 severity 标记为 critical。
+    """
+    await _verify_share(db, user_id, current_user["id"])
+
+    sharer = await _get_user(db, user_id)
+    sharer_name = (sharer.get("display_name") or sharer.get("username")) if sharer else "未知"
+
+    now = datetime.now(CST)
+    cutoff = now - timedelta(hours=48)
+    cutoff_date = cutoff.strftime("%Y-%m-%d")
+    today = now.strftime("%Y-%m-%d")
+
+    reminder_rows = await db.query(
+        """SELECT id, title, herb_name, formula_name, medicine_name, times,
+                  start_date, end_date
+           FROM reminders
+           WHERE user_id = ? AND enabled = 1
+             AND start_date <= ?
+           ORDER BY created_at DESC""",
+        (user_id, today),
+    )
+
+    logged_rows = await db.query(
+        """SELECT medicine_id, date, taken FROM medication_logs
+           WHERE family_member_id = ? AND date >= ?""",
+        (user_id, cutoff_date),
+    )
+    taken_keys: set[str] = set()
+    for lg in logged_rows:
+        if lg["taken"]:
+            taken_keys.add(f"{lg['medicine_id']}|{lg['date']}")
+
+    alerts: list[dict[str, Any]] = []
+    for r in reminder_rows:
+        times_raw = r.get("times", "[]")
+        if isinstance(times_raw, str):
+            try:
+                times = json.loads(times_raw)
+            except (json.JSONDecodeError, TypeError):
+                times = []
+        else:
+            times = times_raw
+
+        end_date = r.get("end_date")
+        for t in times:
+            try:
+                sh, sm = t.split(":")
+            except (ValueError, AttributeError):
+                continue
+
+            scheduled = now.replace(hour=int(sh), minute=int(sm), second=0, microsecond=0)
+            if now - scheduled < timedelta(hours=2):
+                continue
+            if scheduled < cutoff:
+                continue
+
+            day_str = scheduled.strftime("%Y-%m-%d")
+            start_ok = r.get("start_date", "") <= day_str
+            end_ok = end_date is None or end_date >= day_str
+            if not start_ok or not end_ok:
+                continue
+
+            key = f"{r['id']}|{day_str}"
+            if key in taken_keys:
+                continue
+
+            hours_ago = round((now - scheduled).total_seconds() / 3600, 1)
+            med_name = r.get("medicine_name") or r.get("herb_name") or r.get("formula_name") or r.get("title", "")
+            alerts.append({
+                "reminder_title": r.get("title", ""),
+                "medicine_name": med_name,
+                "missed_time": scheduled.strftime("%Y-%m-%d %H:%M"),
+                "hours_ago": hours_ago,
+            })
+
+    alerts.sort(key=lambda a: a["missed_time"], reverse=True)
+
+    severity = "critical" if len(alerts) > 3 else "warning"
+
+    return {
+        "user_id": user_id,
+        "sharer_name": sharer_name,
+        "alerts": alerts,
+        "total": len(alerts),
+        "severity": severity,
+        "window_hours": 48,
+        "checked_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
 # ---------------------------------------------------------------------------
 # 辅助：库存预警与补货计算
 # ---------------------------------------------------------------------------

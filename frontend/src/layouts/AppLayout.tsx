@@ -182,6 +182,7 @@ export default function AppLayout() {
       icon: <HeartOutlined />,
       label: '健康',
       children: [
+        { key: '/health-log', label: '每日打卡' },
         { key: '/constitution', label: '体质自测' },
         { key: '/profile', label: '健康档案' },
         { key: '/reports', label: '报告中心' },
@@ -247,7 +248,8 @@ export default function AppLayout() {
     }
     if (
       location.pathname.startsWith('/constitution') ||
-      location.pathname.startsWith('/profile')
+      location.pathname.startsWith('/profile') ||
+      location.pathname.startsWith('/health-log')
     ) {
       return ['health'];
     }

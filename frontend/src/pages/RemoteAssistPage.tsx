@@ -37,6 +37,8 @@ import {
   ReloadOutlined,
   CheckCircleOutlined,
   MessageOutlined,
+  AlertOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons';
 import {
   getSharedWithMe,
@@ -44,10 +46,12 @@ import {
   getWeeklyReport,
   setAlertConfig,
   inviteFamilyMember,
+  getMissedAlerts,
   type SharedUser,
   type HealthSummary,
   type WeeklyReport,
   type AlertConfig,
+  type MissedAlertsResponse,
 } from '../api/remoteAssistApi';
 
 const { Title, Text, Paragraph } = Typography;
@@ -93,6 +97,7 @@ export default function RemoteAssistPage() {
   const [inviteForm] = Form.useForm<{ username: string }>();
   const [savingAlert, setSavingAlert] = useState(false);
   const [inviting, setInviting] = useState(false);
+  const [missedAlerts, setMissedAlerts] = useState<MissedAlertsResponse | null>(null);
 
   const fetchShared = useCallback(async () => {
     setLoadingList(true);
@@ -116,13 +121,16 @@ export default function RemoteAssistPage() {
     setLoadingDetail(true);
     setSummary(null);
     setWeekly(null);
+    setMissedAlerts(null);
     try {
-      const [s, w] = await Promise.all([
+      const [s, w, ma] = await Promise.all([
         getHealthSummary(user.sharer_id),
         getWeeklyReport(user.sharer_id),
+        getMissedAlerts(user.sharer_id).catch(() => null),
       ]);
       setSummary(s);
       setWeekly(w);
+      setMissedAlerts(ma);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '加载健康摘要失败';
       message.error(msg);
@@ -393,6 +401,69 @@ export default function RemoteAssistPage() {
                   <Empty description="暂无摘要数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 )}
               </Card>
+
+              {missedAlerts && missedAlerts.total > 0 && (
+                <Card
+                  style={{
+                    marginBottom: 0,
+                    borderColor: missedAlerts.severity === 'critical' ? '#ff4d4f' : '#faad14',
+                    borderWidth: 2,
+                  }}
+                  title={
+                    <Space>
+                      <AlertOutlined style={{ color: missedAlerts.severity === 'critical' ? '#ff4d4f' : '#faad14' }} />
+                      <span>漏服告警</span>
+                      <Tag color={missedAlerts.severity === 'critical' ? 'red' : 'orange'}>
+                        近 {missedAlerts.window_hours}h 漏服 {missedAlerts.total} 次
+                      </Tag>
+                      {missedAlerts.severity === 'critical' && (
+                        <Tag color="red" style={{ fontWeight: 600 }}>严重</Tag>
+                      )}
+                    </Space>
+                  }
+                >
+                  <Space direction="vertical" style={{ width: '100%' }} size="small">
+                    {missedAlerts.alerts.map((alert, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 12px',
+                          background: '#fff2f0',
+                          borderRadius: 6,
+                          flexWrap: 'wrap',
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <Tag color="red" style={{ fontSize: 13 }}>
+                            <ClockCircleOutlined /> {alert.missed_time}
+                          </Tag>
+                          <Text strong style={{ fontSize: 16 }}>{alert.medicine_name}</Text>
+                        </div>
+                        <Tag color="volcano">
+                          {alert.hours_ago >= 1
+                            ? `${Math.floor(alert.hours_ago)} 小时前`
+                            : '刚刚'}
+                        </Tag>
+                      </div>
+                    ))}
+                  </Space>
+                  {missedAlerts.severity === 'critical' && (
+                    <Alert
+                      type="error"
+                      showIcon
+                      message={`近 ${missedAlerts.window_hours} 小时内漏服超过 3 次，请关注 ${missedAlerts.sharer_name} 的用药情况`}
+                      style={{ marginTop: 12 }}
+                    />
+                  )}
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+                    检查时间：{missedAlerts.checked_at}
+                  </Text>
+                </Card>
+              )}
 
               {/* 周报卡片 */}
               <Card

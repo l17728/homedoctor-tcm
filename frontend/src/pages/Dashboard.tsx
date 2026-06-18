@@ -28,6 +28,7 @@ import {
   type CheckInHistory,
 } from '../api/reminderApi';
 import { request } from '../api/client';
+import { useNotifications } from '../hooks/useNotifications';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -177,6 +178,7 @@ function formatRelativeTime(ts: string): string {
 }
 
 export default function Dashboard() {
+  useNotifications();
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [dailyHealth, setDailyHealth] = useState<DailyHealth | null>(null);

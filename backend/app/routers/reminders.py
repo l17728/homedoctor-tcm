@@ -174,7 +174,10 @@ async def get_reminder_history(
     current_user: dict = Depends(get_current_user),
 ):
     user_id = current_user["id"]
-    since = (datetime.now(CST) - timedelta(days=days)).strftime("%Y-%m-%d")
+    mid = current_member_id.get()
+    now = datetime.now(CST)
+    today = now.strftime("%Y-%m-%d")
+    since = (now - timedelta(days=days)).strftime("%Y-%m-%d")
 
     rows = await db.query(
         """SELECT ml.id, ml.date, ml.medicine_id as reminder_id, ml.taken,
@@ -198,12 +201,71 @@ async def get_reminder_history(
     total = len(items)
     adherence_rate = round(taken_count / total * 100, 1) if total > 0 else 0.0
 
+    member_filter_sql = " AND family_member_id = ?" if mid else ""
+    member_params: list[Any] = [mid] if mid else []
+
+    reminder_rows = await db.query(
+        f"""SELECT * FROM reminders
+            WHERE user_id = ?{member_filter_sql} AND enabled = 1
+              AND start_date <= ?
+            ORDER BY created_at DESC""",
+        (user_id, *member_params, today),
+    )
+
+    logged: dict[str, dict[str, Any]] = {}
+    for log in items:
+        key = f"{log['reminder_id']}|{log['date']}"
+        logged[key] = {"taken": log["taken"], "skipped_reason": log.get("skipped_reason")}
+
+    slots: list[dict[str, Any]] = []
+    for day_offset in range(days):
+        day = now - timedelta(days=day_offset)
+        day_str = day.strftime("%Y-%m-%d")
+        if day_str < since:
+            break
+        for row in reminder_rows:
+            reminder = _parse_reminder(row)
+            start_ok = reminder.get("start_date", "") <= day_str
+            end_date = reminder.get("end_date")
+            end_ok = end_date is None or end_date >= day_str
+            if not start_ok or not end_ok:
+                continue
+            for t in reminder.get("times", []):
+                key = f"{reminder['id']}|{day_str}"
+                log_entry = logged.get(key)
+                if log_entry and log_entry["taken"]:
+                    status = "已服"
+                    retroactive = log_entry.get("skipped_reason") == "补打"
+                elif day_offset == 0:
+                    status = _compute_slot_status(t, now)
+                    retroactive = False
+                else:
+                    status = "漏服"
+                    retroactive = False
+                can_retroactive = status == "漏服"
+                slots.append({
+                    "reminder_id": reminder["id"],
+                    "title": reminder.get("title", ""),
+                    "herb_name": reminder.get("herb_name"),
+                    "formula_name": reminder.get("formula_name"),
+                    "medicine_name": reminder.get("medicine_name"),
+                    "dosage": reminder.get("dosage"),
+                    "date": day_str,
+                    "time": t,
+                    "status": status,
+                    "can_retroactive": can_retroactive,
+                    "retroactive": retroactive,
+                })
+
+    slots.sort(key=lambda s: (s["date"], s["time"]), reverse=True)
+
     return {
         "items": items,
         "total": total,
         "taken_count": taken_count,
         "adherence_rate": adherence_rate,
         "days": days,
+        "slots": slots,
     }
 
 
@@ -350,6 +412,11 @@ async def check_in_reminder(
     log_id = str(uuid.uuid4())
     taken = 1 if body.get("taken", True) else 0
     date_val = body.get("date", today)
+    is_retroactive = bool(body.get("retroactive", False)) and date_val < today
+
+    skipped_reason = body.get("skipped_reason")
+    if is_retroactive and taken:
+        skipped_reason = "补打"
 
     await db.execute(
         """INSERT INTO medication_logs (id, family_member_id, date, medicine_id, taken, skipped_reason, created_at)
@@ -360,7 +427,7 @@ async def check_in_reminder(
             date_val,
             reminder_id,
             taken,
-            body.get("skipped_reason"),
+            skipped_reason,
             now.strftime("%Y-%m-%d %H:%M:%S"),
         ),
     )
@@ -369,7 +436,8 @@ async def check_in_reminder(
     result = dict(row)
     if "taken" in result:
         result["taken"] = bool(result["taken"])
+    result["retroactive"] = is_retroactive
     await log_audit(db, tenant_id=current_tenant_id.get(), user_id=user_id,
                     action="check-in", entity_type="medication_log", entity_id=log_id,
-                    changes={"reminder_id": reminder_id, "taken": bool(taken), "date": date_val})
+                    changes={"reminder_id": reminder_id, "taken": bool(taken), "date": date_val, "retroactive": is_retroactive})
     return result

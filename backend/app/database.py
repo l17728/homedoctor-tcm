@@ -400,6 +400,22 @@ DDL_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_share_cards_user ON share_cards(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_share_cards_family ON share_cards(family_id)",
     "CREATE INDEX IF NOT EXISTS idx_share_cards_monthly ON share_cards(is_monthly_report, month)",
+    # -- 每日健康打卡 (血压/血糖/体重/睡眠/心情)
+    """CREATE TABLE IF NOT EXISTS health_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        family_member_id TEXT,
+        log_date TEXT NOT NULL,
+        systolic INTEGER,
+        diastolic INTEGER,
+        blood_sugar REAL,
+        weight REAL,
+        sleep_hours REAL,
+        mood TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_health_logs_user_date ON health_logs(user_id, log_date)",
 ]
 
 FTS_STATEMENTS = [

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Card,
   Row,
@@ -35,6 +35,7 @@ import {
   SafetyOutlined,
   AppleOutlined,
   CalendarOutlined,
+  DotChartOutlined,
 } from '@ant-design/icons';
 import {
   getConstitutionReport,
@@ -47,6 +48,8 @@ import {
   type ReportPeriod,
   type ReportType,
 } from '../api/reportApi';
+import { listHealthLogs, type HealthLog } from '../api/healthLogApi';
+import { getReminderHistory, type CheckInHistory } from '../api/reminderApi';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -360,7 +363,9 @@ function HealthTrendView({ report }: { report: HealthTrendReport | null }) {
 
   return (
     <div>
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+      <HealthMetricCharts />
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 16, marginTop: 16 }}>
         <Col xs={24} sm={12} md={6}>
           <Card>
             <div style={{ textAlign: 'center' }}>
@@ -515,6 +520,610 @@ function DailyCompletionBars({ data }: { data: { date: string; count: number }[]
         </div>
       ))}
     </div>
+  );
+}
+
+// ===========================================================================
+// 健康指标趋势图（来自每日打卡 /api/health-logs）
+// ===========================================================================
+
+function HealthMetricCharts() {
+  const [logs, setLogs] = useState<HealthLog[]>([]);
+  const [adherence, setAdherence] = useState<CheckInHistory | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const [healthLogs, history] = await Promise.all([
+          listHealthLogs(30),
+          getReminderHistory(7).catch(() => null),
+        ]);
+        if (cancelled) return;
+        setLogs(healthLogs);
+        if (history) setAdherence(history);
+      } catch {
+        if (!cancelled) setLogs([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <Card style={{ marginBottom: 16, borderRadius: 12 }}>
+        <Skeleton active paragraph={{ rows: 6 }} />
+      </Card>
+    );
+  }
+
+  if (logs.length === 0) {
+    return (
+      <Card
+        style={{ marginBottom: 16, borderRadius: 12 }}
+        title={
+          <Space>
+            <DotChartOutlined style={{ color: '#722ed1' }} />
+            <span style={{ fontSize: 18 }}>健康指标趋势</span>
+          </Space>
+        }
+      >
+        <Empty
+          description={
+            <span style={{ fontSize: 15 }}>
+              暂无打卡数据，前往「每日打卡」记录血压、血糖等指标查看趋势
+            </span>
+          }
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          style={{ margin: '24px 0' }}
+        />
+      </Card>
+    );
+  }
+
+  const sortedAsc = [...logs].sort((a, b) => a.log_date.localeCompare(b.log_date));
+  const last14 = sortedAsc.slice(-14);
+  const last14WithBp = last14.filter((l) => l.systolic !== null && l.diastolic !== null);
+  const last14Weight = last14.filter((l) => l.weight !== null);
+  const last14Sugar = last14.filter((l) => l.blood_sugar !== null);
+
+  return (
+    <Card
+      style={{ marginBottom: 16, borderRadius: 12 }}
+      title={
+        <Space>
+          <DotChartOutlined style={{ color: '#722ed1' }} />
+          <span style={{ fontSize: 18 }}>健康指标趋势</span>
+          <Tag color="purple">最近 14 天</Tag>
+        </Space>
+      }
+      extra={
+        <Text type="secondary" style={{ fontSize: 13 }}>
+          数据来自每日打卡
+        </Text>
+      }
+    >
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={12}>
+          <BloodPressureChart logs={last14WithBp} />
+        </Col>
+        <Col xs={24} lg={12}>
+          <WeightLineChart logs={last14Weight} />
+        </Col>
+        <Col xs={24} lg={12}>
+          <BloodSugarDots logs={last14Sugar} />
+        </Col>
+        <Col xs={24} lg={12}>
+          <MedicationAdherenceBars history={adherence} />
+        </Col>
+      </Row>
+    </Card>
+  );
+}
+
+interface ChartProps {
+  logs: HealthLog[];
+}
+
+function ChartFrame({
+  title,
+  subtitle,
+  yLabels,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  yLabels: string[];
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{ padding: 8 }}>
+      <div style={{ marginBottom: 8 }}>
+        <Text strong style={{ fontSize: 15 }}>{title}</Text>
+        {subtitle && (
+          <Text type="secondary" style={{ fontSize: 12, marginLeft: 6 }}>
+            {subtitle}
+          </Text>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', minHeight: 180 }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            alignItems: 'flex-end',
+            padding: '4px 0',
+            minWidth: 42,
+            fontSize: 11,
+            color: '#999',
+            textAlign: 'right',
+          }}
+        >
+          {yLabels.map((l) => (
+            <span key={l}>{l}</span>
+          ))}
+        </div>
+        <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+const BP_COLOR_SYS = '#ff4d4f';
+const BP_COLOR_DIA = '#1890ff';
+
+function BloodPressureChart({ logs }: ChartProps) {
+  if (logs.length === 0) {
+    return (
+      <ChartFrame title="血压趋势" yLabels={['180', '120', '60']}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            color: '#bfbfbf',
+            fontSize: 13,
+          }}
+        >
+          近 14 天无血压数据
+        </div>
+      </ChartFrame>
+    );
+  }
+  const max = 180;
+  const min = 60;
+  const range = max - min;
+  return (
+    <ChartFrame
+      title="血压趋势"
+      subtitle="收缩压/舒张压 (mmHg)"
+      yLabels={['180', '150', '120', '90', '60']}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          gap: 4,
+          height: '100%',
+          paddingBottom: 24,
+          overflowX: 'auto',
+        }}
+      >
+        {logs.map((log, idx) => {
+          const sysH = ((log.systolic! - min) / range) * 100;
+          const diaH = ((log.diastolic! - min) / range) * 100;
+          return (
+            <div
+              key={`${log.id}-${idx}`}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                flex: '1 0 28px',
+                minWidth: 28,
+                height: '100%',
+                justifyContent: 'flex-end',
+              }}
+              title={`${log.log_date} 收缩压 ${log.systolic} / 舒张压 ${log.diastolic}`}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 2,
+                  alignItems: 'flex-end',
+                  height: '100%',
+                  width: '100%',
+                  justifyContent: 'center',
+                }}
+              >
+                <div
+                  style={{
+                    width: 8,
+                    height: `${Math.max(2, sysH)}%`,
+                    background: BP_COLOR_SYS,
+                    borderRadius: '2px 2px 0 0',
+                  }}
+                />
+                <div
+                  style={{
+                    width: 8,
+                    height: `${Math.max(2, diaH)}%`,
+                    background: BP_COLOR_DIA,
+                    borderRadius: '2px 2px 0 0',
+                  }}
+                />
+              </div>
+              <div style={{ fontSize: 10, color: '#999', marginTop: 2, whiteSpace: 'nowrap' }}>
+                {log.log_date.slice(5)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 4, fontSize: 12, color: '#888' }}>
+        <span
+          style={{
+            display: 'inline-block',
+            width: 10,
+            height: 10,
+            background: BP_COLOR_SYS,
+            marginRight: 4,
+            verticalAlign: 'middle',
+          }}
+        />
+        收缩压
+        <span
+          style={{
+            display: 'inline-block',
+            width: 10,
+            height: 10,
+            background: BP_COLOR_DIA,
+            margin: '0 4px 0 10px',
+            verticalAlign: 'middle',
+          }}
+        />
+        舒张压
+      </div>
+    </ChartFrame>
+  );
+}
+
+const WEIGHT_COLOR = '#722ed1';
+
+function WeightLineChart({ logs }: ChartProps) {
+  if (logs.length < 2) {
+    return (
+      <ChartFrame title="体重趋势" yLabels={['80', '60', '40']}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            color: '#bfbfbf',
+            fontSize: 13,
+          }}
+        >
+          近 14 天体重数据不足
+        </div>
+      </ChartFrame>
+    );
+  }
+  const firstLog = logs[0]!;
+  const lastLog = logs[logs.length - 1]!;
+  const values = logs.map((l) => l.weight!);
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const padding = Math.max(0.5, (max - min) * 0.2);
+  const yMax = max + padding;
+  const yMin = Math.max(0, min - padding);
+  const yRange = yMax - yMin || 1;
+  const yLabels = [
+    yMax.toFixed(1),
+    ((yMax + yMin) / 2).toFixed(1),
+    yMin.toFixed(1),
+  ];
+
+  const W = 100;
+  const H = 100;
+  const points = logs.map((l, i) => {
+    const x = (i / (logs.length - 1)) * W;
+    const y = H - ((l.weight! - yMin) / yRange) * H;
+    return [x, y] as const;
+  });
+  const pathD = points
+    .map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`)
+    .join(' ');
+
+  return (
+    <ChartFrame title="体重趋势" subtitle="kg" yLabels={yLabels}>
+      <div style={{ position: 'relative', height: '100%', paddingBottom: 24 }}>
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          style={{ width: '100%', height: '100%', display: 'block' }}
+        >
+          <line
+            x1="0"
+            y1="50"
+            x2="100"
+            y2="50"
+            stroke="#f0f0f0"
+            strokeWidth="0.4"
+          />
+          <path
+            d={pathD}
+            fill="none"
+            stroke={WEIGHT_COLOR}
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+          {points.map(([x, y], i) => (
+            <circle
+              key={i}
+              cx={x}
+              cy={y}
+              r="1.2"
+              fill={WEIGHT_COLOR}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+        </svg>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            fontSize: 10,
+            color: '#999',
+          }}
+        >
+          <span>{firstLog.log_date.slice(5)}</span>
+          <span>{lastLog.log_date.slice(5)}</span>
+        </div>
+      </div>
+      <div style={{ marginTop: 4, fontSize: 12, color: '#888' }}>
+        <Text strong style={{ color: WEIGHT_COLOR }}>
+          {lastLog.weight} kg
+        </Text>
+        <Text type="secondary" style={{ marginLeft: 8 }}>
+          {(() => {
+            const diff = lastLog.weight! - firstLog.weight!;
+            const sign = diff > 0 ? '+' : '';
+            const color = diff > 0 ? '#fa8c16' : diff < 0 ? '#52c41a' : '#999';
+            return (
+              <span style={{ color }}>
+                {sign}
+                {diff.toFixed(1)} kg
+              </span>
+            );
+          })()}
+        </Text>
+      </div>
+    </ChartFrame>
+  );
+}
+
+const SUGAR_COLOR_NORMAL = '#52c41a';
+const SUGAR_COLOR_WARN = '#fa8c16';
+const SUGAR_COLOR_HIGH = '#ff4d4f';
+
+function BloodSugarDots({ logs }: ChartProps) {
+  if (logs.length === 0) {
+    return (
+      <ChartFrame title="血糖趋势" yLabels={['12', '7', '3']}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            color: '#bfbfbf',
+            fontSize: 13,
+          }}
+        >
+          近 14 天无血糖数据
+        </div>
+      </ChartFrame>
+    );
+  }
+  const max = 12;
+  const min = 3;
+  const range = max - min;
+  const sugarColor = (v: number) => {
+    if (v <= 6.1) return SUGAR_COLOR_NORMAL;
+    if (v <= 7.8) return SUGAR_COLOR_WARN;
+    return SUGAR_COLOR_HIGH;
+  };
+  return (
+    <ChartFrame
+      title="血糖趋势"
+      subtitle="mmol/L"
+      yLabels={['12', '9', '6', '3']}
+    >
+      <div style={{ position: 'relative', height: '100%', paddingBottom: 24 }}>
+        {[6.1, 7.8].map((threshold) => {
+          const pct = ((threshold - min) / range) * 100;
+          const bottom = 100 - pct;
+          return (
+            <div
+              key={threshold}
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: `${bottom}%`,
+                borderTop: `1px dashed ${
+                  threshold <= 6.1 ? SUGAR_COLOR_NORMAL : SUGAR_COLOR_WARN
+                }`,
+                opacity: 0.5,
+                fontSize: 9,
+                color: '#999',
+                paddingLeft: 4,
+              }}
+            >
+              <span style={{ background: '#fff', padding: '0 2px' }}>
+                {threshold}
+              </span>
+            </div>
+          );
+        })}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-end',
+            gap: 4,
+            height: '100%',
+            justifyContent: 'space-around',
+          }}
+        >
+          {logs.map((log, idx) => {
+            const v = log.blood_sugar!;
+            const pct = Math.min(100, Math.max(0, ((v - min) / range) * 100));
+            return (
+              <div
+                key={`${log.id}-${idx}`}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  flex: '1 0 24px',
+                  minWidth: 24,
+                  height: '100%',
+                  justifyContent: 'flex-end',
+                  position: 'relative',
+                }}
+                title={`${log.log_date} 血糖 ${v} mmol/L`}
+              >
+                <div
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    background: sugarColor(v),
+                    marginBottom: `${100 - pct}%`,
+                    boxShadow: `0 0 0 2px rgba(255,255,255,0.8)`,
+                  }}
+                />
+                <div style={{ fontSize: 9, color: '#999', marginTop: 2 }}>
+                  {log.log_date.slice(5)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{ marginTop: 4, fontSize: 12, color: '#888' }}>
+        <span style={{ color: SUGAR_COLOR_NORMAL }}>●</span> 正常 ≤6.1　
+        <span style={{ color: SUGAR_COLOR_WARN }}>●</span> 偏高 6.1-7.8　
+        <span style={{ color: SUGAR_COLOR_HIGH }}>●</span> 高 &gt;7.8
+      </div>
+    </ChartFrame>
+  );
+}
+
+function MedicationAdherenceBars({ history }: { history: CheckInHistory | null }) {
+  if (!history || history.items.length === 0) {
+    return (
+      <ChartFrame title="用药依从" subtitle="近 7 天" yLabels={['100%', '50%', '0%']}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            color: '#bfbfbf',
+            fontSize: 13,
+          }}
+        >
+          近 7 天无打卡记录
+        </div>
+      </ChartFrame>
+    );
+  }
+  const byDate = new Map<string, { total: number; taken: number }>();
+  history.items.forEach((item) => {
+    const day = item.date;
+    const cur = byDate.get(day) ?? { total: 0, taken: 0 };
+    cur.total += 1;
+    if (item.taken) cur.taken += 1;
+    byDate.set(day, cur);
+  });
+  const days = Array.from(byDate.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  const color = (rate: number) => {
+    if (rate >= 80) return '#52c41a';
+    if (rate >= 60) return '#faad14';
+    return '#ff4d4f';
+  };
+  return (
+    <ChartFrame
+      title="用药依从"
+      subtitle="近 7 天打卡率"
+      yLabels={['100%', '75%', '50%', '25%', '0%']}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          gap: 8,
+          height: '100%',
+          paddingBottom: 24,
+        }}
+      >
+        {days.map(([day, stat]) => {
+          const rate = stat.total > 0 ? Math.round((stat.taken / stat.total) * 100) : 0;
+          return (
+            <div
+              key={day}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                flex: 1,
+                height: '100%',
+                justifyContent: 'flex-end',
+              }}
+              title={`${day} 服药 ${stat.taken}/${stat.total}（${rate}%）`}
+            >
+              <Text style={{ fontSize: 11, color: color(rate), fontWeight: 600 }}>{rate}%</Text>
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: 36,
+                  height: `${Math.max(2, rate)}%`,
+                  background: `linear-gradient(180deg, ${color(rate)} 0%, ${color(rate)}aa 100%)`,
+                  borderRadius: '4px 4px 0 0',
+                  marginTop: 2,
+                }}
+              />
+              <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
+                {day.slice(5)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 4, fontSize: 12, color: '#888' }}>
+        <Text strong>{history.taken_count}</Text> / {history.total} 次按时（
+        <Text strong style={{ color: color(history.adherence_rate) }}>
+          {history.adherence_rate.toFixed(0)}%
+        </Text>
+        ）
+      </div>
+    </ChartFrame>
   );
 }
 

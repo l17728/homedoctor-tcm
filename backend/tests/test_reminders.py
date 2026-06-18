@@ -395,3 +395,108 @@ async def test_create_with_no_end_date_indefinite(client: AsyncClient, auth_head
     })
     assert response.status_code == 201
     assert response.json()["end_date"] is None
+
+
+@pytest.mark.asyncio
+async def test_check_in_with_past_date(client: AsyncClient, auth_headers: dict):
+    create_resp = await client.post("/api/reminders", headers=auth_headers, json={
+        "title": "补打测试",
+        "times": ["08:00"],
+        "start_date": _past_date(5),
+    })
+    rid = create_resp.json()["id"]
+    past = _past_date(1)
+    resp = await client.post(
+        f"/api/reminders/{rid}/check-in",
+        headers=auth_headers,
+        json={"taken": True, "date": past, "time": "08:00", "retroactive": True},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["date"] == past
+    assert data["taken"] is True
+    assert data["retroactive"] is True
+    assert data["skipped_reason"] == "补打"
+
+
+@pytest.mark.asyncio
+async def test_check_in_today_not_retroactive(client: AsyncClient, auth_headers: dict):
+    create_resp = await client.post("/api/reminders", headers=auth_headers, json={
+        "title": "今日打卡",
+        "times": ["08:00"],
+        "start_date": _today_str(),
+    })
+    rid = create_resp.json()["id"]
+    resp = await client.post(
+        f"/api/reminders/{rid}/check-in",
+        headers=auth_headers,
+        json={"taken": True, "time": "08:00"},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["retroactive"] is False
+    assert data["skipped_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_history_returns_slots_field(client: AsyncClient, auth_headers: dict):
+    await client.post("/api/reminders", headers=auth_headers, json={
+        "title": "历史时段",
+        "times": ["08:00", "20:00"],
+        "start_date": _past_date(10),
+    })
+    resp = await client.get("/api/reminders/history?days=7", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "slots" in data
+    assert isinstance(data["slots"], list)
+    assert len(data["slots"]) > 0
+    slot = data["slots"][0]
+    assert "reminder_id" in slot
+    assert "title" in slot
+    assert "date" in slot
+    assert "time" in slot
+    assert "status" in slot
+    assert "can_retroactive" in slot
+    assert "retroactive" in slot
+
+
+@pytest.mark.asyncio
+async def test_history_slots_missed_can_retroactive(client: AsyncClient, auth_headers: dict):
+    await client.post("/api/reminders", headers=auth_headers, json={
+        "title": "漏服可补打",
+        "times": ["08:00"],
+        "start_date": _past_date(10),
+    })
+    resp = await client.get("/api/reminders/history?days=3", headers=auth_headers)
+    data = resp.json()
+    missed_slots = [s for s in data["slots"] if s["status"] == "漏服"]
+    assert len(missed_slots) > 0
+    for s in missed_slots:
+        assert s["can_retroactive"] is True
+        assert s["retroactive"] is False
+
+
+@pytest.mark.asyncio
+async def test_history_slots_retroactive_after_checkin(client: AsyncClient, auth_headers: dict):
+    create_resp = await client.post("/api/reminders", headers=auth_headers, json={
+        "title": "补打后验证",
+        "times": ["08:00"],
+        "start_date": _past_date(10),
+    })
+    rid = create_resp.json()["id"]
+    past = _past_date(1)
+    await client.post(
+        f"/api/reminders/{rid}/check-in",
+        headers=auth_headers,
+        json={"taken": True, "date": past, "time": "08:00", "retroactive": True},
+    )
+    resp = await client.get("/api/reminders/history?days=3", headers=auth_headers)
+    data = resp.json()
+    retro_slots = [
+        s for s in data["slots"]
+        if s["reminder_id"] == rid and s["date"] == past and s["time"] == "08:00"
+    ]
+    assert len(retro_slots) == 1
+    assert retro_slots[0]["status"] == "已服"
+    assert retro_slots[0]["retroactive"] is True

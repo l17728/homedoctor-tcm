@@ -34,9 +34,16 @@ import {
   ExperimentOutlined,
   MedicineBoxOutlined,
   InfoCircleOutlined,
+  HistoryOutlined,
+  CopyOutlined,
+  FileAddOutlined,
 } from '@ant-design/icons';
 import { getMedicines, type Medicine } from '../api/medicineApi';
-import { createMedicationPlan } from '../api/medicationPlanApi';
+import {
+  createMedicationPlan,
+  getMedicationPlans,
+  type MedicationPlan,
+} from '../api/medicationPlanApi';
 import {
   autoSchedule,
   type MedicationInput,
@@ -318,6 +325,12 @@ export default function MedicationSchedulePage() {
   const [generating, setGenerating] = useState(false);
   const [savingPlan, setSavingPlan] = useState(false);
 
+  // 模板与上次计划
+  const [templates, setTemplates] = useState<MedicationPlan[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [loadingLast, setLoadingLast] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
   // 自定义药物抽屉
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [submittingCustom, setSubmittingCustom] = useState(false);
@@ -336,9 +349,22 @@ export default function MedicationSchedulePage() {
     }
   }, []);
 
+  const loadTemplates = useCallback(async () => {
+    setTemplatesLoading(true);
+    try {
+      const plans = await getMedicationPlans();
+      setTemplates(plans);
+    } catch {
+      setTemplates([]);
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadCabinet();
-  }, [loadCabinet]);
+    void loadTemplates();
+  }, [loadCabinet, loadTemplates]);
 
   // 统一选择的药物清单（药箱选中 + 自定义）
   const selectedMeds: MedicationInput[] = useMemo(() => {
@@ -537,6 +563,107 @@ export default function MedicationSchedulePage() {
     }
   }, [schedule]);
 
+  // 加载上次/某个模板的药物列表到当前选择
+  const applyPlanToSelection = useCallback(
+    (plan: MedicationPlan) => {
+      const cabinetByName = new Map(
+        cabinetMeds.map((m) => [m.name, m.id]),
+      );
+      const nextSelected = new Set<string>();
+      const newCustoms: CustomMedication[] = [];
+      const usedLocalIds = new Set<string>();
+      plan.items.forEach((item, idx) => {
+        const cabinetId = cabinetByName.get(item.medicineName);
+        if (cabinetId && !usedLocalIds.has(`cab-${cabinetId}`)) {
+          nextSelected.add(cabinetId);
+          usedLocalIds.add(`cab-${cabinetId}`);
+        } else {
+          newCustoms.push({
+            localId: `tpl-${plan.id}-${idx}-${Date.now()}`,
+            name: item.medicineName,
+            type: '西药',
+            dosage: item.dosage || '1片',
+            frequency: item.frequency || frequency,
+            notes: item.notes || undefined,
+          });
+        }
+      });
+      setSelectedIds(nextSelected);
+      setCustomMeds((prev) => {
+        const kept = prev.filter((c) => !c.localId.startsWith('tpl-'));
+        return [...kept, ...newCustoms];
+      });
+      message.success(
+        `已加载「${plan.name}」共 ${plan.items.length} 种药物`,
+      );
+    },
+    [cabinetMeds, frequency],
+  );
+
+  const handleLoadLast = useCallback(async () => {
+    setLoadingLast(true);
+    try {
+      const plans = await getMedicationPlans();
+      if (plans.length === 0) {
+        message.info('暂无历史计划，请先生成并保存一份');
+        return;
+      }
+      const lastPlan = plans[0];
+      if (lastPlan) {
+        applyPlanToSelection(lastPlan);
+      }
+    } catch {
+      message.error('加载上次计划失败，请稍后重试');
+    } finally {
+      setLoadingLast(false);
+    }
+  }, [applyPlanToSelection]);
+
+  const handleLoadTemplate = useCallback(
+    (planId: string) => {
+      const plan = templates.find((p) => p.id === planId);
+      if (!plan) return;
+      applyPlanToSelection(plan);
+    },
+    [templates, applyPlanToSelection],
+  );
+
+  const handleSaveAsTemplate = useCallback(async () => {
+    if (selectedMeds.length === 0) {
+      message.warning('请先选择药物');
+      return;
+    }
+    setSavingTemplate(true);
+    try {
+      const dateStr = new Date().toLocaleDateString('zh-CN');
+      const timesSet = new Set<string>(['08:00']);
+      schedule?.days.forEach((d) => {
+        d.slots.forEach((s) => {
+          if (s.medicines.length > 0) timesSet.add(s.time);
+        });
+      });
+      const items = selectedMeds.map((m, idx) => ({
+        medicineName: m.name,
+        dosage: m.dosage,
+        frequency: m.frequency,
+        times: Array.from(timesSet).sort(),
+        notes: m.notes,
+        sortOrder: idx,
+      }));
+      await createMedicationPlan({
+        name: `${dateStr} 模板`,
+        description: `由 ${selectedMeds.length} 种药物组成的常用模板`,
+        items,
+      });
+      message.success(`已保存为模板「${dateStr} 模板」`);
+      await loadTemplates();
+    } catch {
+      message.error('保存模板失败，请稍后重试');
+    } finally {
+      setSavingTemplate(false);
+    }
+  }, [selectedMeds, schedule, loadTemplates]);
+
   // ----- 渲染 -----
 
   return (
@@ -561,6 +688,32 @@ export default function MedicationSchedulePage() {
           </Space>
         </Title>
         <Space className="no-print" wrap>
+          <Select<string>
+            placeholder="选择常用模板"
+            style={{ minWidth: 200 }}
+            size="large"
+            loading={templatesLoading}
+            value={undefined}
+            onChange={(v) => {
+              if (v) handleLoadTemplate(v);
+            }}
+            options={templates.map((p) => ({
+              label: `${p.name}（${p.items.length} 种药）`,
+              value: p.id,
+            }))}
+            notFoundContent={
+              templatesLoading ? '加载中...' : '暂无保存的模板'
+            }
+            allowClear
+          />
+          <Button
+            size="large"
+            icon={<HistoryOutlined />}
+            onClick={handleLoadLast}
+            loading={loadingLast}
+          >
+            加载上次计划
+          </Button>
           <Button
             type="primary"
             size="large"
@@ -868,18 +1021,35 @@ export default function MedicationSchedulePage() {
             />
           </Card>
 
-          {/* 保存为套餐 */}
+          {/* 保存为套餐 / 模板 */}
           <div className="no-print" style={{ textAlign: 'center', paddingBottom: 24 }}>
-            <Button
-              type="primary"
-              size="large"
-              icon={<SaveOutlined />}
-              onClick={handleSaveAsPlan}
-              loading={savingPlan}
-              style={{ minWidth: 200, height: 48 }}
-            >
-              保存为用药套餐
-            </Button>
+            <Space wrap size="middle">
+              <Button
+                size="large"
+                icon={<FileAddOutlined />}
+                onClick={handleSaveAsTemplate}
+                loading={savingTemplate}
+                style={{ minWidth: 180, height: 48 }}
+              >
+                保存为模板
+              </Button>
+              <Button
+                type="primary"
+                size="large"
+                icon={<SaveOutlined />}
+                onClick={handleSaveAsPlan}
+                loading={savingPlan}
+                style={{ minWidth: 200, height: 48 }}
+              >
+                保存为用药套餐
+              </Button>
+            </Space>
+            <div style={{ marginTop: 8 }}>
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                <CopyOutlined style={{ marginRight: 4 }} />
+                模板可在下次快速加载；套餐会自动生成提醒
+              </Text>
+            </div>
           </div>
         </>
       )}

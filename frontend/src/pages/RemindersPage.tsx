@@ -18,6 +18,7 @@ import {
   Card,
   Tag,
   Radio,
+  Tooltip,
 } from 'antd';
 import {
   PlusOutlined,
@@ -25,6 +26,8 @@ import {
   DeleteOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
+  HistoryOutlined,
+  UndoOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
@@ -40,6 +43,7 @@ import {
   type TodayReminderSlot,
   type ReminderCreate,
   type CheckInLog,
+  type HistorySlot,
 } from '../api/reminderApi';
 import { REMINDER_STATUS_COLOR } from '../constants';
 import StatusTag from '../components/StatusTag';
@@ -71,10 +75,13 @@ export default function RemindersPage() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [todaySlots, setTodaySlots] = useState<TodayReminderSlot[]>([]);
   const [history, setHistory] = useState<CheckInLog[]>([]);
+  const [historySlots, setHistorySlots] = useState<HistorySlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Reminder | null>(null);
   const [form] = Form.useForm<FormValues>();
+  const [activeTab, setActiveTab] = useState<'today' | 'history'>('today');
+  const [retroChecking, setRetroChecking] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -87,6 +94,7 @@ export default function RemindersPage() {
       setReminders(list);
       setTodaySlots(today);
       setHistory(hist?.items ?? []);
+      setHistorySlots(hist?.slots ?? []);
     } catch {
       // handled
     } finally {
@@ -204,6 +212,20 @@ export default function RemindersPage() {
     }
   };
 
+  const handleRetroCheckIn = async (slot: HistorySlot) => {
+    const slotKey = `${slot.reminder_id}|${slot.date}|${slot.time}`;
+    setRetroChecking(slotKey);
+    try {
+      await checkInReminder(slot.reminder_id, slot.time, true, slot.date, true);
+      message.success(`已补打 ✓ ${slot.date} ${slot.time} ${slot.title}`);
+      loadData();
+    } catch {
+      message.error('补打失败');
+    } finally {
+      setRetroChecking(null);
+    }
+  };
+
   const columns = [
     { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true },
     {
@@ -263,90 +285,178 @@ export default function RemindersPage() {
         <Skeleton active />
       ) : (
         <>
-          {todaySlots.length > 0 && (
-            <Card title={<><ClockCircleOutlined /> 今日提醒</>} style={{ marginBottom: 24 }}>
-              <Space direction="vertical" style={{ width: '100%' }} size="small">
-                {todaySlots.map((slot, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '8px 12px',
-                      background: '#fafafa',
-                      borderRadius: 6,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                       <Tag color="blue" style={{ fontSize: 14, padding: '2px 8px' }}>
-                         {slot.time}
-                       </Tag>
-                       <span style={{ fontSize: 16 }}>{slot.title}</span>
-                       {slot.dosage && <span style={{ color: '#888' }}>{slot.dosage}</span>}
-                     </div>
-                     <Space>
-                       {slot.status === '待服' && (
-                         <Button
-                           type="primary"
-                           size="small"
-                           icon={<CheckCircleOutlined />}
-                           onClick={() => handleCheckIn(slot.reminder_id, slot.time)}
-                         >
-                           打卡
-                         </Button>
-                       )}
-                       <StatusTag status={slot.status} colorMap={REMINDER_STATUS_COLOR} />
-                     </Space>
-                  </div>
-                ))}
-              </Space>
-            </Card>
+          <Radio.Group
+            value={activeTab}
+            onChange={(e) => setActiveTab(e.target.value)}
+            style={{ marginBottom: 16 }}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            <Radio.Button value="today">
+              <ClockCircleOutlined /> 今日
+            </Radio.Button>
+            <Radio.Button value="history">
+              <HistoryOutlined /> 历史
+            </Radio.Button>
+          </Radio.Group>
+
+          {activeTab === 'today' && (
+            <>
+              {todaySlots.length > 0 && (
+                <Card title={<><ClockCircleOutlined /> 今日提醒</>} style={{ marginBottom: 24 }}>
+                  <Space direction="vertical" style={{ width: '100%' }} size="small">
+                    {todaySlots.map((slot, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 12px',
+                          background: '#fafafa',
+                          borderRadius: 6,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                           <Tag color="blue" style={{ fontSize: 14, padding: '2px 8px' }}>
+                             {slot.time}
+                           </Tag>
+                           <span style={{ fontSize: 16 }}>{slot.title}</span>
+                           {slot.dosage && <span style={{ color: '#888' }}>{slot.dosage}</span>}
+                         </div>
+                         <Space>
+                           {slot.status === '待服' && (
+                             <Button
+                               type="primary"
+                               size="small"
+                               icon={<CheckCircleOutlined />}
+                               onClick={() => handleCheckIn(slot.reminder_id, slot.time)}
+                             >
+                               打卡
+                             </Button>
+                           )}
+                           <StatusTag status={slot.status} colorMap={REMINDER_STATUS_COLOR} />
+                         </Space>
+                      </div>
+                    ))}
+                  </Space>
+                </Card>
+              )}
+
+              {history.length > 0 && (
+                <Card title={<><CheckCircleOutlined /> 打卡历史（近7天）</>} style={{ marginBottom: 24 }}>
+                  <Space direction="vertical" style={{ width: '100%' }} size="small">
+                    {history.slice(0, 10).map((log) => (
+                      <div
+                        key={log.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '6px 12px',
+                          background: log.taken ? '#f6ffed' : '#fff2f0',
+                          borderRadius: 6,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <Tag color={log.taken ? 'green' : 'red'} style={{ fontSize: 13 }}>
+                            {log.date}
+                          </Tag>
+                          <span style={{ fontSize: 15 }}>
+                            {log.title ?? '已删除的提醒'}
+                          </span>
+                        </div>
+                        <Tag color={log.taken ? 'success' : 'error'}>
+                          {log.taken ? '已服' : '漏服'}
+                        </Tag>
+                      </div>
+                    ))}
+                  </Space>
+                </Card>
+              )}
+
+              {reminders.length === 0 ? (
+                <Empty description="暂无提醒，点击添加" />
+              ) : (
+                <Table
+                  dataSource={reminders}
+                  columns={columns}
+                  rowKey="id"
+                  size="middle"
+                  scroll={{ x: 'max-content' }}
+                  pagination={false}
+                />
+              )}
+            </>
           )}
 
-          {history.length > 0 && (
-            <Card title={<><CheckCircleOutlined /> 打卡历史（近7天）</>} style={{ marginBottom: 24 }}>
-              <Space direction="vertical" style={{ width: '100%' }} size="small">
-                {history.slice(0, 10).map((log) => (
-                  <div
-                    key={log.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '6px 12px',
-                      background: log.taken ? '#f6ffed' : '#fff2f0',
-                      borderRadius: 6,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <Tag color={log.taken ? 'green' : 'red'} style={{ fontSize: 13 }}>
-                        {log.date}
-                      </Tag>
-                      <span style={{ fontSize: 15 }}>
-                        {log.title ?? '已删除的提醒'}
-                      </span>
-                    </div>
-                    <Tag color={log.taken ? 'success' : 'error'}>
-                      {log.taken ? '已服' : '漏服'}
-                    </Tag>
-                  </div>
-                ))}
-              </Space>
+          {activeTab === 'history' && (
+            <Card title={<><HistoryOutlined /> 近 7 天服药记录</>}>
+              {historySlots.length === 0 ? (
+                <Empty description="近 7 天暂无提醒记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              ) : (
+                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                  {historySlots.map((slot, idx) => {
+                    const slotKey = `${slot.reminder_id}|${slot.date}|${slot.time}`;
+                    const isRetroLoading = retroChecking === slotKey;
+                    const bg =
+                      slot.status === '已服' ? '#f6ffed'
+                      : slot.status === '漏服' ? '#fff2f0'
+                      : '#fafafa';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 12px',
+                          background: bg,
+                          borderRadius: 6,
+                          flexWrap: 'wrap',
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <Tag style={{ fontSize: 13 }}>{slot.date}</Tag>
+                          <Tag color="blue" style={{ fontSize: 14, padding: '2px 8px' }}>
+                            {slot.time}
+                          </Tag>
+                          <span style={{ fontSize: 16 }}>{slot.title}</span>
+                          {slot.dosage && <span style={{ color: '#888', fontSize: 14 }}>{slot.dosage}</span>}
+                        </div>
+                        <Space wrap>
+                          {slot.status === '已服' && slot.retroactive && (
+                            <Tooltip title="这是一次补打的记录">
+                              <Tag color="gold" style={{ fontSize: 14 }}>补</Tag>
+                            </Tooltip>
+                          )}
+                          <StatusTag status={slot.status} colorMap={REMINDER_STATUS_COLOR} />
+                          {slot.can_retroactive && (
+                            <Popconfirm
+                              title={`确定为 ${slot.date} ${slot.time} 的「${slot.title}」补打吗？`}
+                              onConfirm={() => handleRetroCheckIn(slot)}
+                              okText="确定补打"
+                              cancelText="取消"
+                            >
+                              <Button
+                                type="default"
+                                size="small"
+                                icon={<UndoOutlined />}
+                                loading={isRetroLoading}
+                                style={{ borderColor: '#faad14', color: '#faad14' }}
+                              >
+                                补打
+                              </Button>
+                            </Popconfirm>
+                          )}
+                        </Space>
+                      </div>
+                    );
+                  })}
+                </Space>
+              )}
             </Card>
-          )}
-
-          {reminders.length === 0 ? (
-            <Empty description="暂无提醒，点击添加" />
-          ) : (
-            <Table
-              dataSource={reminders}
-              columns={columns}
-              rowKey="id"
-              size="middle"
-              scroll={{ x: 'max-content' }}
-              pagination={false}
-            />
           )}
         </>
       )}
