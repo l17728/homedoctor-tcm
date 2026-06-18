@@ -24,6 +24,7 @@ import {
   ExperimentOutlined,
   ShareAltOutlined,
   ScheduleOutlined,
+  AlertOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -97,6 +98,11 @@ export default function AppLayout() {
       key: '/',
       icon: <HomeOutlined />,
       label: '首页',
+    },
+    {
+      key: '/triage',
+      icon: <AlertOutlined />,
+      label: '急症分诊',
     },
     {
       key: 'knowledge',
@@ -216,10 +222,22 @@ export default function AppLayout() {
     },
   ];
 
-  const selectedKey = location.pathname;
-  const matchedKey =
-    menuItems.find((m) => m.key === selectedKey)?.key ??
-    (location.pathname.startsWith('/classics') ? '/classics' : selectedKey);
+  // Prefix-match: detail pages (e.g. /herbs/123) keep their parent menu item
+  // (e.g. /herbs) highlighted. Parent-only keys (knowledge/health/sharing) are
+  // ignored — only leaf keys with a leading "/" participate in prefix matching.
+  const allKeys: string[] = menuItems.flatMap((m) => {
+    const children = 'children' in m ? (m as { children?: { key: string }[] }).children : undefined;
+    return children ? [m.key, ...children.map((c) => c.key)] : [m.key];
+  });
+  const matchedKey = (() => {
+    const exact = allKeys.find((k) => k === location.pathname);
+    if (exact) return exact;
+    // Longest segment-aware prefix wins (e.g. /herbs/123 → /herbs)
+    const prefix = allKeys
+      .filter((k) => k !== '/' && location.pathname.startsWith(k + '/'))
+      .sort((a, b) => b.length - a.length)[0];
+    return prefix ?? location.pathname;
+  })();
   const [openKeys, setOpenKeys] = useState<string[]>(() => {
     if (
       location.pathname.startsWith('/herbs') ||
@@ -408,7 +426,8 @@ export default function AppLayout() {
       </Layout>
 
       {/* AI 健康助手 — 悬浮按钮 */}
-      {!['/chat', '/login'].includes(location.pathname) && (
+      {!['/chat', '/login'].includes(location.pathname) &&
+        !location.pathname.startsWith('/classics') && (
         <>
           <style>{`
             .ai-fab {

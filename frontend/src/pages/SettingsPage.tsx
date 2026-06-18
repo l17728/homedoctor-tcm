@@ -26,6 +26,7 @@ import {
 import { useTheme } from '../hooks/useTheme';
 import { useElderlyMode } from '../contexts/ElderlyModeContext';
 import { request } from '../api/client';
+import { APP_VERSION } from '../constants';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -427,10 +428,10 @@ export default function SettingsPage() {
 
       <Divider />
 
-      {/* 4. 关于 (existing — version updated to 0.3.0) */}
+      {/* 4. 关于 (existing — version updated to 0.4.0) */}
       <Card title="关于">
         <p>家庭医生 · 您的养生助手</p>
-        <p>版本：0.3.0</p>
+        <p>版本：{APP_VERSION}</p>
       </Card>
 
       <Divider />

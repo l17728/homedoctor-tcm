@@ -28,3 +28,5 @@ export const TOXICITY_COLOR: Record<string, string> = {
 export const PAGE_SIZE = 20;
 
 export const DATE_FORMAT = 'YYYY-MM-DD HH:mm';
+
+export const APP_VERSION = '0.4.0';

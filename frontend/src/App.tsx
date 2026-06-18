@@ -37,6 +37,7 @@ import KnowledgeImportPage from './pages/KnowledgeImportPage';
 import ReportsPage from './pages/ReportsPage';
 import RemoteAssistPage from './pages/RemoteAssistPage';
 import ShareCardsPage from './pages/ShareCardsPage';
+import TriagePage from './pages/TriagePage';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -98,6 +99,7 @@ function ThemedApp() {
           <Route path="share-cards" element={<ShareCardsPage />} />
           <Route path="seasonal" element={<SeasonalHealthPage />} />
           <Route path="safety" element={<SafetyCheckPage />} />
+          <Route path="triage" element={<TriagePage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
