@@ -38,6 +38,9 @@ import {
   ReloadOutlined,
   FireOutlined,
   ClockCircleOutlined,
+  GlobalOutlined,
+  PlayCircleOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { ApiError } from '../api/client';
@@ -47,6 +50,8 @@ import {
   getEntityTypes,
   importText,
   importFile,
+  importUrl,
+  importVideoUrl,
   getPopular,
   getRecent,
   ENTITY_TYPE_LABEL,
@@ -66,7 +71,26 @@ const { TextArea } = AntInput;
 
 const PAGE_SIZE = 18;
 const DEBOUNCE_MS = 300;
-const ACCEPTED_EXT = '.pdf,.docx,.doc,.txt,.md,.jpg,.jpeg,.png,.webp';
+const ACCEPTED_EXT =
+  '.pdf,.docx,.doc,.txt,.md,.jpg,.jpeg,.png,.webp,.mp3,.mp4,.wav,.m4a';
+
+const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024;
+
+const MEDIA_EXT = ['.mp3', '.mp4', '.wav', '.m4a'];
+
+function isMediaFile(name: string): boolean {
+  const lower = name.toLowerCase();
+  return MEDIA_EXT.some((ext) => lower.endsWith(ext));
+}
+
+const FILE_TYPE_BADGES: { label: string; color: string }[] = [
+  { label: '📄 PDF', color: '#ff4d4f' },
+  { label: '📝 Word', color: '#1677ff' },
+  { label: '🖼️ 图片', color: '#52c41a' },
+  { label: '🎵 MP3', color: '#722ed1' },
+  { label: '🎬 MP4', color: '#fa8c16' },
+  { label: '📋 文本', color: '#8c8c8c' },
+];
 
 /** 侧边栏类型过滤项顺序（与 spec §知识库 一致） */
 const FILTER_ORDER: string[] = [
@@ -119,11 +143,13 @@ export default function KnowledgeHubPage() {
   });
 
   const [importOpen, setImportOpen] = useState(false);
-  const [importMode, setImportMode] = useState<'file' | 'text'>('file');
+  const [importMode, setImportMode] = useState<'file' | 'text' | 'url'>('file');
   const [importing, setImporting] = useState(false);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [importTextValue, setImportTextValue] = useState('');
   const [importTitle, setImportTitle] = useState('');
+  const [urlInput, setUrlInput] = useState('');
+  const [urlImportKind, setUrlImportKind] = useState<'article' | 'video'>('article');
   const [editSummary, setEditSummary] = useState('');
   const [editTags, setEditTags] = useState<string[]>([]);
 
@@ -265,6 +291,8 @@ export default function KnowledgeHubPage() {
     setImportPreview(null);
     setImportTextValue('');
     setImportTitle('');
+    setUrlInput('');
+    setUrlImportKind('article');
     setEditSummary('');
     setEditTags([]);
   };
@@ -275,16 +303,69 @@ export default function KnowledgeHubPage() {
   };
 
   const handleFileDrop = async (file: File) => {
+    const isMedia = isMediaFile(file.name);
+    if (file.size > LARGE_FILE_THRESHOLD) {
+      void message.warning('文件较大，处理可能需要几分钟');
+    }
     setImporting(true);
     setImportPreview(null);
+    if (isMedia) {
+      void message.loading({
+        content: '正在转录音频/视频内容…',
+        key: 'import',
+        duration: 0,
+      });
+    }
     try {
       const preview = await importFile(file);
       setImportPreview(preview);
       setEditSummary(preview.summary);
       setEditTags(preview.tags.length > 0 ? preview.tags : preview.keywords);
-      void message.success('AI 分析完成');
+      if (isMedia) {
+        void message.success({ content: '导入成功！', key: 'import' });
+      } else {
+        void message.success('AI 分析完成');
+      }
     } catch (e) {
+      if (isMedia) {
+        void message.destroy('import');
+      }
       notifyError(e, '文件导入失败');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleUrlImport = async (kind: 'article' | 'video') => {
+    const url = urlInput.trim();
+    if (!url) {
+      void message.warning('请输入链接');
+      return;
+    }
+    if (!/^https?:\/\/.+/.test(url)) {
+      void message.warning('请输入有效的 http(s) 链接');
+      return;
+    }
+    setUrlImportKind(kind);
+    setImporting(true);
+    setImportPreview(null);
+    void message.loading({
+      content: kind === 'video' ? '正在提取视频字幕…' : '正在抓取文章内容…',
+      key: 'import',
+      duration: 0,
+    });
+    try {
+      const preview =
+        kind === 'video'
+          ? await importVideoUrl(url)
+          : await importUrl(url);
+      setImportPreview(preview);
+      setEditSummary(preview.summary);
+      setEditTags(preview.tags.length > 0 ? preview.tags : preview.keywords);
+      void message.success({ content: '导入成功！', key: 'import' });
+    } catch (e) {
+      void message.destroy('import');
+      notifyError(e, kind === 'video' ? '视频导入失败' : '文章导入失败');
     } finally {
       setImporting(false);
     }
@@ -337,6 +418,60 @@ export default function KnowledgeHubPage() {
       return false;
     },
   };
+
+  /** Ctrl+V 粘贴：自动识别 URL / 纯文本 / 图片 */
+  const handlePaste = useCallback(
+    async (e: ClipboardEvent) => {
+      if (importing || importPreview) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      let handled = false;
+      for (const item of items) {
+        if (item.kind === 'string' && item.type === 'text/plain') {
+          const text = await new Promise<string>((resolve) =>
+            item.getAsString(resolve),
+          );
+          if (/^https?:\/\/.+/.test(text.trim())) {
+            setImportMode('url');
+            setUrlInput(text.trim());
+            void message.info('检测到链接，已切换到链接导入，点击按钮处理');
+          } else if (text.trim()) {
+            setImportMode('text');
+            setImportTextValue(text);
+            void message.info('检测到文本，已切换到文本导入');
+          }
+          handled = true;
+          break;
+        }
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            const ext = file.type.split('/')[1] || 'png';
+            const renamed = new File([file], `粘贴图片.${ext}`, {
+              type: file.type,
+            });
+            setImportMode('file');
+            void handleFileDrop(renamed);
+            handled = true;
+            break;
+          }
+        }
+      }
+      if (handled) {
+        e.preventDefault();
+      }
+    },
+    [importing, importPreview],
+  );
+
+  useEffect(() => {
+    if (!importOpen) return;
+    window.addEventListener('paste', handlePaste);
+    return () => {
+      window.removeEventListener('paste', handlePaste);
+    };
+  }, [importOpen, handlePaste]);
 
   const totalCount = useMemo(
     () => Object.values(typeCounts).reduce((a, b) => a + b, 0),
@@ -891,14 +1026,21 @@ export default function KnowledgeHubPage() {
                 icon={<InboxOutlined />}
                 onClick={() => setImportMode('file')}
               >
-                文件导入
+                文件
               </Button>
               <Button
                 type={importMode === 'text' ? 'primary' : 'default'}
                 icon={<FileTextOutlined />}
                 onClick={() => setImportMode('text')}
               >
-                文本粘贴
+                文本
+              </Button>
+              <Button
+                type={importMode === 'url' ? 'primary' : 'default'}
+                icon={<LinkOutlined />}
+                onClick={() => setImportMode('url')}
+              >
+                链接
               </Button>
             </Space>
           )
@@ -915,7 +1057,9 @@ export default function KnowledgeHubPage() {
               style={{ marginTop: 16, fontSize: 15 }}
             >
               <RobotOutlined style={{ marginRight: 6 }} />
-              AI 正在分析…
+              {urlImportKind === 'video'
+                ? '正在提取视频字幕，请稍候…'
+                : 'AI 正在分析…'}
             </Paragraph>
           </div>
         ) : importPreview ? (
@@ -930,15 +1074,70 @@ export default function KnowledgeHubPage() {
                 点击或拖拽文件到此处
               </p>
               <p className="ant-upload-hint">
-                支持 PDF / Word / TXT / Markdown / 图片，AI 将自动提取结构化知识
+                支持 PDF / Word / TXT / Markdown / 图片 / 音频 / 视频，
+                AI 将自动提取结构化知识
               </p>
             </Dragger>
+            <div style={{ marginTop: 10, textAlign: 'center' }}>
+              <Space size={[8, 4]} wrap>
+                {FILE_TYPE_BADGES.map((b) => (
+                  <Tag
+                    key={b.label}
+                    style={{
+                      margin: 0,
+                      borderLeft: `3px solid ${b.color}`,
+                      fontSize: 12,
+                    }}
+                  >
+                    {b.label}
+                  </Tag>
+                ))}
+              </Space>
+            </div>
             <Alert
               type="info"
               showIcon
               message="AI 会自动识别类型、生成摘要、提取关键词、发现关联"
               style={{ marginTop: 12, fontSize: 13 }}
             />
+          </>
+        ) : importMode === 'url' ? (
+          <>
+            <Input
+              prefix={<GlobalOutlined style={{ color: '#999' }} />}
+              placeholder="粘贴文章或视频链接（支持 YouTube、B站）"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              size="large"
+              style={{ fontSize: 15 }}
+            />
+            <Paragraph
+              type="secondary"
+              style={{ fontSize: 12, marginTop: 8, marginBottom: 12 }}
+            >
+              复制网页/视频地址后可直接在此处粘贴，或按 Ctrl+V 自动识别。
+            </Paragraph>
+            <Space style={{ width: '100%' }} direction="vertical" size={8}>
+              <Button
+                type="primary"
+                block
+                size="large"
+                icon={<PlayCircleOutlined />}
+                onClick={() => void handleUrlImport('article')}
+                disabled={!urlInput.trim()}
+              >
+                导入文章
+              </Button>
+              <Button
+                block
+                size="large"
+                icon={<VideoCameraOutlined />}
+                onClick={() => void handleUrlImport('video')}
+                disabled={!urlInput.trim()}
+              >
+                导入视频
+              </Button>
+            </Space>
           </>
         ) : (
           <>

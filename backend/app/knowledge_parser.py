@@ -29,6 +29,8 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,12 +55,29 @@ EXTENSION_MAP: dict[str, str] = {
     ".gif": "image",
     ".bmp": "image",
     ".tiff": "image",
+    ".mp3": "audio",
+    ".wav": "audio",
+    ".m4a": "audio",
+    ".mp4": "video",
 }
 
-#: Extensions accepted by the upload endpoint (spec §18 acceptance list).
-ALLOWED_EXTENSIONS: frozenset[str] = frozenset(
+#: Extensions accepted by the **legacy** document-only upload endpoint
+#: (``/api/knowledge-import/upload``). Kept strict so that router continues
+#: to reject multimedia uploads — its tests and UI were built for documents.
+DOCUMENT_EXTENSIONS: frozenset[str] = frozenset(
     {".pdf", ".docx", ".doc", ".txt", ".md", ".jpg", ".jpeg", ".png", ".webp"}
 )
+
+#: Multimedia file extensions — audio/video handled via whisper + ffmpeg.
+MULTIMEDIA_EXTENSIONS: frozenset[str] = frozenset(
+    {".mp3", ".wav", ".m4a", ".mp4"}
+)
+
+#: Extensions accepted by the unified hub upload endpoint
+#: (``/api/knowledge-hub/import-file``) — documents **and** multimedia.
+#: This is a mutable ``set`` so callers can ``.add()`` new types at runtime
+#: if needed (e.g. future ``.webm`` support).
+ALLOWED_EXTENSIONS: set[str] = set(DOCUMENT_EXTENSIONS) | set(MULTIMEDIA_EXTENSIONS)
 
 #: Tesseract language pack combo — Chinese simplified + English.
 TESSERACT_LANG = os.environ.get("HOMEDOCTOR_TESSERACT_LANG", "chi_sim+eng")
@@ -119,7 +138,7 @@ def detect_file_type(filename: str) -> str:
     if ext not in EXTENSION_MAP:
         raise ValueError(
             f"不支持的文件格式：{ext or '(无扩展名)'}。"
-            f"支持：{', '.join(sorted(ALLOWED_EXTENSIONS))}"
+            f"支持：{', '.join(sorted(EXTENSION_MAP))}"
         )
     return EXTENSION_MAP[ext]
 
@@ -426,6 +445,20 @@ async def parse_file(file_path: str, filename: str) -> ParseResult:
         metadata["ocr"] = bool(ocr_text)
         sections = [{"heading": "", "text": ocr_text}] if ocr_text else []
 
+    elif ftype == "audio":
+        result = await parse_audio(file_path)
+        metadata.update(result.metadata)
+        if result.error:
+            return ParseResult(type="audio", error=result.error, metadata=metadata)
+        sections = result.sections
+
+    elif ftype == "video":
+        result = await parse_video_file(file_path)
+        metadata.update(result.metadata)
+        if result.error:
+            return ParseResult(type="video", error=result.error, metadata=metadata)
+        sections = result.sections
+
     else:  # pragma: no cover - detect_file_type guards this
         return ParseResult(type=ftype, error=f"未知文件类型：{ftype}")
 
@@ -477,3 +510,270 @@ def _docx_to_sections(
         full = "\n".join(p["text"] for p in raw)
         sections = split_into_sections(full)
     return sections
+
+
+# ---------------------------------------------------------------------------
+# URL / video-link / audio / video-file parsing (spec §18 — multimedia import)
+# ---------------------------------------------------------------------------
+#
+# All multimedia parsers follow the **graceful degradation** pattern used by
+# ``app.routers.voice``: when an optional dependency (whisper, ffmpeg) is
+# absent, the parser returns a ``ParseResult`` with ``error`` set rather than
+# raising, so callers can surface a friendly message and the import still
+# produces a (possibly empty) entity shell.
+#
+# Chinese domain language throughout (AGENTS.md §1.7).
+
+#: Maximum characters extracted from a fetched web page before truncation.
+URL_TEXT_CHAR_LIMIT = 10000
+
+#: Request timeout (seconds) for HTTP fetches.
+URL_FETCH_TIMEOUT = 30.0
+
+#: Regex extracting an 11-char YouTube video id from common URL shapes.
+_YOUTUBE_ID_RE = re.compile(r"(?:v=|youtu\.be/|embed/|shorts/)([\w-]{11})")
+
+#: substrings that mark a URL as a known video platform.
+_VIDEO_HOST_MARKERS = ("youtube.com", "youtu.be", "bilibili.com", "b23.tv")
+
+
+def is_video_url(url: str) -> bool:
+    """Return True if ``url`` points to a known video platform."""
+    lower = (url or "").lower()
+    return any(marker in lower for marker in _VIDEO_HOST_MARKERS)
+
+
+async def parse_url(url: str) -> ParseResult:
+    """Fetch a web page and extract its main article text.
+
+    Returns a :class:`ParseResult` whose ``metadata`` carries ``source_url``
+    and ``title``. On fetch failure, returns a result with ``error`` set
+    (no exception) so callers can degrade gracefully.
+    """
+    try:
+        async with httpx.AsyncClient(
+            timeout=URL_FETCH_TIMEOUT, follow_redirects=True
+        ) as client:
+            resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            resp.raise_for_status()
+            html = resp.text
+    except Exception as exc:
+        return ParseResult(type="url", error=f"网页抓取失败：{exc}")
+
+    title = _extract_html_title(html) or url
+    text = _html_to_text(html)
+    if len(text) > URL_TEXT_CHAR_LIMIT:
+        text = text[:URL_TEXT_CHAR_LIMIT] + "..."
+
+    sections = split_into_sections(text) if text.strip() else []
+    return ParseResult(
+        type="url",
+        sections=sections,
+        metadata={
+            "source_url": url,
+            "title": title,
+            "fetched_chars": len(html),
+            "extracted_chars": len(text),
+        },
+    )
+
+
+def _extract_html_title(html: str) -> str:
+    match = re.search(r"<title[^>]*>(.*?)</title>", html, re.DOTALL | re.IGNORECASE)
+    if not match:
+        return ""
+    return re.sub(r"\s+", " ", match.group(1)).strip()
+
+
+def _html_to_text(html: str) -> str:
+    """Strip scripts/styles/nav/footer/header tags, then all remaining tags."""
+    text = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<nav[^>]*>.*?</nav>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<footer[^>]*>.*?</footer>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<header[^>]*>.*?</header>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+async def parse_video_url(url: str) -> ParseResult:
+    """Extract transcript/subtitle text from a video-platform URL.
+
+    Detects YouTube / Bilibili and delegates; unknown hosts fall back to
+    :func:`parse_url` (generic web-page extraction).
+    """
+    lower = (url or "").lower()
+    if "youtube.com" in lower or "youtu.be" in lower:
+        return await _parse_youtube(url)
+    if "bilibili.com" in lower or "b23.tv" in lower:
+        return await _parse_bilibili(url)
+    return await parse_url(url)
+
+
+def _fetch_youtube_transcript(api_cls, video_id: str):
+    """Fetch transcript from YouTube, supporting both API versions.
+
+    - ``youtube-transcript-api < 1.0``: classmethod ``get_transcript(id, languages=[...])``
+      returns ``list[dict]`` with ``"text"`` key.
+    - ``youtube-transcript-api >= 1.0``: instance method ``fetch(id, languages=[...])``
+      returns ``FetchedTranscript`` (iterable of dataclass objects with ``.text``).
+    """
+    langs = ["zh-Hans", "zh", "en"]
+    get_transcript = getattr(api_cls, "get_transcript", None)
+    if callable(get_transcript):
+        return get_transcript(video_id, languages=langs)
+    instance = api_cls()
+    return instance.fetch(video_id, languages=langs)
+
+
+def _transcript_seg_text(seg) -> str:
+    """Extract text from a transcript segment — dict (v0.x) or dataclass (v1.x)."""
+    if isinstance(seg, dict):
+        return str(seg.get("text", ""))
+    return str(getattr(seg, "text", "") or "")
+
+
+async def _parse_youtube(url: str) -> ParseResult:
+    """Try the YouTube transcript API; fall back to page-text extraction."""
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+    except ImportError:
+        logger.info("youtube-transcript-api 未安装，回退到网页文本提取")
+        return await parse_url(url)
+
+    match = _YOUTUBE_ID_RE.search(url)
+    if not match:
+        return await parse_url(url)
+    video_id = match.group(1)
+
+    try:
+        transcript = await asyncio.to_thread(
+            _fetch_youtube_transcript, YouTubeTranscriptApi, video_id,
+        )
+        text = " ".join(_transcript_seg_text(seg) for seg in transcript).strip()
+    except Exception as exc:
+        logger.info("YouTube 字幕获取失败 (%s)，回退到网页文本： %s", video_id, exc)
+        return await parse_url(url)
+
+    sections = split_into_sections(text) if text else []
+    return ParseResult(
+        type="video",
+        sections=sections,
+        metadata={
+            "source_url": url,
+            "platform": "youtube",
+            "video_id": video_id,
+            "title": f"YouTube视频 {video_id}",
+        },
+    )
+
+
+async def _parse_bilibili(url: str) -> ParseResult:
+    """Bilibili subtitle API requires auth — fall back to page text for MVP."""
+    result = await parse_url(url)
+    result.metadata["platform"] = "bilibili"
+    result.metadata["note"] = "Bilibili 字幕需登录，已提取页面文本"
+    return result
+
+
+def _load_whisper():
+    """Lazily import openai-whisper. Returns the module or ``None``."""
+    try:
+        import whisper  # type: ignore[import-untyped]
+        return whisper
+    except ImportError:
+        return None
+
+
+async def parse_audio(file_path: str) -> ParseResult:
+    """Transcribe an audio file via whisper.
+
+    Returns a :class:`ParseResult` with ``error`` set when whisper is not
+    installed — callers can still create an entity shell.
+    """
+    whisper = _load_whisper()
+    if whisper is None:
+        return ParseResult(
+            type="audio",
+            error="Whisper 未安装，无法转录音频。请运行：pip install openai-whisper",
+        )
+
+    try:
+        text = await asyncio.to_thread(_transcribe_with_whisper, whisper, file_path)
+    except Exception as exc:
+        return ParseResult(type="audio", error=f"音频转录失败：{exc}")
+
+    sections = split_into_sections(text) if text.strip() else []
+    return ParseResult(
+        type="audio",
+        sections=sections,
+        metadata={"engine": "whisper", "transcribed_chars": len(text)},
+    )
+
+
+def _transcribe_with_whisper(whisper_module, file_path: str) -> str:
+    model = whisper_module.load_model("base")
+    result = model.transcribe(file_path, language="zh")
+    return (result.get("text") or "").strip()
+
+
+async def parse_video_file(file_path: str) -> ParseResult:
+    """Extract audio from a video file (ffmpeg) then transcribe (whisper).
+
+    Both ffmpeg and whisper are optional; missing either yields a result
+    with ``error`` set rather than raising.
+    """
+    if shutil.which("ffmpeg") is None:
+        return ParseResult(
+            type="video",
+            error="ffmpeg 未安装，无法从视频中提取音频",
+        )
+
+    audio_path = file_path.rsplit(".", 1)[0] + "_audio.wav"
+    try:
+        proc = await asyncio.to_thread(_ffmpeg_extract_audio, file_path, audio_path)
+    except subprocess.TimeoutExpired:
+        _safe_unlink(audio_path)
+        return ParseResult(type="video", error="ffmpeg 提取音频超时（>300秒）")
+    except Exception as exc:
+        _safe_unlink(audio_path)
+        return ParseResult(type="video", error=f"ffmpeg 执行失败：{exc}")
+    if proc.returncode != 0:
+        _safe_unlink(audio_path)
+        return ParseResult(
+            type="video",
+            error=f"ffmpeg 提取音频失败：{proc.stderr.strip()[:200]}",
+        )
+
+    try:
+        result = await parse_audio(audio_path)
+        result.type = "video"
+        result.metadata["extracted_audio"] = True
+        return result
+    finally:
+        _safe_unlink(audio_path)
+
+
+def _safe_unlink(path: str) -> None:
+    if os.path.exists(path):
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+def _ffmpeg_extract_audio(video_path: str, audio_path: str):
+    """Run ffmpeg to extract mono 16kHz PCM WAV. Returns the CompletedProcess."""
+    return subprocess.run(
+        [
+            "ffmpeg", "-i", video_path,
+            "-vn", "-acodec", "pcm_s16le",
+            "-ar", "16000", "-ac", "1",
+            audio_path, "-y",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
+    )

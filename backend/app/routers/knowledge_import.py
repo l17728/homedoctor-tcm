@@ -39,7 +39,7 @@ from fastapi import (
 from app.auth import get_current_user
 from app.database import DbAdapter, get_db
 from app.knowledge_parser import (
-    ALLOWED_EXTENSIONS,
+    DOCUMENT_EXTENSIONS,
     ParseResult,
     detect_file_type,
     parse_file,
@@ -74,12 +74,12 @@ def _ext(filename: str) -> str:
 def _validate_upload(file: UploadFile) -> None:
     """Validate extension + size before reading the file body."""
     ext = _ext(file.filename or "")
-    if ext not in ALLOWED_EXTENSIONS:
+    if ext not in DOCUMENT_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
                 f"不支持的文件格式：{ext or '(无扩展名)'}。"
-                f"支持：{', '.join(sorted(ALLOWED_EXTENSIONS))}"
+                f"支持：{', '.join(sorted(DOCUMENT_EXTENSIONS))}"
             ),
         )
 

@@ -399,6 +399,30 @@ export async function importFile(file: File): Promise<ImportPreview> {
   return mapImportPreview(data);
 }
 
+/** 通过 URL 导入文章（网页正文提取 + AI 结构化） */
+export async function importUrl(url: string): Promise<ImportPreview> {
+  const data = await request<Record<string, unknown>>(
+    '/api/knowledge-hub/import-url',
+    {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    },
+  );
+  return mapImportPreview(data);
+}
+
+/** 通过视频 URL 导入（YouTube/B站字幕提取 + AI 结构化） */
+export async function importVideoUrl(url: string): Promise<ImportPreview> {
+  const data = await request<Record<string, unknown>>(
+    '/api/knowledge-hub/import-video-url',
+    {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    },
+  );
+  return mapImportPreview(data);
+}
+
 export async function getPopular(limit = 12): Promise<KnowledgeEntity[]> {
   const data = await request<EntityRow[] | { items?: EntityRow[] }>(
     `/api/knowledge-hub/popular?limit=${limit}`,

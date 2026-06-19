@@ -50,7 +50,16 @@ from app.knowledge_entity import (
     search_entities,
     update_entity,
 )
-from app.knowledge_parser import ALLOWED_EXTENSIONS, parse_file
+from app.knowledge_parser import (
+    ALLOWED_EXTENSIONS,
+    MULTIMEDIA_EXTENSIONS,
+    is_video_url,
+    parse_audio,
+    parse_file,
+    parse_url,
+    parse_video_file,
+    parse_video_url,
+)
 
 router = APIRouter(prefix="/api/knowledge-hub", tags=["knowledge-hub"])
 
@@ -69,6 +78,11 @@ class ImportRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=500, description="知识条目标题")
     content: str = Field(..., min_length=1, description="知识条目正文内容")
     source_type: str = Field("import", description="来源类型标记，默认 import")
+
+
+class ImportUrlRequest(BaseModel):
+    url: str = Field(..., min_length=1, max_length=2048, description="网页或视频链接")
+    title: str | None = Field(None, max_length=500, description="可选自定义标题")
 
 
 class UpdateEntityRequest(BaseModel):
@@ -235,14 +249,15 @@ async def import_endpoint(
 
 @router.post("/import-file", status_code=status.HTTP_201_CREATED)
 async def import_file_endpoint(
-    file: UploadFile = File(..., description="待导入文档（PDF/Word/TXT/图片）"),
+    file: UploadFile = File(..., description="待导入文档（PDF/Word/TXT/图片/MP3/MP4）"),
     title: str | None = Query(None, description="可选标题，缺省时从文件名派生"),
     db: DbAdapter = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     """上传文件 → 解析文本 → AI 分析 → 创建知识实体。
 
-    支持 ``.pdf .docx .txt .md .jpg .jpeg .png .webp``，单文件上限 20MB。
+    支持文档 ``.pdf .docx .txt .md .jpg .jpeg .png .webp`` 以及多媒体
+    ``.mp3 .wav .m4a .mp4``（音频/视频经 whisper 转录）。单文件上限 20MB。
     """
     ext = _ext(file.filename or "")
     if ext not in ALLOWED_EXTENSIONS:
@@ -292,6 +307,73 @@ async def import_file_endpoint(
     )
     processed["parse_metadata"] = result.metadata
     processed["filename"] = filename
+    return processed
+
+
+@router.post("/import-url", status_code=status.HTTP_201_CREATED)
+async def import_url_endpoint(
+    body: ImportUrlRequest,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """从网页链接导入内容 → 提取正文 → AI 分析 → 创建知识实体。
+
+    自动检测视频平台链接（YouTube/Bilibili）并尝试提取字幕；普通网页
+    则提取主要文本。抓取或解析失败时返回 422。
+    """
+    url = body.url.strip()
+    if is_video_url(url):
+        result = await parse_video_url(url)
+    else:
+        result = await parse_url(url)
+    if result.error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=result.error)
+
+    full_text = result.full_text
+    if not full_text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="未能从网页中提取到任何文本",
+        )
+
+    derived_title = body.title or result.metadata.get("title") or url
+    processed = await process_imported_content(
+        db, title=derived_title, content=full_text, source_type="import_url",
+    )
+    processed["parse_metadata"] = result.metadata
+    processed["source_url"] = url
+    return processed
+
+
+@router.post("/import-video-url", status_code=status.HTTP_201_CREATED)
+async def import_video_url_endpoint(
+    body: ImportUrlRequest,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """从视频链接（YouTube/Bilibili）导入字幕 → AI 分析 → 创建知识实体。
+
+    YouTube 优先使用 youtube-transcript-api 获取字幕；Bilibili 及其他平台
+    回退到网页文本提取。字幕不可用时返回 422。
+    """
+    url = body.url.strip()
+    result = await parse_video_url(url)
+    if result.error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=result.error)
+
+    full_text = result.full_text
+    if not full_text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="未能从视频中提取到字幕或文本",
+        )
+
+    derived_title = body.title or result.metadata.get("title") or url
+    processed = await process_imported_content(
+        db, title=derived_title, content=full_text, source_type="import_video",
+    )
+    processed["parse_metadata"] = result.metadata
+    processed["source_url"] = url
     return processed
 
 

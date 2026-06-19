@@ -2,6 +2,7 @@ FROM python:3.10-slim
 WORKDIR /app
 RUN apt-get update -qq && apt-get install -y -qq \
     tesseract-ocr tesseract-ocr-chi-sim \
+    ffmpeg \
     libsqlcipher-dev gcc \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .

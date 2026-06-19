@@ -45,6 +45,13 @@ reportlab>=4.0.0
 PyMuPDF>=1.24.0
 python-docx>=1.1.0
 
+# Multimedia import (spec §18 — URL/audio/video ingestion)
+# youtube-transcript-api fetches YouTube subtitles for video-link import.
+# httpx (already declared above for the CLI) is used for URL fetching.
+# openai-whisper and ffmpeg are OPTIONAL — the parsers degrade gracefully
+# when absent (return ParseResult.error instead of raising).
+youtube-transcript-api>=0.6.2
+
 # Testing
 pytest>=8.2.0
 pytest-asyncio>=0.23.0

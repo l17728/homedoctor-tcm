@@ -143,7 +143,7 @@ class TestDetectFileType:
 
     def test_unsupported_extension_raises(self):
         with pytest.raises(ValueError, match="不支持的文件格式"):
-            detect_file_type("movie.mp4")
+            detect_file_type("program.exe")
 
     def test_no_extension_raises(self):
         with pytest.raises(ValueError, match="不支持的文件格式"):
@@ -275,9 +275,9 @@ async def test_parse_file_doc_legacy_returns_error(tmp_path):
 
 @pytest.mark.asyncio
 async def test_parse_file_unsupported_extension(tmp_path):
-    path = tmp_path / "video.mp4"
-    path.write_bytes(b"fake video")
-    result = await parse_file(str(path), "video.mp4")
+    path = tmp_path / "program.exe"
+    path.write_bytes(b"fake binary")
+    result = await parse_file(str(path), "program.exe")
     assert result.type == "unknown"
     assert result.error is not None
     assert "不支持的文件格式" in result.error
