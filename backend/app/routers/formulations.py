@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth import get_current_user
 from app.database import DbAdapter, get_db
+from app.entity_filter import scan_and_link
 from app.formulation_engine import (
     generate_tea_recipe,
     recommend_from_inventory,
@@ -61,12 +62,26 @@ async def recommend_endpoint(
             detail="exclude 必须是字符串数组",
         )
 
-    return await recommend_herbs(
+    result = await recommend_herbs(
         db=db,
         symptoms=[str(s) for s in symptoms],
         constitution=constitution,
         exclude=[str(e) for e in (exclude or [])],
     )
+
+    # Non-blocking: ensure recommended herbs exist as knowledge-graph entities.
+    try:
+        rec_names = [h.get("name", "") for h in result.get("recommendations", []) if h.get("name")]
+        if rec_names:
+            await scan_and_link(
+                db, "、".join(rec_names),
+                source_type="formulation",
+                relationship_type="recommends",
+            )
+    except Exception:
+        pass
+
+    return result
 
 
 @router.post("/tea-recipe")

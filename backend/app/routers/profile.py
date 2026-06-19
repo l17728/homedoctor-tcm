@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.auth import get_current_user
 from app.audit import log_audit
 from app.database import DbAdapter, get_db
+from app.entity_filter import scan_and_link
 from app.repository import current_tenant_id
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
@@ -127,4 +128,21 @@ async def update_profile(
     await log_audit(db, tenant_id=current_tenant_id.get(), user_id=user_id,
                     action="update", entity_type="user_profile", entity_id=user_id,
                     changes={k: v for k, v in body.items() if v is not None})
+    # Non-blocking: extract entity mentions from health_conditions text.
+    try:
+        conditions = body.get("health_conditions")
+        if isinstance(conditions, list):
+            conditions_text = "、".join(str(c) for c in conditions if c)
+        elif isinstance(conditions, str):
+            conditions_text = conditions
+        else:
+            conditions_text = ""
+        if conditions_text:
+            await scan_and_link(
+                db, conditions_text,
+                source_type="profile", source_id=user_id,
+                relationship_type="has_symptom",
+            )
+    except Exception:
+        pass
     return _parse_profile(row)

@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.auth import get_current_user
 from app.config import settings
 from app.database import DbAdapter, get_db
+from app.entity_filter import scan_and_link
 from app.llm import chat_completion, has_api_key
 
 logger = logging.getLogger(__name__)
@@ -264,6 +265,15 @@ async def create_annotation(
     row = await db.query_one(
         "SELECT * FROM classic_annotations WHERE id = ?", (ann_id,)
     )
+    # Non-blocking: extract entity mentions from the annotation text.
+    try:
+        await scan_and_link(
+            db, body.get("content"),
+            source_type="annotation", source_id=ann_id,
+            relationship_type="mentions",
+        )
+    except Exception:
+        pass
     return _annotation_row(row)
 
 

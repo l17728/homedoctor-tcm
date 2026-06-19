@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.auth import get_current_user
 from app.audit import log_audit
 from app.database import DbAdapter, get_db
+from app.entity_filter import scan_and_link
 from app.herb_quality import assess_all_quality, check_herb_quality
 from app.models import MedicineCreate, MedicineUpdate
 from app.repository import MedicineRepository, current_tenant_id, current_member_id
@@ -71,6 +72,15 @@ async def create_medicine(
     medicine = await repo.get_medicine(medicine_id)
     await log_audit(db, tenant_id=current_tenant_id.get(), user_id=current_user["id"],
                     action="create", entity_type="medicine", entity_id=medicine_id, changes=body)
+    # Non-blocking: link the medicine name to known knowledge-graph entities.
+    try:
+        await scan_and_link(
+            db, medicine.get("name"),
+            source_type="medicine", source_id=medicine_id,
+            relationship_type="references",
+        )
+    except Exception:
+        pass
     return _parse_medicine(medicine)
 
 

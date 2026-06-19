@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from app.auth import get_current_user
 from app.config import settings
 from app.database import DbAdapter, get_db
+from app.entity_filter import scan_and_link
 from app.llm import (
     DISCLAIMER,
     chat_completion,
@@ -227,6 +228,16 @@ async def chat(
             "primary_type": constitution["primary"],
         })
     reasoning.append({"step": "llm_completion", "result": "success", "model": settings.LLM_MODEL})
+
+    # Non-blocking: scan the AI reply for knowledge-graph entity mentions.
+    try:
+        await scan_and_link(
+            db, reply_text,
+            source_type="chat", source_id=current_user["id"],
+            relationship_type="mentions",
+        )
+    except Exception:
+        pass
 
     return {
         "reply": reply_text,
