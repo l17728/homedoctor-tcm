@@ -101,6 +101,7 @@ export interface KnowledgeEntity {
   keywords: string[];
   viewCount: number;
   relationshipCount: number;
+  properties?: Record<string, unknown>;
   source: string;
   createdAt: string;
   updatedAt: string;
@@ -512,4 +513,31 @@ export async function getRecent(limit = 12): Promise<KnowledgeEntity[]> {
   );
   const items = Array.isArray(data) ? data : data?.items ?? [];
   return items.map(mapEntity);
+}
+
+export async function listMeridians(): Promise<KnowledgeEntity[]> {
+  const data = await request<{ items?: EntityRow[] }>(
+    '/api/knowledge/meridians',
+  );
+  return (data.items ?? []).map(mapEntity);
+}
+
+export async function listAcupoints(
+  q?: string,
+  meridian?: string,
+  page = 1,
+  pageSize = 50,
+): Promise<{ items: KnowledgeEntity[]; total: number }> {
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (meridian) params.set('meridian', meridian);
+  params.set('page', String(page));
+  params.set('page_size', String(pageSize));
+  const data = await request<{ items?: EntityRow[]; total?: number }>(
+    `/api/knowledge/acupoints?${params}`,
+  );
+  return {
+    items: (data.items ?? []).map(mapEntity),
+    total: data.total ?? 0,
+  };
 }

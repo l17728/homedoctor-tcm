@@ -28,6 +28,7 @@ import KnowledgeGraphPage from './pages/KnowledgeGraphPage';
 import ClassicsBookshelf from './pages/ClassicsBookshelf';
 import ClassicReader from './pages/ClassicReader';
 import TherapiesPage from './pages/TherapiesPage';
+import MeridianAcupointPage from './pages/MeridianAcupointPage';
 import MedicationPlansPage from './pages/MedicationPlansPage';
 import MedicationSchedulePage from './pages/MedicationSchedulePage';
 import FormulationPage from './pages/FormulationPage';
@@ -91,6 +92,7 @@ function ThemedApp() {
           <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
           <Route path="knowledge-hub" element={<KnowledgeHubPage />} />
           <Route path="therapies" element={<TherapiesPage />} />
+          <Route path="acupoints" element={<MeridianAcupointPage />} />
           <Route path="medication-plans" element={<MedicationPlansPage />} />
           <Route path="medication-schedule" element={<MedicationSchedulePage />} />
           <Route path="formulation" element={<FormulationPage />} />
