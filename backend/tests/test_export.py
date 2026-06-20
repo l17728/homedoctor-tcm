@@ -49,9 +49,9 @@ async def test_export_returns_valid_json(client: AsyncClient, auth_headers: dict
 
 
 @pytest.mark.asyncio
-async def test_export_requires_auth(client: AsyncClient):
+async def test_export_requires_auth(raw_client: AsyncClient):
     """GET /api/export without auth token returns 401."""
-    response = await client.get("/api/export")
+    response = await raw_client.get("/api/export")
     assert response.status_code == 401
 
 

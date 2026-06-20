@@ -286,12 +286,14 @@ async def chat_stream(
 
         try:
             from app.llm import _validate_and_augment
-            validated = _validate_and_augment(full_response, db)
-            suffix = validated[len(full_response):]
-            if suffix and suffix.strip():
-                yield f"data: {json.dumps({'content': suffix})}\n\n"
-        except Exception:
-            pass
+            validated = await _validate_and_augment(full_response)
+            if isinstance(validated, str) and len(validated) > len(full_response):
+                suffix = validated[len(full_response):]
+                if suffix and suffix.strip():
+                    yield f"data: {json.dumps({'content': suffix})}\n\n"
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("Streaming hallucination defense failed: %s", exc)
 
         tail = "\n\n" + DISCLAIMER
         yield f"data: {json.dumps({'content': tail, 'done': True})}\n\n"

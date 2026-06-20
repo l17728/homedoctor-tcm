@@ -162,8 +162,8 @@ async def _seed_reminder(
 # ===========================================================================
 
 @pytest.mark.asyncio
-async def test_generate_requires_auth(client: AsyncClient):
-    resp = await client.post("/api/share-cards/generate", json={"card_type": "summary"})
+async def test_generate_requires_auth(raw_client: AsyncClient):
+    resp = await raw_client.post("/api/share-cards/generate", json={"card_type": "summary"})
     assert resp.status_code in (401, 403)
 
 
@@ -179,8 +179,8 @@ async def test_generate_invalid_card_type(client: AsyncClient, auth_headers: dic
 
 
 @pytest.mark.asyncio
-async def test_list_requires_auth(client: AsyncClient):
-    resp = await client.get("/api/share-cards/list")
+async def test_list_requires_auth(raw_client: AsyncClient):
+    resp = await raw_client.get("/api/share-cards/list")
     assert resp.status_code in (401, 403)
 
 

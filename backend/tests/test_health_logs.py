@@ -244,6 +244,6 @@ async def test_log_isolated_between_users(
 
 
 @pytest.mark.asyncio
-async def test_health_log_requires_auth(client: AsyncClient):
-    response = await client.get("/api/health-logs")
+async def test_health_log_requires_auth(raw_client: AsyncClient):
+    response = await raw_client.get("/api/health-logs")
     assert response.status_code in (401, 403)

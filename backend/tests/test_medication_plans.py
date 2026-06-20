@@ -453,14 +453,14 @@ async def test_delete_plan_other_user_404(
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_unauthorized_access(client: AsyncClient):
-    response = await client.get("/api/medication-plans")
+async def test_unauthorized_access(raw_client: AsyncClient):
+    response = await raw_client.get("/api/medication-plans")
     assert response.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_unauthorized_create(client: AsyncClient):
-    response = await client.post("/api/medication-plans", json=_sample_plan_payload())
+async def test_unauthorized_create(raw_client: AsyncClient):
+    response = await raw_client.post("/api/medication-plans", json=_sample_plan_payload())
     assert response.status_code == 401
 
 

@@ -348,8 +348,8 @@ class TestQualityEndpoint:
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_quality_requires_auth(self, client: AsyncClient):
-        resp = await client.get("/api/medicines/some-id/quality")
+    async def test_quality_requires_auth(self, raw_client: AsyncClient):
+        resp = await raw_client.get("/api/medicines/some-id/quality")
         assert resp.status_code == 401
 
 
@@ -439,6 +439,6 @@ class TestQualityAlertsEndpoint:
         assert "用户A过期药" not in names
 
     @pytest.mark.asyncio
-    async def test_quality_alerts_requires_auth(self, client: AsyncClient):
-        resp = await client.get("/api/medicines/quality-alerts")
+    async def test_quality_alerts_requires_auth(self, raw_client: AsyncClient):
+        resp = await raw_client.get("/api/medicines/quality-alerts")
         assert resp.status_code == 401

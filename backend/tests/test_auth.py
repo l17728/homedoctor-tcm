@@ -91,9 +91,9 @@ async def test_me_with_valid_token(client: AsyncClient, auth_headers: dict):
 
 
 @pytest.mark.asyncio
-async def test_me_without_token(client: AsyncClient):
+async def test_me_without_token(raw_client: AsyncClient):
     """GET /api/auth/me without token returns 401."""
-    response = await client.get("/api/auth/me")
+    response = await raw_client.get("/api/auth/me")
     assert response.status_code == 401
 
 

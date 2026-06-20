@@ -301,9 +301,9 @@ async def test_safety_check_array_format_formula(client, auth_headers, db):
 
 
 @pytest.mark.asyncio
-async def test_safety_check_requires_auth(client, db):
+async def test_safety_check_requires_auth(raw_client, db):
     await _seed_test_formulas(db)
-    resp = await client.get(f"/api/formulas/{LARGE_FORMULA_ID}/safety-check")
+    resp = await raw_client.get(f"/api/formulas/{LARGE_FORMULA_ID}/safety-check")
     assert resp.status_code in (401, 403)
 
 

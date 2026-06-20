@@ -110,10 +110,16 @@ async def test_preview_returns_counts(client: AsyncClient, auth_headers: dict, d
 
 
 @pytest.mark.asyncio
-async def test_preview_requires_auth(client: AsyncClient):
+async def test_preview_requires_auth(db: SqliteAdapter):
     """GET /api/account/preview without token returns 401."""
-    response = await client.get("/api/account/preview")
-    assert response.status_code == 401
+    import app.database as db_mod
+    import app.main as main_mod
+    from httpx import ASGITransport, AsyncClient
+    db_mod.set_db(db)
+    transport = ASGITransport(app=main_mod.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        response = await ac.get("/api/account/preview")
+        assert response.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -134,10 +140,16 @@ async def test_delete_account_returns_confirmation(
 
 
 @pytest.mark.asyncio
-async def test_delete_account_requires_auth(client: AsyncClient):
+async def test_delete_account_requires_auth(db: SqliteAdapter):
     """DELETE /api/account without token returns 401."""
-    response = await client.delete("/api/account")
-    assert response.status_code == 401
+    import app.database as db_mod
+    import app.main as main_mod
+    from httpx import ASGITransport, AsyncClient
+    db_mod.set_db(db)
+    transport = ASGITransport(app=main_mod.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        response = await ac.delete("/api/account")
+        assert response.status_code == 401
 
 
 @pytest.mark.asyncio

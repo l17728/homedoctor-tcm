@@ -356,8 +356,8 @@ async def test_update_entity_returns_none_for_missing(db: DbAdapter):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_api_search_requires_auth(client: AsyncClient):
-    resp = await client.get("/api/knowledge-hub/search")
+async def test_api_search_requires_auth(raw_client: AsyncClient):
+    resp = await raw_client.get("/api/knowledge-hub/search")
     assert resp.status_code == 401
 
 

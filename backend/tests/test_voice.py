@@ -32,20 +32,20 @@ def _audio_file(data: bytes = WAV_MAGIC, filename: str = "clip.wav",
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_transcribe_requires_auth(client):
-    resp = await client.post("/api/voice/transcribe", files={"audio": ("c.wav", io.BytesIO(b"x"), "audio/wav")})
+async def test_transcribe_requires_auth(raw_client):
+    resp = await raw_client.post("/api/voice/transcribe", files={"audio": ("c.wav", io.BytesIO(b"x"), "audio/wav")})
     assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_synthesize_requires_auth(client):
-    resp = await client.post("/api/voice/synthesize", json={"text": "你好"})
+async def test_synthesize_requires_auth(raw_client):
+    resp = await raw_client.post("/api/voice/synthesize", json={"text": "你好"})
     assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_qa_requires_auth(client):
-    resp = await client.post("/api/voice/qa", files={"audio": ("c.wav", io.BytesIO(b"x"), "audio/wav")})
+async def test_qa_requires_auth(raw_client):
+    resp = await raw_client.post("/api/voice/qa", files={"audio": ("c.wav", io.BytesIO(b"x"), "audio/wav")})
     assert resp.status_code == 401
 
 

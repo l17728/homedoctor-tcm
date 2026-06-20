@@ -462,9 +462,9 @@ async def test_upload_oversized_file_rejected(client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_upload_requires_auth(client):
+async def test_upload_requires_auth(raw_client):
     """No auth header → 401/403."""
-    resp = await client.post(
+    resp = await raw_client.post(
         "/api/knowledge-import/upload",
         files={"file": ("a.txt", io.BytesIO(b"hi"), "text/plain")},
     )

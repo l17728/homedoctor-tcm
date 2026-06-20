@@ -119,9 +119,9 @@ async def _get_user_id(client: AsyncClient, headers: dict) -> str:
 # ===========================================================================
 
 @pytest.mark.asyncio
-async def test_constitution_report_requires_auth(client: AsyncClient):
+async def test_constitution_report_requires_auth(raw_client: AsyncClient):
     """Without auth token → 401."""
-    resp = await client.get("/api/reports/constitution")
+    resp = await raw_client.get("/api/reports/constitution")
     assert resp.status_code in (401, 403)
 
 
@@ -236,8 +236,8 @@ async def test_constitution_report_all_nine_types_have_recommendations(
 # ===========================================================================
 
 @pytest.mark.asyncio
-async def test_health_trend_requires_auth(client: AsyncClient):
-    resp = await client.get("/api/reports/health-trend")
+async def test_health_trend_requires_auth(raw_client: AsyncClient):
+    resp = await raw_client.get("/api/reports/health-trend")
     assert resp.status_code in (401, 403)
 
 
@@ -430,8 +430,8 @@ async def test_health_trend_safety_history(
 # ===========================================================================
 
 @pytest.mark.asyncio
-async def test_pre_visit_requires_auth(client: AsyncClient):
-    resp = await client.get("/api/reports/pre-visit")
+async def test_pre_visit_requires_auth(raw_client: AsyncClient):
+    resp = await raw_client.get("/api/reports/pre-visit")
     assert resp.status_code in (401, 403)
 
 
@@ -609,8 +609,8 @@ async def test_generate_pdf_pre_visit(client: AsyncClient, auth_headers: dict):
 
 
 @pytest.mark.asyncio
-async def test_generate_pdf_requires_auth(client: AsyncClient):
-    resp = await client.post(
+async def test_generate_pdf_requires_auth(raw_client: AsyncClient):
+    resp = await raw_client.post(
         "/api/reports/generate-pdf",
         json={"report_type": "constitution"},
     )

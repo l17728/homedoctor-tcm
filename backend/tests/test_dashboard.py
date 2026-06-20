@@ -110,9 +110,9 @@ async def test_dashboard_stats_stock_alerts_low_quantity(client: AsyncClient, au
 
 
 @pytest.mark.asyncio
-async def test_dashboard_stats_requires_auth(client: AsyncClient):
+async def test_dashboard_stats_requires_auth(raw_client: AsyncClient):
     """Dashboard stats should require authentication."""
-    response = await client.get("/api/dashboard/stats")
+    response = await raw_client.get("/api/dashboard/stats")
     assert response.status_code in (401, 403)
 
 

@@ -104,9 +104,9 @@ async def test_delete_medicine(client: AsyncClient, auth_headers: dict):
 
 
 @pytest.mark.asyncio
-async def test_medicines_require_auth(client: AsyncClient):
+async def test_medicines_require_auth(raw_client: AsyncClient):
     """GET /api/medicines without auth returns 401."""
-    response = await client.get("/api/medicines")
+    response = await raw_client.get("/api/medicines")
     assert response.status_code == 401
 
 

@@ -19,6 +19,10 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "data/homedoctor.db"
     SECRET_KEY: str = "change-me-in-production-use-a-long-random-string"
+
+    @property
+    def SECRET_KEY_IS_DEFAULT(self) -> bool:
+        return self.SECRET_KEY == "change-me-in-production-use-a-long-random-string"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     APP_VERSION: str = "0.1.0"

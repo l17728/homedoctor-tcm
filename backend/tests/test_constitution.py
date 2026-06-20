@@ -202,9 +202,9 @@ async def test_assess_missing_answers_key_returns_422(
 
 
 @pytest.mark.asyncio
-async def test_assess_unauthorized(client: AsyncClient):
+async def test_assess_unauthorized(raw_client: AsyncClient):
     """POST /assess without auth → 401."""
-    response = await client.post(
+    response = await raw_client.post(
         "/api/constitution/assess", json={"answers": {"q1": 3}}
     )
     assert response.status_code == 401
@@ -418,9 +418,9 @@ async def test_update_profile_persists(client: AsyncClient, auth_headers: dict):
 
 
 @pytest.mark.asyncio
-async def test_profile_unauthorized(client: AsyncClient):
+async def test_profile_unauthorized(raw_client: AsyncClient):
     """GET /api/profile without auth → 401."""
-    response = await client.get("/api/profile")
+    response = await raw_client.get("/api/profile")
     assert response.status_code == 401
 
 

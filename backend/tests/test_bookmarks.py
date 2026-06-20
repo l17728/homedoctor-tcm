@@ -78,9 +78,9 @@ async def test_create_bookmark_missing_title(client: AsyncClient, auth_headers: 
 
 
 @pytest.mark.asyncio
-async def test_create_bookmark_requires_auth(client: AsyncClient):
+async def test_create_bookmark_requires_auth(raw_client: AsyncClient):
     """POST /api/bookmarks requires authentication."""
-    resp = await client.post("/api/bookmarks", json={
+    resp = await raw_client.post("/api/bookmarks", json={
         "entry_type": "herb",
         "title": "黄芪",
     })

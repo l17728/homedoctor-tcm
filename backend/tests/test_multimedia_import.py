@@ -651,8 +651,8 @@ async def test_import_url_endpoint_fetch_failure(client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_import_url_endpoint_requires_auth(client):
-    resp = await client.post(
+async def test_import_url_endpoint_requires_auth(raw_client):
+    resp = await raw_client.post(
         "/api/knowledge-hub/import-url",
         json={"url": "https://example.com/test"},
     )
@@ -711,8 +711,8 @@ async def test_import_video_url_endpoint_bilibili_fallback(client, auth_headers)
 
 
 @pytest.mark.asyncio
-async def test_import_video_url_endpoint_requires_auth(client):
-    resp = await client.post(
+async def test_import_video_url_endpoint_requires_auth(raw_client):
+    resp = await raw_client.post(
         "/api/knowledge-hub/import-video-url",
         json={"url": "https://www.youtube.com/watch?v=abc12345678"},
     )

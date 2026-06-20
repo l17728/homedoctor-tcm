@@ -111,9 +111,9 @@ async def test_register_exactly_14_succeeds(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_consent_status_without_token_returns_401(client: AsyncClient):
+async def test_consent_status_without_token_returns_401(raw_client: AsyncClient):
     """GET /api/auth/consent-status without token → 401."""
-    response = await client.get("/api/auth/consent-status")
+    response = await raw_client.get("/api/auth/consent-status")
     assert response.status_code == 401
 
 

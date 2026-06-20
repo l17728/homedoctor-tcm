@@ -84,8 +84,8 @@ async def test_set_consent_true(client: AsyncClient, auth_headers: dict):
 
 
 @pytest.mark.asyncio
-async def test_consent_requires_auth(client: AsyncClient):
-    resp = await client.get("/api/remote-assist/consent")
+async def test_consent_requires_auth(raw_client: AsyncClient):
+    resp = await raw_client.get("/api/remote-assist/consent")
     assert resp.status_code == 401
 
 

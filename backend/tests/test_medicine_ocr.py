@@ -248,8 +248,8 @@ async def test_ocr_recognize_unsupported_format(client: AsyncClient, auth_header
 
 
 @pytest.mark.asyncio
-async def test_ocr_recognize_requires_auth(client: AsyncClient, sample_image_bytes):
+async def test_ocr_recognize_requires_auth(raw_client: AsyncClient, sample_image_bytes):
     """No auth → 401/403."""
     files = {"file": ("test.png", sample_image_bytes, "image/png")}
-    resp = await client.post("/api/medicines/ocr-recognize", files=files)
+    resp = await raw_client.post("/api/medicines/ocr-recognize", files=files)
     assert resp.status_code in (401, 403)

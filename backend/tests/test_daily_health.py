@@ -72,9 +72,9 @@ async def test_daily_health_stock_alerts(client: AsyncClient, auth_headers: dict
 
 
 @pytest.mark.asyncio
-async def test_daily_health_requires_auth(client: AsyncClient):
+async def test_daily_health_requires_auth(raw_client: AsyncClient):
     """Daily health endpoint should require authentication."""
-    response = await client.get("/api/daily-health")
+    response = await raw_client.get("/api/daily-health")
     assert response.status_code in (401, 403)
 
 

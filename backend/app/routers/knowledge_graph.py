@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from app.auth import get_current_user
 
 from app.database import DbAdapter, get_db
 from app.graph_engine import build_graph, build_snapshot
@@ -40,7 +41,10 @@ async def get_snapshot(
 
 
 @router.post("/rebuild")
-async def rebuild(db: DbAdapter = Depends(get_db)):
+async def rebuild(
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     """重建全部派生边（组成/主治/配伍禁忌/中西药交互）。"""
     return await rebuild_all_edges(db)
 

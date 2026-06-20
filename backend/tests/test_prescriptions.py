@@ -67,9 +67,9 @@ async def test_generate_prescription_404_invalid_formula(client: AsyncClient, au
 
 
 @pytest.mark.asyncio
-async def test_generate_prescription_requires_auth(client: AsyncClient):
+async def test_generate_prescription_requires_auth(raw_client: AsyncClient):
     """POST /api/prescriptions/generate without auth returns 401."""
-    response = await client.post(
+    response = await raw_client.post(
         "/api/prescriptions/generate",
         json={"formula_id": "formula-001"},
     )
@@ -152,9 +152,9 @@ async def test_health_report_content_disposition(client: AsyncClient, auth_heade
 
 
 @pytest.mark.asyncio
-async def test_health_report_requires_auth(client: AsyncClient):
+async def test_health_report_requires_auth(raw_client: AsyncClient):
     """POST /api/prescriptions/health-report without auth returns 401."""
-    response = await client.post(
+    response = await raw_client.post(
         "/api/prescriptions/health-report",
         json={},
     )

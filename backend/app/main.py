@@ -52,6 +52,12 @@ from app.middleware.tenant import TenantMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    if settings.SECRET_KEY_IS_DEFAULT:
+        logger.warning("=" * 60)
+        logger.warning("WARNING: SECRET_KEY is still the default value!")
+        logger.warning("Anyone can forge JWT tokens. Set HOMEDOCTOR_SECRET_KEY env var.")
+        logger.warning("=" * 60)
+
     db_path = settings.DATABASE_URL
     if db_path != ":memory:":
         db_file = Path(db_path)

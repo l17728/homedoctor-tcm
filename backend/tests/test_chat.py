@@ -86,9 +86,9 @@ async def test_chat_with_history(client: AsyncClient, auth_headers: dict):
 
 
 @pytest.mark.asyncio
-async def test_chat_requires_auth(client: AsyncClient):
+async def test_chat_requires_auth(raw_client: AsyncClient):
     """Chat endpoint should require authentication."""
-    response = await client.post(
+    response = await raw_client.post(
         "/api/chat",
         json={"message": "test", "history": []},
     )

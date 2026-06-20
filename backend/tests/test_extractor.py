@@ -509,9 +509,9 @@ async def test_extract_endpoint_success(client: AsyncClient, auth_headers: dict,
 
 
 @pytest.mark.asyncio
-async def test_extract_endpoint_requires_auth(client: AsyncClient):
+async def test_extract_endpoint_requires_auth(raw_client: AsyncClient):
     """POST /api/extractor/extract should require authentication."""
-    response = await client.post(
+    response = await raw_client.post(
         "/api/extractor/extract",
         json={"messages": SAMPLE_CONVERSATION},
     )
@@ -634,9 +634,9 @@ async def test_auto_extract_endpoint_no_conversations(
 
 
 @pytest.mark.asyncio
-async def test_auto_extract_endpoint_requires_auth(client: AsyncClient):
+async def test_auto_extract_endpoint_requires_auth(raw_client: AsyncClient):
     """Auto-extract should require authentication."""
-    response = await client.post("/api/extractor/auto-extract")
+    response = await raw_client.post("/api/extractor/auto-extract")
     assert response.status_code in (401, 403)
 
 
@@ -686,9 +686,9 @@ async def test_recent_endpoint_after_extraction(
 
 
 @pytest.mark.asyncio
-async def test_recent_endpoint_requires_auth(client: AsyncClient):
+async def test_recent_endpoint_requires_auth(raw_client: AsyncClient):
     """Recent endpoint should require authentication."""
-    response = await client.get("/api/extractor/recent")
+    response = await raw_client.get("/api/extractor/recent")
     assert response.status_code in (401, 403)
 
 

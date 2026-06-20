@@ -184,8 +184,8 @@ async def test_favorites_user_isolation(
 
 
 @pytest.mark.asyncio
-async def test_favorites_unauthorized(client: AsyncClient):
-    resp = await client.get("/api/favorites")
+async def test_favorites_unauthorized(raw_client: AsyncClient):
+    resp = await raw_client.get("/api/favorites")
     assert resp.status_code == 401
 
 
@@ -367,13 +367,13 @@ async def test_check_in_user_isolation(
 
 
 @pytest.mark.asyncio
-async def test_check_in_unauthorized(client: AsyncClient, auth_headers: dict):
+async def test_check_in_unauthorized(client: AsyncClient, raw_client: AsyncClient, auth_headers: dict):
     create_resp = await client.post("/api/reminders", headers=auth_headers, json={
         "title": "未授权打卡", "times": ["08:00"], "start_date": _today_str(),
     })
     rid = create_resp.json()["id"]
 
-    resp = await client.post(f"/api/reminders/{rid}/check-in", json={
+    resp = await raw_client.post(f"/api/reminders/{rid}/check-in", json={
         "time": "08:00", "taken": True,
     })
     assert resp.status_code == 401

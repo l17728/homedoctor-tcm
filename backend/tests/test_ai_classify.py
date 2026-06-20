@@ -50,9 +50,9 @@ async def test_suggest_tags_empty_body_rejected(client: AsyncClient, auth_header
 
 
 @pytest.mark.asyncio
-async def test_suggest_tags_requires_auth(client: AsyncClient):
+async def test_suggest_tags_requires_auth(raw_client: AsyncClient):
     """No auth header → 401/403."""
-    resp = await client.post("/api/ai-classify/suggest", json={
+    resp = await raw_client.post("/api/ai-classify/suggest", json={
         "title": "test",
         "content": "test",
     })

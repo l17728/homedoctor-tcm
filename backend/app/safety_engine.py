@@ -14,6 +14,7 @@ import json
 from dataclasses import dataclass, field
 
 from app.database import DbAdapter
+from app.repository import current_tenant_id
 
 
 # ---------------------------------------------------------------------------
@@ -158,9 +159,10 @@ async def run_safety_check(
             processed_variants_found[name] = base_herb
 
     unknown_medicines: list[str] = []
+    tenant = current_tenant_id.get()
     for med in medicine_names:
         row = await db.query_one(
-            "SELECT * FROM medicines WHERE name = ?", (med,)
+            "SELECT id FROM medicines WHERE name = ? AND tenant_id = ? LIMIT 1", (med, tenant)
         )
         if not row:
             unknown_medicines.append(med)
@@ -273,9 +275,15 @@ async def _get_medicine_drug_class(db: DbAdapter, medicine_name: str) -> str:
     Only medicines whose drugClass is '西药' should trigger Layer 1b.
     '中药' and '中成药' go through Layer 1a (配伍禁忌) instead.
     """
+    tenant = current_tenant_id.get()
     row = await db.query_one(
-        "SELECT properties FROM medicines WHERE name = ?", (medicine_name,)
+        "SELECT properties FROM medicines WHERE name = ? AND tenant_id = ? LIMIT 1",
+        (medicine_name, tenant),
     )
+    if not row:
+        row = await db.query_one(
+            "SELECT properties FROM medicines WHERE name = ? LIMIT 1", (medicine_name,)
+        )
     if row:
         props = row["properties"]
         if isinstance(props, str):

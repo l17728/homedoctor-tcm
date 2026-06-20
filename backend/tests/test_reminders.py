@@ -231,8 +231,8 @@ async def test_filter_enabled_only(client: AsyncClient, auth_headers: dict):
 
 
 @pytest.mark.asyncio
-async def test_unauthorized_access(client: AsyncClient):
-    response = await client.get("/api/reminders")
+async def test_unauthorized_access(raw_client: AsyncClient):
+    response = await raw_client.get("/api/reminders")
     assert response.status_code == 401
 
 

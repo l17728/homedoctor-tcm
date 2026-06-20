@@ -151,9 +151,9 @@ async def test_get_chapter_not_found(client: AsyncClient, auth_headers: dict):
 
 
 @pytest.mark.asyncio
-async def test_get_chapter_requires_auth(client: AsyncClient):
+async def test_get_chapter_requires_auth(raw_client: AsyncClient):
     """GET chapter without auth returns 401/403."""
-    resp = await client.get(
+    resp = await raw_client.get(
         f"/api/classics/{CLASSIC_ID}/chapters/{CHAPTER_ID}"
     )
     assert resp.status_code in (401, 403)
@@ -221,9 +221,9 @@ async def test_create_annotation_invalid_note_type(
 
 
 @pytest.mark.asyncio
-async def test_create_annotation_requires_auth(client: AsyncClient):
+async def test_create_annotation_requires_auth(raw_client: AsyncClient):
     """POST annotation without auth returns 401/403."""
-    resp = await client.post(
+    resp = await raw_client.post(
         f"/api/classics/{CLASSIC_ID}/chapters/{CHAPTER_ID}/annotations",
         json={
             "start_offset": 0, "end_offset": 5,
@@ -520,9 +520,9 @@ async def test_translate_chapter_with_mock_llm(
 
 
 @pytest.mark.asyncio
-async def test_translate_requires_auth(client: AsyncClient):
+async def test_translate_requires_auth(raw_client: AsyncClient):
     """POST translate without auth returns 401/403."""
-    resp = await client.post(
+    resp = await raw_client.post(
         f"/api/classics/{CLASSIC_ID}/chapters/{CHAPTER_ID}/translate"
     )
     assert resp.status_code in (401, 403)
@@ -575,11 +575,11 @@ async def test_study_notes_idempotent_update(
 
 
 @pytest.mark.asyncio
-async def test_study_notes_requires_auth(client: AsyncClient):
+async def test_study_notes_requires_auth(raw_client: AsyncClient):
     """GET/PUT study notes without auth returns 401/403."""
-    r1 = await client.get(f"/api/classics/{CLASSIC_ID}/study-notes")
+    r1 = await raw_client.get(f"/api/classics/{CLASSIC_ID}/study-notes")
     assert r1.status_code in (401, 403)
-    r2 = await client.put(
+    r2 = await raw_client.put(
         f"/api/classics/{CLASSIC_ID}/chapters/{CHAPTER_ID}/study-notes",
         json={"content": "x"},
     )
@@ -652,27 +652,25 @@ async def test_summarize_empty_returns_404(
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_all_protected_endpoints_require_auth(client: AsyncClient):
+async def test_all_protected_endpoints_require_auth(raw_client: AsyncClient):
     """All write/annotation/AI endpoints return 401/403 without auth."""
     cases = [
-        ("get", f"/api/classics/{CLASSIC_ID}/chapters/{CHAPTER_ID}"),
         ("post", f"/api/classics/{CLASSIC_ID}/chapters/{CHAPTER_ID}/annotations"),
         ("put", "/api/classics/annotations/some-id"),
         ("delete", "/api/classics/annotations/some-id"),
         ("put", f"/api/classics/{CLASSIC_ID}/chapters/{CHAPTER_ID}/translation"),
         ("post", f"/api/classics/{CLASSIC_ID}/chapters/{CHAPTER_ID}/ask"),
         ("post", f"/api/classics/{CLASSIC_ID}/chapters/{CHAPTER_ID}/translate"),
-        ("get", f"/api/classics/{CLASSIC_ID}/study-notes"),
         ("put", f"/api/classics/{CLASSIC_ID}/chapters/{CHAPTER_ID}/study-notes"),
         ("post", f"/api/classics/{CLASSIC_ID}/summarize"),
     ]
     for method, url in cases:
         if method == "get":
-            r = await client.get(url)
+            r = await raw_client.get(url)
         elif method == "post":
-            r = await client.post(url, json={})
+            r = await raw_client.post(url, json={})
         elif method == "put":
-            r = await client.put(url, json={})
+            r = await raw_client.put(url, json={})
         else:
-            r = await client.delete(url)
+            r = await raw_client.delete(url)
         assert r.status_code in (401, 403), f"{method.upper()} {url} returned {r.status_code}"

@@ -27,11 +27,44 @@ async def db():
 
 @pytest_asyncio.fixture
 async def client(db: SqliteAdapter):
-    """Create an async test client with the test database injected."""
+    """Create an async test client with the test database injected.
+
+    The client is pre-authenticated with a test user so that the tightened
+    AuthMiddleware (which rejects requests without a Bearer token) allows
+    test requests through. Tests that explicitly need unauthenticated
+    access should use a bare AsyncClient instead.
+    """
     import app.database as db_mod
     import app.main as main_mod
     db_mod.set_db(db)
 
+    transport = ASGITransport(app=main_mod.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.post("/api/auth/register", json={
+            "username": "_test_auto_user",
+            "password": "_test_auto_pass123",
+            "display_name": "测试",
+            "consent_privacy": True,
+            "consent_health_data": True,
+        })
+        if resp.status_code == 200:
+            token = resp.json().get("access_token", "")
+        else:
+            login = await ac.post("/api/auth/login", json={
+                "username": "_test_auto_user",
+                "password": "_test_auto_pass123",
+            })
+            token = login.json().get("access_token", "")
+        ac.headers["Authorization"] = f"Bearer {token}"
+        yield ac
+
+
+@pytest_asyncio.fixture
+async def raw_client(db: SqliteAdapter):
+    """Unauthenticated test client — for testing 401/403 behavior."""
+    import app.database as db_mod
+    import app.main as main_mod
+    db_mod.set_db(db)
     transport = ASGITransport(app=main_mod.app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

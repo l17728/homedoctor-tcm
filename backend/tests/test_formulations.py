@@ -256,9 +256,9 @@ async def test_tea_recipe_harmonizer_added_when_room(client: AsyncClient):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_from_inventory_requires_auth(client: AsyncClient):
+async def test_from_inventory_requires_auth(raw_client: AsyncClient):
     """Without auth → 401."""
-    response = await client.post("/api/formulations/from-inventory", json={
+    response = await raw_client.post("/api/formulations/from-inventory", json={
         "symptoms": ["气虚"],
     })
     assert response.status_code == 401
