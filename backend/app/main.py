@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import SqliteAdapter, init_db, seed_safety_rules, seed_test_data, set_db, _db_adapter
+from app.knowledge_reader import enrich_from_legacy_tables
 from app.middleware.auth import AuthMiddleware
 from app.middleware.csrf import CsrfMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -29,6 +30,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db(adapter)
     await seed_safety_rules(adapter)
     await seed_test_data(adapter)
+    await enrich_from_legacy_tables(adapter)
 
     yield
 

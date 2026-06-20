@@ -434,6 +434,7 @@ DDL_STATEMENTS = [
         properties TEXT DEFAULT '{}',
         source_type TEXT DEFAULT 'system',
         status TEXT DEFAULT 'active',
+        tenant_id TEXT DEFAULT NULL,
         view_count INTEGER DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -450,6 +451,7 @@ DDL_STATEMENTS = [
         relationship_type TEXT NOT NULL,
         properties TEXT DEFAULT '{}',
         weight REAL DEFAULT 1.0,
+        tenant_id TEXT DEFAULT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         FOREIGN KEY (source_entity_id) REFERENCES knowledge_entities(id),
         FOREIGN KEY (target_entity_id) REFERENCES knowledge_entities(id)
@@ -692,7 +694,30 @@ async def _migrate_user_profiles_liver_kidney(db: DbAdapter) -> None:
         if "kidney_disease" not in col_names:
             await db.execute("ALTER TABLE user_profiles ADD COLUMN kidney_disease INTEGER DEFAULT 0")
     except Exception:
-        pass  # Table might not exist yet or column already added
+        pass
+
+
+async def _migrate_knowledge_tenant_id(db: DbAdapter) -> None:
+    """Add tenant_id column to knowledge_entities and entity_relationships (Phase 2 unified model).
+
+    NULL = global shared knowledge (system herbs/formulas/symptoms).
+    Non-NULL = family-private entity or relationship.
+    """
+    for table in ("knowledge_entities", "entity_relationships"):
+        try:
+            cols = await db.query(f"PRAGMA table_info({table})")
+            if not any(c["name"] == "tenant_id" for c in cols):
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT DEFAULT NULL")
+        except Exception:
+            pass
+    for stmt in (
+        "CREATE INDEX IF NOT EXISTS idx_ke_tenant ON knowledge_entities(tenant_id)",
+        "CREATE INDEX IF NOT EXISTS idx_er_tenant ON entity_relationships(tenant_id)",
+    ):
+        try:
+            await db.execute(stmt)
+        except Exception:
+            pass  # Table might not exist yet or column already added
 
 
 async def init_db(db: DbAdapter) -> None:
@@ -709,6 +734,8 @@ async def init_db(db: DbAdapter) -> None:
     await _migrate_reminders_member_id(db)
     # Migration: add liver_disease/kidney_disease to user_profiles for existing databases
     await _migrate_user_profiles_liver_kidney(db)
+    # Migration: add tenant_id to knowledge_entities and entity_relationships (Phase 2)
+    await _migrate_knowledge_tenant_id(db)
 
 
 async def seed_safety_rules(db: DbAdapter) -> None:
