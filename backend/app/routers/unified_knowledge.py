@@ -91,6 +91,86 @@ async def list_symptoms(
     )
 
 
+@router.get("/meridians")
+async def list_meridians(
+    q: str | None = Query(None),
+    category: str | None = Query(None, description="正经/奇经"),
+    db: DbAdapter = Depends(get_db),
+) -> dict[str, Any]:
+    result = await list_entities(
+        db, "meridian", category=category, search=q, page=1, page_size=50
+    )
+    return result
+
+
+@router.get("/meridians/{entity_id}")
+async def get_meridian(
+    entity_id: str,
+    db: DbAdapter = Depends(get_db),
+) -> dict[str, Any]:
+    result = await get_entity_with_relations(db, entity_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="经络不存在")
+    return result
+
+
+@router.get("/acupoints")
+async def list_acupoints(
+    q: str | None = Query(None, description="搜索穴名或功能"),
+    meridian: str | None = Query(None, description="按经络筛选（经络名或代码）"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: DbAdapter = Depends(get_db),
+) -> dict[str, Any]:
+    result = await list_entities(
+        db, "acupoint", search=q, page=page, page_size=page_size
+    )
+    if meridian and result["items"]:
+        filtered = []
+        for item in result["items"]:
+            props = item.get("properties", {})
+            if meridian in (props.get("meridian", ""), props.get("meridian_code", "")):
+                filtered.append(item)
+        result["items"] = filtered
+        result["total"] = len(filtered)
+    return result
+
+
+@router.get("/acupoints/{entity_id}")
+async def get_acupoint(
+    entity_id: str,
+    db: DbAdapter = Depends(get_db),
+) -> dict[str, Any]:
+    result = await get_entity_with_relations(db, entity_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="穴位不存在")
+    return result
+
+
+@router.get("/therapies")
+async def list_therapies(
+    q: str | None = Query(None),
+    category: str | None = Query(None, description="针刺/灸法/推拿/拔罐/刮痧/刺血/中药外治"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: DbAdapter = Depends(get_db),
+) -> dict[str, Any]:
+    return await list_entities(
+        db, "therapy", category=category, search=q, page=page, page_size=page_size
+    )
+
+
+@router.get("/therapies/{entity_id}")
+async def get_therapy(
+    entity_id: str,
+    db: DbAdapter = Depends(get_db),
+) -> dict[str, Any]:
+    result = await get_entity_with_relations(db, entity_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="疗法不存在")
+    return result
+
+
 @router.get("/graph/{entity_id}")
 async def get_graph(
     entity_id: str,
@@ -121,7 +201,7 @@ async def unified_search(
             db, type, search=q, page=page, page_size=page_size
         )
 
-    types = ["herb", "formula", "symptom", "therapy"]
+    types = ["herb", "formula", "acupoint", "meridian", "therapy", "symptom"]
     all_items: list[dict[str, Any]] = []
     for t in types:
         result = await list_entities(
