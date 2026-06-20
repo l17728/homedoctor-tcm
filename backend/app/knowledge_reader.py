@@ -220,8 +220,8 @@ async def list_entities(
     total = count_row["c"] if count_row else 0
 
     rows = await db.query(
-        f"""SELECT id, title, summary, content_preview, category, keywords, tags,
-                  properties, view_count, source_table, source_id
+        f"""SELECT id, entity_type, title, summary, content_preview, category,
+                  keywords, tags, properties, view_count, source_table, source_id
              FROM knowledge_entities
             WHERE {where}
             ORDER BY view_count DESC, title ASC
