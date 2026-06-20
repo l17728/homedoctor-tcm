@@ -431,6 +431,76 @@ export async function getPopular(limit = 12): Promise<KnowledgeEntity[]> {
   return items.map(mapEntity);
 }
 
+// ---------------------------------------------------------------------------
+// RAG 语义搜索（BGE-M3 + BM25 + RRF 融合）
+// ---------------------------------------------------------------------------
+
+export interface RagSearchResult {
+  items: KnowledgeEntity[];
+  total: number;
+  intent: string;
+  strategies: string[];
+  reranked: boolean;
+  degraded: boolean;
+  /** 每条结果的匹配分数（rrf_score 或 bm25_score） */
+  scores: number[];
+}
+
+export async function ragSearch(
+  q: string,
+  topK = 20,
+  rerank = false,
+): Promise<RagSearchResult> {
+  const query = new URLSearchParams({
+    q,
+    top_k: String(topK),
+    rerank: String(rerank),
+  });
+  const data = await request<{
+    results?: Record<string, unknown>[];
+    total?: number;
+    intent?: string;
+    strategies?: string[];
+    reranked?: boolean;
+    degraded?: boolean;
+  }>(`/api/rag/search?${query}`);
+
+  const rawResults = data.results ?? [];
+  const items: KnowledgeEntity[] = [];
+  const scores: number[] = [];
+
+  for (const r of rawResults) {
+    const score =
+      typeof r.rrf_score === 'number'
+        ? r.rrf_score
+        : typeof r.bm25_score === 'number'
+          ? r.bm25_score
+          : typeof r.score === 'number'
+            ? r.score
+            : 0;
+    scores.push(score);
+    items.push(
+      mapEntity({
+        id: typeof r.entity_id === 'string' ? r.entity_id : (r.id as string),
+        type: typeof r.entity_type === 'string' ? r.entity_type : (r.type as string),
+        title: r.title as string,
+        summary: (r.summary ?? r.chunk_text) as string,
+        category: r.category as string,
+      }),
+    );
+  }
+
+  return {
+    items,
+    total: data.total ?? items.length,
+    intent: data.intent ?? 'UNKNOWN',
+    strategies: data.strategies ?? [],
+    reranked: data.reranked ?? false,
+    degraded: data.degraded ?? false,
+    scores,
+  };
+}
+
 export async function getRecent(limit = 12): Promise<KnowledgeEntity[]> {
   const data = await request<EntityRow[] | { items?: EntityRow[] }>(
     `/api/knowledge-hub/recent?limit=${limit}`,

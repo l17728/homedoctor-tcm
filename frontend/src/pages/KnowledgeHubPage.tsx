@@ -17,6 +17,7 @@ import {
   Upload,
   Spin,
   Tooltip,
+  Switch,
   message,
   Alert,
   Input as AntInput,
@@ -46,6 +47,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { ApiError } from '../api/client';
 import {
   searchKnowledge,
+  ragSearch,
   getEntity,
   getEntityTypes,
   importText,
@@ -117,6 +119,13 @@ export default function KnowledgeHubPage() {
   const [activeType, setActiveType] = useState<string>('all');
   const [searchInput, setSearchInput] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [semanticMode, setSemanticMode] = useState(false);
+  const [ragMeta, setRagMeta] = useState<{
+    intent: string;
+    strategies: string[];
+    degraded: boolean;
+    scores: number[];
+  } | null>(null);
 
   const [typeCounts, setTypeCounts] = useState<TypeCounts>({});
   const [items, setItems] = useState<KnowledgeEntity[]>([]);
@@ -195,7 +204,6 @@ export default function KnowledgeHubPage() {
     };
   }, [searchInput]);
 
-  /** 执行搜索（q 或 type 变化时） */
   const runSearch = useCallback(
     async (q: string, type: string, pageNum: number, append: boolean) => {
       if (append) {
@@ -204,18 +212,41 @@ export default function KnowledgeHubPage() {
         setLoading(true);
       }
       try {
-        const result = await searchKnowledge({
-          q: q.trim() || undefined,
-          type,
-          page: pageNum,
-          pageSize: PAGE_SIZE,
-        });
-        setItems((prev) =>
-          append ? [...prev, ...result.items] : result.items,
-        );
-        setTotal(result.total);
-        setPage(pageNum);
-        setHasMore((append ? items.length : 0) + result.items.length < result.total);
+        if (semanticMode && q.trim()) {
+          const result = await ragSearch(q.trim(), 30, false);
+          let filtered = result.items;
+          if (type !== 'all') {
+            filtered = filtered.filter((it) => it.type === type);
+          }
+          const startIdx = (pageNum - 1) * PAGE_SIZE;
+          const pageItems = filtered.slice(startIdx, startIdx + PAGE_SIZE);
+          setItems((prev) =>
+            append ? [...prev, ...pageItems] : pageItems,
+          );
+          setTotal(filtered.length);
+          setPage(pageNum);
+          setHasMore(startIdx + pageItems.length < filtered.length);
+          setRagMeta({
+            intent: result.intent,
+            strategies: result.strategies,
+            degraded: result.degraded,
+            scores: result.scores.slice(startIdx, startIdx + pageItems.length),
+          });
+        } else {
+          setRagMeta(null);
+          const result = await searchKnowledge({
+            q: q.trim() || undefined,
+            type,
+            page: pageNum,
+            pageSize: PAGE_SIZE,
+          });
+          setItems((prev) =>
+            append ? [...prev, ...result.items] : result.items,
+          );
+          setTotal(result.total);
+          setPage(pageNum);
+          setHasMore((append ? items.length : 0) + result.items.length < result.total);
+        }
       } catch (e) {
         notifyError(e, '搜索失败，请稍后重试');
         if (!append) {
@@ -227,18 +258,19 @@ export default function KnowledgeHubPage() {
         setLoadingMore(false);
       }
     },
-    [notifyError, items.length],
+    [notifyError, items.length, semanticMode],
   );
 
   useEffect(() => {
     if (!isSearching) {
       setItems([]);
       setTotal(0);
+      setRagMeta(null);
       return;
     }
     void runSearch(debouncedQuery, activeType, 1, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQuery, activeType, isSearching]);
+  }, [debouncedQuery, activeType, isSearching, semanticMode]);
 
   const handleLoadMore = () => {
     if (!isSearching) return;
@@ -818,6 +850,17 @@ export default function KnowledgeHubPage() {
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
           />
+          <Tooltip title="开启后使用 BGE-M3 语义匹配，支持自然语言提问（如「增强免疫力怎么调理」），首次搜索约10秒加载模型">
+            <Switch
+              checkedChildren="语义"
+              unCheckedChildren="关键词"
+              checked={semanticMode}
+              onChange={(checked) => {
+                setSemanticMode(checked);
+                if (!checked) setRagMeta(null);
+              }}
+            />
+          </Tooltip>
           <Button
             type="primary"
             icon={<ImportOutlined />}
@@ -899,13 +942,35 @@ export default function KnowledgeHubPage() {
               />
             ) : (
               <>
-                <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                  找到 {total.toLocaleString()} 条结果
-                </Text>
+                <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Text type="secondary">
+                    找到 {total.toLocaleString()} 条结果
+                  </Text>
+                  {ragMeta && (
+                    <>
+                      <Tag color={ragMeta.degraded ? 'orange' : 'blue'}>
+                        {ragMeta.degraded ? 'BM25 降级' : '语义搜索'}
+                      </Tag>
+                      {ragMeta.strategies.map((s) => (
+                        <Tag key={s} color="geekblue">{s}</Tag>
+                      ))}
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        意图: {ragMeta.intent}
+                      </Text>
+                    </>
+                  )}
+                </div>
                 <Row gutter={[16, 16]}>
-                  {items.map((e) => (
+                  {items.map((e, idx) => (
                     <Col xs={24} sm={12} lg={8} key={e.id}>
                       {renderEntityCard(e)}
+                      {ragMeta && ragMeta.scores[idx] !== undefined && (
+                        <div style={{ textAlign: 'center', marginTop: -8, marginBottom: 8 }}>
+                          <Text type="secondary" style={{ fontSize: 11 }}>
+                            匹配度 {(ragMeta.scores[idx] * 100).toFixed(1)}%
+                          </Text>
+                        </div>
+                      )}
                     </Col>
                   ))}
                 </Row>
