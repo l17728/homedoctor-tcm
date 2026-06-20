@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
@@ -13,6 +15,38 @@ from app.knowledge_reader import enrich_from_legacy_tables
 from app.middleware.auth import AuthMiddleware
 from app.middleware.csrf import CsrfMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+
+logger = logging.getLogger(__name__)
+
+
+async def _warmup_models() -> None:
+    """Pre-load embedding + reranker models in a background thread.
+
+    Runs after server startup so the first user request doesn't pay the
+    ~20s model-load cost. Non-blocking: failures are logged and swallowed.
+    """
+    loop = asyncio.get_event_loop()
+
+    def _load_embedder() -> None:
+        try:
+            from app.embedding import get_embedding_model
+            m = get_embedding_model()
+            if m.available:
+                logger.info("warmup: embedder ready (dim=%d)", m.dim)
+        except Exception as exc:
+            logger.info("warmup: embedder skipped (%s)", exc)
+
+    def _load_reranker() -> None:
+        try:
+            from app.search_pipeline import _get_reranker
+            r = _get_reranker()
+            if r is not None:
+                logger.info("warmup: reranker ready")
+        except Exception as exc:
+            logger.info("warmup: reranker skipped (%s)", exc)
+
+    await loop.run_in_executor(None, _load_embedder)
+    await loop.run_in_executor(None, _load_reranker)
 from app.middleware.tenant import TenantMiddleware
 
 
@@ -31,6 +65,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await seed_safety_rules(adapter)
     await seed_test_data(adapter)
     await enrich_from_legacy_tables(adapter)
+
+    asyncio.create_task(_warmup_models())
 
     yield
 
