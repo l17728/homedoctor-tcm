@@ -43,6 +43,10 @@ async def enrich_from_legacy_tables(db: DbAdapter) -> dict[str, int]:
     herbs_synced = await _enrich_herbs(db)
     formulas_synced = await _enrich_formulas(db)
     symptoms_synced = await _enrich_symptoms(db)
+    await db.execute(
+        "UPDATE knowledge_entities SET category='灸法' "
+        "WHERE entity_type='therapy' AND category='艾灸'"
+    )
     logger.info(
         "knowledge_reader: enriched %d herbs + %d formulas + %d symptoms",
         herbs_synced, formulas_synced, symptoms_synced,
