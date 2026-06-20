@@ -457,6 +457,30 @@ DDL_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_er_source ON entity_relationships(source_entity_id)",
     "CREATE INDEX IF NOT EXISTS idx_er_target ON entity_relationships(target_entity_id)",
     "CREATE INDEX IF NOT EXISTS idx_er_type ON entity_relationships(relationship_type)",
+    # -- RAG 知识分块 (spec §RAG — 语义检索)
+    # 结构化实体(knowledge_entities)被切分为语义块后嵌入向量，用于混合检索。
+    """CREATE TABLE IF NOT EXISTS knowledge_chunks (
+        id TEXT PRIMARY KEY,
+        entity_id TEXT,
+        chunk_index INTEGER DEFAULT 0,
+        chunk_text TEXT NOT NULL,
+        chunk_type TEXT DEFAULT 'content',
+        hierarchy_path TEXT,
+        hierarchy_level INTEGER DEFAULT 0,
+        token_count INTEGER DEFAULT 0,
+        metadata TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_kc_entity ON knowledge_chunks(entity_id)",
+    # -- RAG 向量嵌入存储 (spec §RAG — BGE-M3 1024维)
+    # 嵌入以 JSON 字符串存储；检索时加载到内存做 numpy 余弦相似度。
+    """CREATE TABLE IF NOT EXISTS chunk_embeddings (
+        chunk_id TEXT PRIMARY KEY,
+        embedding TEXT NOT NULL,
+        model_name TEXT DEFAULT 'bge-m3',
+        dim INTEGER DEFAULT 1024,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
 ]
 
 FTS_STATEMENTS = [
