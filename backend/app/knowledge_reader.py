@@ -35,19 +35,23 @@ _FORMULA_FIELDS = [
 
 
 async def enrich_from_legacy_tables(db: DbAdapter) -> dict[str, int]:
-    """Sync herbs/formulas full data into knowledge_entities.properties.
+    """Sync herbs/formulas/symptoms full data into knowledge_entities.
 
     Called at startup to ensure knowledge_entities has complete data even
     after seed scripts re-create basic entities on container restart.
-    Returns ``{"herbs": N, "formulas": M}``.
     """
     herbs_synced = await _enrich_herbs(db)
     formulas_synced = await _enrich_formulas(db)
+    symptoms_synced = await _enrich_symptoms(db)
     logger.info(
-        "knowledge_reader: enriched %d herbs + %d formulas from legacy tables",
-        herbs_synced, formulas_synced,
+        "knowledge_reader: enriched %d herbs + %d formulas + %d symptoms",
+        herbs_synced, formulas_synced, symptoms_synced,
     )
-    return {"herbs": herbs_synced, "formulas": formulas_synced}
+    return {
+        "herbs": herbs_synced,
+        "formulas": formulas_synced,
+        "symptoms": symptoms_synced,
+    }
 
 
 async def _enrich_herbs(db: DbAdapter) -> int:
@@ -107,6 +111,60 @@ async def _enrich_formulas(db: DbAdapter) -> int:
                 row.get("indications") or "",
                 row.get("category") or "",
                 row["eid"],
+            ),
+        )
+    return len(rows)
+
+
+async def _enrich_symptoms(db: DbAdapter) -> int:
+    """Reverse-fill symptom entities from treating herbs via relationships.
+
+    For each symptom, finds all herbs with 主治/适用于 edges pointing to it,
+    then populates ``properties`` with treating_herbs, herb_categories, and
+    treatment_count. Also sets a human-readable ``summary``.
+    """
+    rows = await db.query(
+        """SELECT ke.id AS symptom_id, ke.title AS symptom_name,
+                  ke.properties AS existing_props,
+                  GROUP_CONCAT(h.name, '、') AS herb_names,
+                  GROUP_CONCAT(h.category, '、') AS herb_cats,
+                  COUNT(DISTINCT h.id) AS herb_count
+             FROM knowledge_entities ke
+             JOIN entity_relationships er
+               ON er.target_entity_id = ke.id
+              AND er.relationship_type IN ('主治', '适用于')
+             JOIN knowledge_entities ke_src
+               ON ke_src.id = er.source_entity_id
+              AND ke_src.entity_type = 'herb'
+             JOIN herbs h ON h.id = ke_src.source_id
+            WHERE ke.entity_type = 'symptom'
+            GROUP BY ke.id"""
+    )
+    for row in rows:
+        props = _parse_json(row.get("existing_props"), {})
+        herb_names = (row.get("herb_names") or "").split("、")
+        herb_names = [n for n in herb_names if n]
+        herb_cats_raw = (row.get("herb_cats") or "").split("、")
+        herb_cats = sorted(set(c for c in herb_cats_raw if c))
+
+        props["treating_herbs"] = herb_names[:20]
+        props["herb_categories"] = herb_cats[:8]
+        props["treatment_count"] = row.get("herb_count", 0)
+
+        summary = ""
+        if herb_names:
+            top = herb_names[:5]
+            summary = f"可由{'、'.join(top)}等{row['herb_count']}味药治疗"
+        content_preview = f"相关中药分类：{'、'.join(herb_cats[:5])}" if herb_cats else ""
+
+        await db.execute(
+            "UPDATE knowledge_entities SET properties = ?, summary = ?, "
+            "content_preview = ?, updated_at = datetime('now') WHERE id = ?",
+            (
+                json.dumps(props, ensure_ascii=False),
+                summary,
+                content_preview,
+                row["symptom_id"],
             ),
         )
     return len(rows)
