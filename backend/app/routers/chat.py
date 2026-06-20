@@ -21,6 +21,7 @@ from app.auth import get_current_user
 from app.config import settings
 from app.database import DbAdapter, get_db
 from app.entity_filter import scan_and_link
+from app.knowledge_reader import build_graph_context
 from app.llm import (
     DISCLAIMER,
     chat_completion,
@@ -204,12 +205,14 @@ async def chat(
 
     constitution = await _get_user_constitution(db, current_user["id"])
 
+    knowledge_ctx = await build_graph_context(db, body.message)
+
     messages = [{"role": "user", "content": body.message}]
     if body.history:
         messages = [*body.history, {"role": "user", "content": body.message}]
 
     if has_api_key():
-        reply_text = await chat_completion(messages, constitution)
+        reply_text = await chat_completion(messages, constitution, knowledge_ctx)
         if not reply_text.endswith(DISCLAIMER):
             reply_text = f"{reply_text}\n\n{DISCLAIMER}"
     else:
@@ -221,6 +224,12 @@ async def chat(
     reasoning: list[dict[str, Any]] = [
         {"step": "safety_keyword_check", "result": "passed"},
     ]
+    if knowledge_ctx:
+        reasoning.append({
+            "step": "knowledge_graph_context",
+            "result": "injected",
+            "context_length": len(knowledge_ctx),
+        })
     if constitution:
         reasoning.append({
             "step": "constitution_context",
@@ -263,13 +272,15 @@ async def chat_stream(
 
     constitution = await _get_user_constitution(db, current_user["id"])
 
+    knowledge_ctx = await build_graph_context(db, body.message)
+
     messages = [{"role": "user", "content": body.message}]
     if body.history:
         messages = [*body.history, {"role": "user", "content": body.message}]
 
     async def generate():
         full_response = ""
-        async for chunk in chat_completion_stream(messages, constitution):
+        async for chunk in chat_completion_stream(messages, constitution, knowledge_ctx):
             full_response += chunk
             yield f"data: {json.dumps({'content': chunk})}\n\n"
 

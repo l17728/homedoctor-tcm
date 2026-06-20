@@ -68,8 +68,13 @@ SYSTEM_PROMPT = """你是「家庭医生」，一位专业的中医药健康咨�
 **语言要求**：使用简体中文，语气温和、专业、通俗易懂，适合中老年用户阅读。"""
 
 
-def build_system_prompt(constitution: dict[str, Any] | None = None) -> str:
+def build_system_prompt(
+    constitution: dict[str, Any] | None = None,
+    knowledge_context: str | None = None,
+) -> str:
     prompt = SYSTEM_PROMPT
+    if knowledge_context:
+        prompt += f"\n\n{knowledge_context}"
     if constitution:
         prompt += f"\n\n**用户体质档案**：主体质为「{constitution['primary']}」"
         if constitution.get("secondary"):
@@ -95,6 +100,7 @@ def _get_model_chain() -> list[str]:
 async def chat_completion(
     messages: list[dict[str, str]],
     constitution: dict[str, Any] | None = None,
+    knowledge_context: str | None = None,
 ) -> str:
     if not has_api_key():
         logger.warning("LLM_API_KEY not configured — returning fallback message")
@@ -106,7 +112,7 @@ async def chat_completion(
     }
     base_payload = {
         "messages": [
-            {"role": "system", "content": build_system_prompt(constitution)},
+            {"role": "system", "content": build_system_prompt(constitution, knowledge_context)},
             *messages,
         ],
         "temperature": 0.3,
@@ -145,6 +151,7 @@ async def chat_completion(
 async def chat_completion_stream(
     messages: list[dict[str, str]],
     constitution: dict[str, Any] | None = None,
+    knowledge_context: str | None = None,
 ) -> AsyncIterator[str]:
     if not has_api_key():
         logger.warning("LLM_API_KEY not configured — returning fallback stream")
@@ -158,7 +165,7 @@ async def chat_completion_stream(
     payload = {
         "model": settings.LLM_MODEL,
         "messages": [
-            {"role": "system", "content": build_system_prompt(constitution)},
+            {"role": "system", "content": build_system_prompt(constitution, knowledge_context)},
             *messages,
         ],
         "temperature": 0.3,

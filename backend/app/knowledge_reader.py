@@ -327,3 +327,82 @@ def _format_entity(row: dict[str, Any], include_meta: bool = False) -> dict[str,
         result["updated_at"] = row.get("updated_at", "")
 
     return result
+
+
+async def build_graph_context(
+    db: DbAdapter, user_message: str, max_entities: int = 3
+) -> str | None:
+    """Build knowledge graph context for AI Q&A from a user's message.
+
+    1. Scans the message for entity mentions (herbs, formulas, symptoms).
+    2. For each top match, runs 2-hop traversal to find related entities.
+    3. Formats results as a concise context string for the LLM system prompt.
+
+    Returns ``None`` if no entities are found.
+    """
+    from app.entity_filter import get_entity_index
+
+    index = await get_entity_index(db)
+    mentions = index.scan(user_message)
+    if not mentions:
+        return None
+
+    herb_formula_mentions = [
+        m for m in mentions
+        if m.get("type") in ("herb", "formula", "therapy") and m.get("entity_id")
+    ][:max_entities]
+    if not herb_formula_mentions:
+        return None
+
+    lines: list[str] = ["**知识图谱参考**（基于实体关系遍历，请结合用户问题参考使用）："]
+
+    for m in herb_formula_mentions:
+        entity_id = m["entity_id"]
+        entity = await get_entity(db, entity_id)
+        if not entity:
+            continue
+
+        props = entity.get("properties", {})
+        parts: list[str] = []
+        if props.get("nature"):
+            parts.append(f"性{props['nature']}")
+        if props.get("flavor"):
+            parts.append(f"味{props['flavor']}")
+        if props.get("meridians"):
+            parts.append(f"归{props['meridians']}经")
+        if props.get("efficacy"):
+            parts.append(props["efficacy"])
+        if props.get("indications"):
+            parts.append(f"主治：{props['indications']}")
+        if props.get("contraindications"):
+            parts.append(f"禁忌：{props['contraindications']}")
+        if props.get("dosage_min_g") and props.get("dosage_max_g"):
+            parts.append(f"用量{props['dosage_min_g']}-{props['dosage_max_g']}g")
+
+        lines.append(f"\n■ {m['name']}（{m['type']}）")
+        if parts:
+            lines.append(f"  {'，'.join(parts)}")
+
+        rels = await db.query(
+            """SELECT er.relationship_type, ke.title, ke.entity_type, ke.summary
+                 FROM entity_relationships er
+                 JOIN knowledge_entities ke ON ke.id = er.target_entity_id
+                WHERE er.source_entity_id = ? AND ke.status = 'active'
+                UNION ALL
+               SELECT er.relationship_type, ke.title, ke.entity_type, ke.summary
+                 FROM entity_relationships er
+                 JOIN knowledge_entities ke ON ke.id = er.source_entity_id
+                WHERE er.target_entity_id = ? AND ke.status = 'active'
+                LIMIT 8""",
+            (entity_id, entity_id),
+        )
+        for r in rels[:6]:
+            rel_label = r["relationship_type"]
+            target_title = r["title"]
+            target_summary = (r.get("summary") or "")[:40]
+            lines.append(f"  →[{rel_label}]→ {target_title}" + (f"（{target_summary}…）" if target_summary else ""))
+
+    if len(lines) <= 1:
+        return None
+
+    return "\n".join(lines)
