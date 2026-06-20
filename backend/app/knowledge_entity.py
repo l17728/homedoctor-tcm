@@ -564,12 +564,23 @@ ANALYSIS_PROMPT_TEMPLATE = """分析以下中医健康知识内容，提取结�
 }}"""
 
 
-_ALLOWED_ENTITY_TYPES = frozenset({
+_KNOWN_ENTITY_TYPES = frozenset({
     "herb", "formula", "therapy", "symptom",
-    "tea_recipe", "health_method", "article",
+    "acupoint", "meridian", "health_practice", "practice_school",
+    "tea_recipe", "health_method", "article", "person",
 })
 
 _DEFAULT_ENTITY_TYPE = "article"
+
+
+async def _get_known_entity_types(db: DbAdapter) -> set[str]:
+    """Get all entity types currently in the database + known defaults."""
+    try:
+        rows = await db.query("SELECT DISTINCT entity_type FROM knowledge_entities")
+        db_types = {r["entity_type"] for r in rows if r.get("entity_type")}
+        return db_types | _KNOWN_ENTITY_TYPES
+    except Exception:
+        return set(_KNOWN_ENTITY_TYPES)
 
 
 def _parse_llm_json(raw: str) -> dict[str, Any]:
@@ -666,7 +677,7 @@ async def _find_or_create_entity_by_name(
     # Don't auto-create symptom entities en masse — only herbs/formulas/therapies
     # are seeded as canonical entities. Symptom/condition stubs are created
     # lazily here so relationships have a target to point at.
-    safe_type = entity_type if entity_type in _ALLOWED_ENTITY_TYPES else _DEFAULT_ENTITY_TYPE
+    safe_type = entity_type if entity_type in _KNOWN_ENTITY_TYPES else _DEFAULT_ENTITY_TYPE
     return await register_entity(
         db,
         entity_type=safe_type,
@@ -708,7 +719,7 @@ async def process_imported_content(
     analysis = await _call_llm_for_analysis(title, content)
 
     entity_type = analysis.get("entity_type", _DEFAULT_ENTITY_TYPE)
-    if entity_type not in _ALLOWED_ENTITY_TYPES:
+    if entity_type not in _KNOWN_ENTITY_TYPES:
         entity_type = _DEFAULT_ENTITY_TYPE
 
     category = analysis.get("category") or None
