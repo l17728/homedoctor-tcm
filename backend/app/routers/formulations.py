@@ -20,6 +20,7 @@ from app.formulation_engine import (
     recommend_from_inventory,
     recommend_herbs,
 )
+from app.safety_engine import DISCLAIMER
 from app.repository import MedicineRepository, current_tenant_id, current_member_id
 
 router = APIRouter(prefix="/api/formulations", tags=["formulations"])
@@ -127,6 +128,130 @@ async def tea_recipe_endpoint(
         constitution=constitution,
         exclude=[str(e) for e in (exclude or [])],
     )
+
+
+@router.post("/joint-recommend")
+async def joint_recommend_endpoint(
+    body: dict[str, Any],
+    db: DbAdapter = Depends(get_db),
+):
+    """疗法↔方药联合推荐 — herbs + therapies + formulas for given symptoms.
+
+    Combines herb recommendations with matching external therapies (针灸/推拿/
+    艾灸/拔罐) and classical formulas, giving a comprehensive treatment plan.
+
+    Request body:
+        {
+            "symptoms": ["失眠", "心悸"],
+            "constitution": "气虚质",
+            "exclude": ["人参"]
+        }
+
+    Response: ``{ herbs, therapies, formulas, safety_check, disclaimer }``
+    """
+    symptoms = body.get("symptoms")
+    if not isinstance(symptoms, list) or not symptoms:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="symptoms 不能为空",
+        )
+
+    constitution = body.get("constitution")
+    exclude = body.get("exclude") or []
+
+    herb_result = await recommend_herbs(
+        db=db,
+        symptoms=[str(s) for s in symptoms],
+        constitution=constitution if isinstance(constitution, str) else None,
+        exclude=[str(e) for e in exclude],
+        limit=8,
+    )
+
+    therapy_recs = await _recommend_therapies(db, [str(s) for s in symptoms])
+    formula_recs = await _recommend_formulas(db, [str(s) for s in symptoms])
+
+    return {
+        "herbs": herb_result.get("recommendations", []),
+        "therapies": therapy_recs,
+        "formulas": formula_recs,
+        "symptoms": list(symptoms),
+        "constitution": constitution,
+        "safety_check": herb_result.get("safety_check"),
+        "disclaimer": DISCLAIMER,
+    }
+
+
+async def _recommend_therapies(
+    db: DbAdapter, symptoms: list[str], limit: int = 6
+) -> list[dict[str, Any]]:
+    """Match therapies by symptom keyword hits in indications."""
+    rows = await db.query(
+        "SELECT id, title, summary, category, content_preview, properties "
+        "FROM knowledge_entities WHERE entity_type = 'therapy' AND status = 'active'"
+    )
+    scored: list[dict[str, Any]] = []
+    import json
+    for row in rows:
+        text = " ".join(filter(None, [
+            row.get("title"), row.get("summary"),
+            row.get("content_preview"), row.get("category"),
+        ]))
+        props = row.get("properties")
+        if isinstance(props, str):
+            try:
+                props = json.loads(props)
+            except Exception:
+                props = {}
+        if isinstance(props, dict):
+            for v in props.values():
+                if isinstance(v, list):
+                    text += " " + " ".join(str(x) for x in v)
+                elif isinstance(v, str):
+                    text += " " + v
+
+        score = sum(1 for s in symptoms if s in text)
+        if score == 0:
+            continue
+        scored.append({
+            "id": row.get("id"),
+            "title": row.get("title"),
+            "category": row.get("category"),
+            "summary": row.get("summary"),
+            "indications": props.get("indications", []) if isinstance(props, dict) else [],
+            "technique": props.get("technique", "") if isinstance(props, dict) else "",
+            "score": score,
+        })
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return scored[:limit]
+
+
+async def _recommend_formulas(
+    db: DbAdapter, symptoms: list[str], limit: int = 5
+) -> list[dict[str, Any]]:
+    """Match classical formulas by symptom keyword hits in indications."""
+    rows = await db.query(
+        "SELECT id, name, efficacy, indications, category, properties "
+        "FROM formulas ORDER BY name"
+    )
+    scored: list[dict[str, Any]] = []
+    for row in rows:
+        text = " ".join(filter(None, [
+            row.get("name"), row.get("efficacy"),
+            row.get("indications"), row.get("category"),
+        ]))
+        score = sum(1 for s in symptoms if s in text)
+        if score == 0:
+            continue
+        scored.append({
+            "id": row.get("id"),
+            "name": row.get("name"),
+            "category": row.get("category"),
+            "efficacy": row.get("efficacy"),
+            "indications": row.get("indications"),
+            "score": score,
+        })
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return scored[:limit]
 
 
 @router.post("/from-inventory")

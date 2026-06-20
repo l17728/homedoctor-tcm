@@ -418,6 +418,25 @@ DDL_STATEMENTS = [
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )""",
     "CREATE INDEX IF NOT EXISTS idx_health_logs_user_date ON health_logs(user_id, log_date)",
+    # -- 诊疗时间线 (spec §13.2 V2 — 诊疗记录)
+    """CREATE TABLE IF NOT EXISTS medical_visits (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        family_member_id TEXT,
+        visit_date TEXT NOT NULL,
+        hospital TEXT,
+        department TEXT,
+        doctor_name TEXT,
+        diagnosis TEXT,
+        tcm_diagnosis TEXT,
+        prescription TEXT,
+        lab_results TEXT,
+        notes TEXT,
+        attachments TEXT DEFAULT '[]',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_visits_user_date ON medical_visits(user_id, visit_date)",
     # -- 统一知识实体注册表 (spec §9 — 统一知识实体系统)
     # 结构化数据是权威来源；本表为跨类型实体统一注册（中药/方剂/理疗/症状/文章/茶饮等）
     """CREATE TABLE IF NOT EXISTS knowledge_entities (
