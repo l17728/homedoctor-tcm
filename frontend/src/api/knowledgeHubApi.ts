@@ -20,39 +20,44 @@ export type EntityType =
   | 'formula'
   | 'therapy'
   | 'symptom'
+  | 'acupoint'
+  | 'meridian'
   | 'tea_recipe'
   | 'health_method'
   | 'article'
   | string;
 
-/** 实体类型 → 中文标签 */
 export const ENTITY_TYPE_LABEL: Record<string, string> = {
   herb: '中药',
   formula: '方剂',
-  therapy: '理疗',
+  therapy: '疗法',
   symptom: '症状',
+  acupoint: '穴位',
+  meridian: '经络',
   tea_recipe: '代茶',
   health_method: '养生',
   article: '文章',
 };
 
-/** 实体类型 → 卡片边框色（CSS 颜色，与 spec 卡片规范一致） */
 export const ENTITY_TYPE_BORDER: Record<string, string> = {
   herb: '#52c41a',
   formula: '#1890ff',
   therapy: '#722ed1',
   symptom: '#faad14',
+  acupoint: '#eb2f96',
+  meridian: '#fa541c',
   tea_recipe: '#13c2c2',
   health_method: '#20c997',
   article: '#8c8c8c',
 };
 
-/** 实体类型 → AntD Tag 颜色 */
 export const ENTITY_TYPE_TAG_COLOR: Record<string, string> = {
   herb: 'green',
   formula: 'blue',
   therapy: 'purple',
   symptom: 'orange',
+  acupoint: 'magenta',
+  meridian: 'red',
   tea_recipe: 'cyan',
   health_method: 'geekblue',
   article: 'default',
