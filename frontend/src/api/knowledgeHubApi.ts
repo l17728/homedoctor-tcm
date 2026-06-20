@@ -35,7 +35,8 @@ export const ENTITY_TYPE_LABEL: Record<string, string> = {
   acupoint: '穴位',
   meridian: '经络',
   tea_recipe: '代茶',
-  health_method: '养生',
+  health_practice: '养生',
+  practice_school: '门派',
   article: '文章',
 };
 
