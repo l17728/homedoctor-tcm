@@ -91,12 +91,12 @@ async def remove_personal_edge(
     db: DbAdapter, edge_id: str, tenant_id: str
 ) -> bool:
     """Remove a personal edge. Returns True if deleted."""
-    result = await db.execute(
+    cursor = await db.execute(
         """DELETE FROM entity_relationships
             WHERE id = ? AND tenant_id = ?""",
         (edge_id, tenant_id),
     )
-    return result > 0
+    return cursor.rowcount > 0
 
 
 async def list_personal_edges(

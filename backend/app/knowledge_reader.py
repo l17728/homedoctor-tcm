@@ -332,7 +332,6 @@ async def multi_hop_traverse(
                      FROM entity_relationships er
                      JOIN knowledge_entities ke ON ke.id = er.target_entity_id
                     WHERE er.source_entity_id = ? AND ke.status = 'active'
-                    LIMIT 10
                     UNION ALL
                    SELECT er.relationship_type, er.source_entity_id,
                           ke.id, ke.title, ke.entity_type, ke.summary,
