@@ -437,6 +437,38 @@ DDL_STATEMENTS = [
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )""",
     "CREATE INDEX IF NOT EXISTS idx_visits_user_date ON medical_visits(user_id, visit_date)",
+    # -- AI模型注册表 (可配置的多模型管理)
+    """CREATE TABLE IF NOT EXISTS ai_models (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        api_endpoint TEXT,
+        api_key TEXT,
+        access_type TEXT DEFAULT 'api',
+        capabilities TEXT DEFAULT '["text"]',
+        max_tokens INTEGER DEFAULT 4096,
+        temperature REAL DEFAULT 0.3,
+        enabled INTEGER DEFAULT 1,
+        is_default INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    # -- Agent处理日志 (自主知识抽取审计)
+    """CREATE TABLE IF NOT EXISTS agent_logs (
+        id TEXT PRIMARY KEY,
+        action_type TEXT NOT NULL,
+        source_type TEXT,
+        source_ref TEXT,
+        entity_id TEXT,
+        details TEXT DEFAULT '{}',
+        decision TEXT,
+        user_reviewed INTEGER DEFAULT 0,
+        user_action TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_agent_logs_entity ON agent_logs(entity_id)",
+    "CREATE INDEX IF NOT EXISTS idx_agent_logs_created ON agent_logs(created_at DESC)",
     # -- 统一知识实体注册表 (spec §9 — 统一知识实体系统)
     # 结构化数据是权威来源；本表为跨类型实体统一注册（中药/方剂/理疗/症状/文章/茶饮等）
     """CREATE TABLE IF NOT EXISTS knowledge_entities (
