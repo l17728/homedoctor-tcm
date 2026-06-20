@@ -721,6 +721,9 @@ def _transcribe_with_whisper(whisper_module, file_path: str) -> str:
 async def parse_video_file(file_path: str) -> ParseResult:
     """Extract audio from a video file (ffmpeg) then transcribe (whisper).
 
+    Also extracts keyframes via ffmpeg scene detection and analyzes them
+    with the Vision LLM (Qwen2.5-VL-72b) for visual content understanding.
+
     Both ffmpeg and whisper are optional; missing either yields a result
     with ``error`` set rather than raising.
     """
@@ -746,13 +749,120 @@ async def parse_video_file(file_path: str) -> ParseResult:
             error=f"ffmpeg 提取音频失败：{proc.stderr.strip()[:200]}",
         )
 
+    transcript_result: ParseResult | None = None
     try:
-        result = await parse_audio(audio_path)
-        result.type = "video"
-        result.metadata["extracted_audio"] = True
-        return result
+        transcript_result = await parse_audio(audio_path)
+        transcript_result.type = "video"
+        transcript_result.metadata["extracted_audio"] = True
     finally:
         _safe_unlink(audio_path)
+
+    visual_descriptions = await _extract_keyframe_descriptions(file_path, max_frames=5)
+
+    if visual_descriptions:
+        visual_section = ParsedSection(
+            heading="视频画面内容",
+            paragraphs=visual_descriptions,
+        )
+        if transcript_result and transcript_result.sections:
+            transcript_result.sections.append(visual_section)
+        elif transcript_result:
+            transcript_result.sections = [visual_section]
+        if transcript_result:
+            transcript_result.metadata["keyframe_count"] = len(visual_descriptions)
+            transcript_result.metadata["visual_analysis"] = True
+
+    if transcript_result:
+        return transcript_result
+    return ParseResult(type="video", error="音频和画面提取均失败")
+
+
+async def _extract_keyframe_descriptions(
+    video_path: str, max_frames: int = 5
+) -> list[str]:
+    """Extract keyframes via ffmpeg scene detection + Vision LLM analysis.
+
+    Returns a list of description strings, one per analyzed keyframe.
+    Fails gracefully: returns [] if ffmpeg or Vision LLM is unavailable.
+    """
+    import tempfile
+
+    tmpdir = tempfile.mkdtemp(prefix="keyframes_")
+    frame_pattern = os.path.join(tmpdir, "frame_%03d.jpg")
+
+    try:
+        proc = await asyncio.to_thread(
+            _ffmpeg_extract_keyframes, video_path, frame_pattern, max_frames
+        )
+        if proc is None or proc.returncode != 0:
+            return []
+
+        frames = sorted(
+            f for f in os.listdir(tmpdir) if f.endswith(".jpg")
+        )[:max_frames]
+        if not frames:
+            return []
+
+        descriptions: list[str] = []
+        for i, fname in enumerate(frames):
+            fpath = os.path.join(tmpdir, fname)
+            desc = await _analyze_frame_with_vision(fpath, i + 1)
+            if desc:
+                descriptions.append(desc)
+        return descriptions
+    except Exception as exc:
+        logger.info("keyframe extraction failed: %s", exc)
+        return []
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def _ffmpeg_extract_keyframes(
+    video_path: str, output_pattern: str, max_frames: int
+) -> subprocess.CompletedProcess[bytes] | None:
+    """Run ffmpeg scene detection to extract keyframes as JPEG."""
+    cmd = [
+        "ffmpeg", "-i", video_path,
+        "-filter:v", f"select='gt(scene,0.3)',showinfo",
+        "-vsync", "vfr",
+        "-frames:v", str(max_frames),
+        "-q:v", "2",
+        output_pattern,
+        "-y",
+    ]
+    try:
+        return subprocess.run(
+            cmd, capture_output=True, timeout=120,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+
+
+async def _analyze_frame_with_vision(image_path: str, frame_num: int) -> str | None:
+    """Send a keyframe to the Vision LLM (Qwen2.5-VL-72b) for description."""
+    try:
+        from app.llm import chat_completion_with_image, encode_image, has_api_key
+
+        if not has_api_key():
+            return None
+
+        with open(image_path, "rb") as f:
+            image_b64 = encode_image(f.read())
+
+        prompt = (
+            "这是中医药健康视频的一个关键帧。请简要描述画面中的内容，"
+            "包括：药材、方剂、穴位、疗法、人体部位、文字信息等。"
+            "用中文回答，不超过100字。"
+        )
+        description = await chat_completion_with_image(
+            text=prompt,
+            image_base64=image_b64,
+        )
+        if description and len(description) > 5:
+            return f"【画面{frame_num}】{description.strip()}"
+    except Exception as exc:
+        logger.info("vision LLM analysis failed for frame %d: %s", frame_num, exc)
+    return None
 
 
 def _safe_unlink(path: str) -> None:
