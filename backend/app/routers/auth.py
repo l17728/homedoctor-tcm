@@ -23,13 +23,13 @@ async def register(body: dict, db: DbAdapter = Depends(get_db)):
 
     if not username or not password:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="用户名和密码不能为空",
         )
 
     if not consent_privacy:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="请同意隐私政策",
         )
 
@@ -38,7 +38,7 @@ async def register(body: dict, db: DbAdapter = Depends(get_db)):
         age = current_year - int(birth_year)
         if age < 14:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="未成年人需监护人确认",
             )
 
@@ -67,7 +67,7 @@ async def login(body: dict, db: DbAdapter = Depends(get_db)):
 
     if not username or not password:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="用户名和密码不能为空",
         )
 

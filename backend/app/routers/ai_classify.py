@@ -244,7 +244,7 @@ async def suggest_tags(
 
     if not title and not content:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="title 或 content 至少需要一个",
         )
 
@@ -333,12 +333,12 @@ async def merge_entries(
 
     if not source_id or not target_id:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="source_id 和 target_id 为必填项",
         )
     if source_id == target_id:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="source_id 和 target_id 不能相同",
         )
 

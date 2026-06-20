@@ -179,7 +179,7 @@ async def compare_herbs(
     herb_ids = body.get("herb_ids", [])
     if not isinstance(herb_ids, list) or len(herb_ids) < 2:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="至少需要两味中药进行对比",
         )
 
@@ -194,7 +194,7 @@ async def compare_herbs(
 
     if len(herbs) < 2:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="至少需要两味有效中药进行对比"
                    + (f"，未找到：{', '.join(not_found)}" if not_found else ""),
         )
@@ -261,7 +261,7 @@ async def compare_formulas(
     formula_ids = body.get("formula_ids", [])
     if not isinstance(formula_ids, list) or len(formula_ids) < 2:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="至少需要两首方剂进行对比",
         )
 
@@ -276,7 +276,7 @@ async def compare_formulas(
 
     if len(formulas) < 2:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="至少需要两首有效方剂进行对比"
                    + (f"，未找到：{', '.join(not_found)}" if not_found else ""),
         )

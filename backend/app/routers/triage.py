@@ -84,19 +84,19 @@ async def get_questionnaire(
             group = determine_age_group(age_months)
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=str(exc),
             )
     elif age_group is not None:
         if age_group not in AGE_GROUPS:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"无效的年龄组：{age_group}，可选值：{', '.join(AGE_GROUP_ORDER)}",
             )
         group = age_group
     else:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="请提供 age_months 或 age_group 参数",
         )
 
@@ -166,14 +166,14 @@ async def assess(body: dict[str, Any]):
     age_months = body.get("age_months")
     if age_months is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="必须提供 age_months 参数",
         )
     try:
         age_months = int(age_months)
     except (TypeError, ValueError):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="age_months 必须是整数",
         )
 
@@ -189,7 +189,7 @@ async def assess(body: dict[str, Any]):
         age_group = determine_age_group(age_months, age_days)
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         )
 

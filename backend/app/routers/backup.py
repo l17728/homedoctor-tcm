@@ -192,7 +192,7 @@ async def restore_backup(
     filename = body.get("filename")
     if not filename or not isinstance(filename, str):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="filename is required",
         )
 

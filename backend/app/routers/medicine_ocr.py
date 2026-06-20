@@ -180,7 +180,7 @@ async def ocr_recognize(
     ext = _ext(file.filename or "")
     if ext not in _IMAGE_EXTENSIONS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"不支持的文件格式：{ext or '(无扩展名)'}。"
                 f"支持：{', '.join(sorted(_IMAGE_EXTENSIONS))}"
@@ -190,12 +190,12 @@ async def ocr_recognize(
     raw = await file.read()
     if not raw:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="文件内容为空",
         )
     if len(raw) > _MAX_BYTES:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"文件过大：{len(raw)} 字节，上限 {_MAX_BYTES} 字节（10MB）",
         )
 
@@ -266,7 +266,7 @@ async def barcode_lookup(
 
     if not barcode:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="barcode 为必填项",
         )
 

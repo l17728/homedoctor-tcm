@@ -76,7 +76,7 @@ def _validate_upload(file: UploadFile) -> None:
     ext = _ext(file.filename or "")
     if ext not in DOCUMENT_EXTENSIONS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"不支持的文件格式：{ext or '(无扩展名)'}。"
                 f"支持：{', '.join(sorted(DOCUMENT_EXTENSIONS))}"
@@ -201,7 +201,7 @@ async def _process_one(
     raw = await file.read()
     if len(raw) > MAX_UPLOAD_BYTES:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=(
                 f"文件过大：{len(raw)} 字节，"
                 f"上限 {MAX_UPLOAD_BYTES} 字节（20MB）"
@@ -209,7 +209,7 @@ async def _process_one(
         )
     if not raw:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="文件内容为空",
         )
 
@@ -230,13 +230,13 @@ async def _process_one(
 
     if result.error:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=result.error,
         )
 
     if result.metadata.get("empty"):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="未能从文件中提取到任何文本（可能是扫描件或空白文件）",
         )
 
@@ -302,7 +302,7 @@ async def upload_batch(
     """
     if not files:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="至少需要上传一个文件",
         )
 

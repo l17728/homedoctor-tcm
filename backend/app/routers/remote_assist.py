@@ -172,7 +172,7 @@ async def invite_viewer(
     """
     if body.role not in VALID_SHARE_ROLES:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"角色必须是 {VALID_SHARE_ROLES} 之一",
         )
 
@@ -192,7 +192,7 @@ async def invite_viewer(
         raise HTTPException(status_code=404, detail="被邀请用户不存在")
     if invitee["id"] == current_user["id"]:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="不能邀请自己",
         )
 

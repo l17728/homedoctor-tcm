@@ -41,14 +41,14 @@ async def create_favorite(
     title = body.get("title")
     if not entry_type or not title:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="entry_type and title are required",
         )
 
     valid_types = {"herb", "formula", "knowledge_card", "medicine"}
     if entry_type not in valid_types:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"entry_type must be one of {valid_types}",
         )
 

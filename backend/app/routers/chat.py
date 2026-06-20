@@ -321,14 +321,14 @@ async def chat_with_image(
     """
     if image.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"不支持的图片格式：{image.content_type}。请上传 JPG/PNG/WebP/GIF。",
         )
 
     raw = await image.read()
     if len(raw) > MAX_IMAGE_SIZE:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="图片大小不能超过 10MB。",
         )
 
@@ -476,7 +476,7 @@ async def save_as_knowledge_card(
     content = body.get("content")
     if not title or not content:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="title and content are required",
         )
 

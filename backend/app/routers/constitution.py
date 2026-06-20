@@ -139,7 +139,7 @@ async def assess(
     answers = body.get("answers")
     if not isinstance(answers, dict) or len(answers) == 0:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="答案不能为空",
         )
 
@@ -159,7 +159,7 @@ async def assess(
 
     if not validated:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="答案不能为空",
         )
 

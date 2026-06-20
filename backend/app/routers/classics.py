@@ -160,7 +160,7 @@ async def save_translation(
     translation = body.get("translation")
     if translation is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="translation 字段必填",
         )
     translator_notes = body.get("translator_notes")
@@ -220,7 +220,7 @@ async def create_annotation(
     missing = [k for k in required if body.get(k) is None]
     if missing:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"缺少必填字段: {', '.join(missing)}",
         )
 
@@ -229,14 +229,14 @@ async def create_annotation(
     text_len = len(chapter["original_text"] or "")
     if start < 0 or end > text_len or start >= end:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"offset 范围非法 (0 ≤ start < end ≤ {text_len})",
         )
 
     note_type = body.get("note_type", "annotation")
     if note_type not in _VALID_NOTE_TYPES:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"note_type 必须是 {sorted(_VALID_NOTE_TYPES)} 之一",
         )
 
@@ -302,7 +302,7 @@ async def update_annotation(
     if body.get("note_type") is not None:
         if body["note_type"] not in _VALID_NOTE_TYPES:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"note_type 必须是 {sorted(_VALID_NOTE_TYPES)} 之一",
             )
         set_parts.append("note_type = ?")
@@ -315,7 +315,7 @@ async def update_annotation(
 
     if not set_parts:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="未提供任何可更新字段",
         )
 
@@ -376,7 +376,7 @@ async def ask_about_chapter(
     question = body.get("question")
     if not selected_text or not question:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="selected_text 和 question 均必填",
         )
 
@@ -456,7 +456,7 @@ async def translate_chapter(
     text = (body or {}).get("text") or chapter["original_text"]
     if not text:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="原文为空，无法翻译",
         )
 

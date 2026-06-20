@@ -179,7 +179,7 @@ async def create_relationship_endpoint(
     """为实体创建一条关系。``source_entity_id`` 或 ``target_entity_id`` 必须等于 ``entity_id``。"""
     if body.source_entity_id != entity_id and body.target_entity_id != entity_id:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="source_entity_id 或 target_entity_id 必须等于路径中的 entity_id",
         )
     src = await get_entity(db, body.source_entity_id)
@@ -262,19 +262,19 @@ async def import_file_endpoint(
     ext = _ext(file.filename or "")
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"不支持的文件格式：{ext or '(无扩展名)'}",
         )
 
     raw = await file.read()
     if len(raw) > MAX_IMPORT_BYTES:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"文件过大：{len(raw)} 字节，上限 20MB",
         )
     if not raw:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="文件内容为空",
         )
 
@@ -291,12 +291,12 @@ async def import_file_endpoint(
             pass
 
     if result.error:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=result.error)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=result.error)
 
     full_text = result.full_text
     if not full_text.strip():
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="未能从文件中提取到任何文本",
         )
 
@@ -327,12 +327,12 @@ async def import_url_endpoint(
     else:
         result = await parse_url(url)
     if result.error:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=result.error)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=result.error)
 
     full_text = result.full_text
     if not full_text.strip():
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="未能从网页中提取到任何文本",
         )
 
@@ -359,12 +359,12 @@ async def import_video_url_endpoint(
     url = body.url.strip()
     result = await parse_video_url(url)
     if result.error:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=result.error)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=result.error)
 
     full_text = result.full_text
     if not full_text.strip():
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="未能从视频中提取到字幕或文本",
         )
 

@@ -85,13 +85,13 @@ async def create_bookmark(
 
     if not bookmark_type or not title:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="entry_type 和 title 为必填项",
         )
 
     if bookmark_type not in VALID_BOOKMARK_TYPES:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"entry_type 必须是 {sorted(VALID_BOOKMARK_TYPES)} 之一",
         )
 
@@ -137,7 +137,7 @@ async def list_bookmarks(
     if entry_type is not None:
         if entry_type not in VALID_BOOKMARK_TYPES:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"entry_type 必须是 {sorted(VALID_BOOKMARK_TYPES)} 之一",
             )
         sql += " AND entry_type = ?"
@@ -205,7 +205,7 @@ async def create_collection(
     title = body.get("title")
     if not title:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="title 为必填项",
         )
 
@@ -316,7 +316,7 @@ async def add_to_collection(
         bookmark_ids = [bookmark_ids] if bookmark_ids else []
     if not bookmark_ids:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="bookmark_ids 为必填项",
         )
 
