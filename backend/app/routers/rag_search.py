@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api/rag", tags=["rag"])
 async def rag_search(
     q: str = Query(..., min_length=1, description="搜索关键词或自然语言问题"),
     top_k: int = Query(10, ge=1, le=50),
-    rerank: bool = Query(True, description="是否启用交叉编码器重排"),
+    rerank: bool = Query(False, description="是否启用交叉编码器重排（默认关闭，首次加载~20s）"),
     db: DbAdapter = Depends(get_db),
 ) -> dict[str, Any]:
     """Hybrid RAG search: BM25 + semantic + RRF fusion + optional rerank."""
