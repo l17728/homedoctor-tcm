@@ -75,7 +75,7 @@ async def process_input(
         # Step 4: Check duplicates
         duplicates = await tool_check_duplicates(db, title, raw_text)
 
-        # Step 5: Quality assessment
+        # Step 5: Quality assessment + multi-AI review
         quality = await tool_assess_quality(db, raw_text, entity_type)
         if quality.get("decision") == "rejected":
             await log_action(
@@ -85,8 +85,34 @@ async def process_input(
             )
             return _result(None, "rejected", f"质量评分过低({quality.get('score', 0)})", pipeline_log_id)
 
+        review_result = {"score": quality.get("score", 50), "level": "B", "decision": "pending_review"}
+        try:
+            from app.agent_tools import tool_multi_model_review
+            review_result = await tool_multi_model_review(
+                db, title, raw_text[:2000], entity_type, url,
+            )
+        except Exception as exc:
+            logger.warning("knowledge_agent: multi-model review failed: %s", exc)
+
+        # Step 5b: Conflict detection
+        conflicts: list = []
+        if duplicates:
+            from app.agent_tools import tool_detect_conflicts
+            try:
+                conflicts = await tool_detect_conflicts(
+                    db, duplicates[0].get("id") or duplicates[0].get("entity_id", ""),
+                    _build_properties(raw_text, analysis, mentions, source_type, url),
+                )
+            except Exception:
+                pass
+
         # Step 6: Create or merge entity
         properties = _build_properties(raw_text, analysis, mentions, source_type, url)
+        if conflicts:
+            for c in conflicts:
+                resolution = c.get("resolution", {})
+                if isinstance(resolution, dict) and "keep" in resolution:
+                    properties[c["field"]] = resolution["keep"]
         create_result = await tool_create_or_update_entity(
             db,
             entity_type=entity_type,
@@ -100,6 +126,21 @@ async def process_input(
         )
         entity_id = create_result.get("entity_id", "")
         decision = create_result.get("decision", "unknown")
+
+        # Step 6b: Record provenance (blood lineage)
+        if entity_id:
+            from app.agent_tools import tool_record_provenance
+            try:
+                await tool_record_provenance(
+                    db, entity_id, source_type, url, title,
+                    trust_level=review_result.get("level", "B"),
+                    trust_score=review_result.get("score", 50),
+                    review_details={"reviews": review_result.get("reviews", []),
+                                   "conflicts": len(conflicts)},
+                    content_date="",
+                )
+            except Exception as exc:
+                logger.warning("knowledge_agent: provenance recording failed: %s", exc)
 
         # Step 7: Incremental index (internal entity + external content)
         if entity_id:
