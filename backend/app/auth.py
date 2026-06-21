@@ -78,6 +78,12 @@ async def register_user(
             detail="用户名已存在",
         )
 
+    if not password or len(password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="密码至少6个字符",
+        )
+
     user_id = str(uuid.uuid4())
     family_id = str(uuid.uuid4())
     password_hash = hash_password(password)

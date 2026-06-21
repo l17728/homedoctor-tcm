@@ -201,7 +201,10 @@ async def unified_search(
             db, type, search=q, page=page, page_size=page_size
         )
 
-    types = ["herb", "formula", "acupoint", "meridian", "therapy", "symptom"]
+    type_rows = await db.query(
+        "SELECT DISTINCT entity_type FROM knowledge_entities WHERE status='active'"
+    )
+    types = [r["entity_type"] for r in type_rows if r.get("entity_type")]
     all_items: list[dict[str, Any]] = []
     for t in types:
         result = await list_entities(

@@ -143,14 +143,32 @@ async def run_safety_check(
         row = await db.query_one(
             "SELECT * FROM herbs WHERE name = ?", (name,)
         )
-        if row:
-            herb_info[name] = row
-        else:
+        if not row:
             row = await db.query_one(
                 "SELECT * FROM herbs WHERE aliases LIKE ?", (f"%{name}%",)
             )
-            if row:
-                herb_info[name] = row
+        if row:
+            herb_info[name] = row
+        else:
+            ke_row = await db.query_one(
+                """SELECT id, title, properties FROM knowledge_entities
+                   WHERE entity_type='herb' AND title=? AND status='active' LIMIT 1""",
+                (name,),
+            )
+            if ke_row:
+                import json as _json
+                props = _json.loads(ke_row["properties"]) if isinstance(ke_row.get("properties"), str) else ke_row.get("properties", {})
+                herb_info[name] = {
+                    "name": ke_row["title"],
+                    "nature": props.get("nature", ""),
+                    "flavor": props.get("flavor", ""),
+                    "toxicity": props.get("toxicity", "无毒"),
+                    "dosage_min_g": props.get("dosage_min_g"),
+                    "dosage_max_g": props.get("dosage_max_g"),
+                    "contraindications": props.get("contraindications", ""),
+                    "category": props.get("category", ke_row.get("category", "")),
+                    "properties": ke_row["properties"],
+                }
             else:
                 unknown_herbs.append(name)
 

@@ -224,6 +224,33 @@ async def recommend_herbs(
     rows = await db.query(
         "SELECT * FROM herbs ORDER BY name"
     )
+    herb_rows = list(rows)
+
+    ke_rows = await db.query(
+        """SELECT title, summary, content_preview, category, properties
+           FROM knowledge_entities
+           WHERE entity_type='herb' AND status='active' AND tenant_id IS NULL"""
+    )
+    existing_titles = {r.get("name") for r in herb_rows}
+    for ke in ke_rows:
+        if ke["title"] not in existing_titles:
+            import json as _json
+            props = _json.loads(ke["properties"]) if isinstance(ke.get("properties"), str) else ke.get("properties", {})
+            herb_rows.append({
+                "name": ke["title"],
+                "nature": props.get("nature", ""),
+                "flavor": props.get("flavor", ""),
+                "meridians": props.get("meridians", ""),
+                "efficacy": ke.get("summary", props.get("efficacy", "")),
+                "indications": ke.get("content_preview", props.get("indications", "")),
+                "contraindications": props.get("contraindications", ""),
+                "dosage_min_g": props.get("dosage_min_g"),
+                "dosage_max_g": props.get("dosage_max_g"),
+                "toxicity": props.get("toxicity", "无毒"),
+                "category": ke.get("category", props.get("category", "")),
+                "aliases": props.get("aliases", ""),
+                "properties": ke["properties"],
+            })
 
     scored: list[dict[str, Any]] = []
     for row in rows:

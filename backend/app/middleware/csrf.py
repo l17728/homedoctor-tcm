@@ -34,10 +34,8 @@ class CsrfMiddleware(BaseHTTPMiddleware):
     ALLOWED_ORIGINS = _build_allowed_origins()
 
     async def dispatch(self, request: Request, call_next):
-        # Only check write operations
         if request.method in ("POST", "PUT", "DELETE", "PATCH"):
             origin = request.headers.get("Origin", "")
-            # Allow requests without Origin header (CLI, curl, tests)
             if origin and origin not in self.ALLOWED_ORIGINS:
                 return Response(
                     content='{"detail":"请求来源不被允许"}',

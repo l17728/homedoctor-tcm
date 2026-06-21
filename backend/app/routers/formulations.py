@@ -233,8 +233,27 @@ async def _recommend_formulas(
         "SELECT id, name, efficacy, indications, category, properties "
         "FROM formulas ORDER BY name"
     )
+    formula_rows = list(rows)
+
+    ke_rows = await db.query(
+        """SELECT id, title, summary, content_preview, category, properties
+           FROM knowledge_entities
+           WHERE entity_type='formula' AND status='active' AND tenant_id IS NULL"""
+    )
+    existing_ids = {r.get("id") for r in formula_rows}
+    for ke in ke_rows:
+        if ke["id"] not in existing_ids:
+            formula_rows.append({
+                "id": ke["id"],
+                "name": ke["title"],
+                "efficacy": ke.get("summary", ""),
+                "indications": ke.get("content_preview", ""),
+                "category": ke.get("category", ""),
+                "properties": ke.get("properties", "{}"),
+            })
+
     scored: list[dict[str, Any]] = []
-    for row in rows:
+    for row in formula_rows:
         text = " ".join(filter(None, [
             row.get("name"), row.get("efficacy"),
             row.get("indications"), row.get("category"),

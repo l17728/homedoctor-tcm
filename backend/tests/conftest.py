@@ -81,6 +81,12 @@ async def auth_headers(client: AsyncClient):
         "consent_health_data": True,
     })
     data = response.json()
+    if "access_token" not in data:
+        login = await client.post("/api/auth/login", json={
+            "username": "testuser",
+            "password": "testpass123",
+        })
+        data = login.json()
     token = data["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
@@ -96,5 +102,11 @@ async def second_user_headers(client: AsyncClient):
         "consent_health_data": True,
     })
     data = response.json()
+    if "access_token" not in data:
+        login = await client.post("/api/auth/login", json={
+            "username": "testuser2",
+            "password": "testpass456",
+        })
+        data = login.json()
     token = data["access_token"]
     return {"Authorization": f"Bearer {token}"}

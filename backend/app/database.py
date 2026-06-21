@@ -601,7 +601,17 @@ FTS_TRIGGERS = [
 # ---------------------------------------------------------------------------
 
 class DbAdapter(ABC):
-    """Abstract database adapter — all database operations go through this."""
+    """Abstract database adapter — all database operations go through this.
+
+    Implementations: SqliteAdapter (default), future PostgresAdapter.
+    SQL dialect differences are handled by a Dialect object that translates
+    common patterns (now(), upsert, json_extract) to the target database.
+    """
+
+    @property
+    @abstractmethod
+    def dialect(self) -> str:
+        """Return the SQL dialect name: 'sqlite' or 'postgresql'."""
 
     @abstractmethod
     async def query(self, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
@@ -612,8 +622,8 @@ class DbAdapter(ABC):
         """Execute a SELECT and return one row as dict, or None."""
 
     @abstractmethod
-    async def execute(self, sql: str, params: tuple[Any, ...] = ()) -> sqlite3.Cursor:
-        """Execute an INSERT/UPDATE/DELETE and return the cursor."""
+    async def execute(self, sql: str, params: tuple[Any, ...] = ()) -> Any:
+        """Execute an INSERT/UPDATE/DELETE and return the cursor/result."""
 
     @abstractmethod
     @asynccontextmanager
@@ -656,6 +666,10 @@ _SQLCIPHER_ACTIVE = _try_enable_sqlcipher()
 
 class SqliteAdapter(DbAdapter):
     """aiosqlite implementation of DbAdapter."""
+
+    @property
+    def dialect(self) -> str:
+        return "sqlite"
 
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
