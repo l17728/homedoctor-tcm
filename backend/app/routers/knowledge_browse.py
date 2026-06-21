@@ -469,3 +469,54 @@ def _format_log(row: dict) -> dict:
         "decision": row.get("decision") or "",
         "created_at": row.get("created_at") or "",
     }
+
+
+# ---------------------------------------------------------------------------
+# User notes / remarks
+# ---------------------------------------------------------------------------
+
+class NoteRequest(BaseModel):
+    content: str = Field(..., description="笔记内容（支持Markdown）")
+
+
+@router.get("/{entity_id}/note")
+async def get_note(
+    entity_id: str,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Get current user's note for an entity."""
+    row = await db.query_one(
+        "SELECT * FROM user_notes WHERE entity_id = ? AND user_id = ?",
+        (entity_id, current_user["id"]),
+    )
+    if not row:
+        return {"content": "", "updated_at": ""}
+    return {"content": row.get("content", ""), "updated_at": row.get("updated_at", "")}
+
+
+@router.put("/{entity_id}/note")
+async def save_note(
+    entity_id: str,
+    body: NoteRequest,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Save or update user's note for an entity."""
+    if not body.content.strip():
+        await db.execute(
+            "DELETE FROM user_notes WHERE entity_id = ? AND user_id = ?",
+            (entity_id, current_user["id"]),
+        )
+        return {"message": "笔记已清空"}
+
+    import uuid
+    await db.execute(
+        """INSERT INTO user_notes (id, entity_id, user_id, content)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(entity_id, user_id) DO UPDATE SET
+               content = excluded.content,
+               updated_at = datetime('now')""",
+        (f"note-{uuid.uuid4()}", entity_id, current_user["id"], body.content),
+    )
+    return {"message": "笔记已保存"}

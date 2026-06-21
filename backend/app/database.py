@@ -601,6 +601,16 @@ DDL_STATEMENTS = [
         last_searched TEXT,
         PRIMARY KEY (user_id, interest_domain)
     )""",
+    """CREATE TABLE IF NOT EXISTS user_notes (
+        id TEXT PRIMARY KEY,
+        entity_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(entity_id, user_id)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_notes_entity ON user_notes(entity_id)",
 ]
 
 FTS_STATEMENTS = [
