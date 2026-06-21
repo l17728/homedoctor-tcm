@@ -542,3 +542,66 @@ export async function listAcupoints(
     total: data.total ?? 0,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Category browsing + knowledge append
+// ---------------------------------------------------------------------------
+
+export interface CategoryInfo {
+  type: string;
+  label: string;
+  count: number;
+}
+
+export interface BrowseResult {
+  items: KnowledgeEntity[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export async function getCategories(): Promise<{
+  types: CategoryInfo[];
+  categories: Record<string, Array<{ category: string; count: number }>>;
+}> {
+  return request('/api/knowledge/categories');
+}
+
+export async function browseKnowledge(
+  type: string,
+  category?: string,
+  q?: string,
+  page = 1,
+  pageSize = 20,
+): Promise<BrowseResult> {
+  const params = new URLSearchParams({ type, page: String(page), page_size: String(pageSize) });
+  if (category) params.set('category', category);
+  if (q) params.set('q', q);
+  const data = await request<{ items?: EntityRow[]; total?: number; page?: number; page_size?: number }>(
+    `/api/knowledge/browse?${params}`,
+  );
+  const items = (data.items ?? []).map((r) => ({
+    ...mapEntity(r),
+    properties: typeof r.properties === 'string' ? JSON.parse(r.properties) : (r.properties ?? {}),
+    trustLevel: (r as Record<string, unknown>).trust_level as string ?? 'S',
+    trustScore: (r as Record<string, unknown>).trust_score as number ?? 0,
+  }));
+  return { items, total: data.total ?? 0, page: data.page ?? 1, page_size: data.page_size ?? 20 };
+}
+
+export async function appendKnowledge(
+  entityId: string,
+  instruction: string,
+  autoWebSearch = true,
+): Promise<Record<string, unknown>> {
+  return request(`/api/knowledge/${encodeURIComponent(entityId)}/append`, {
+    method: 'POST',
+    body: JSON.stringify({ instruction, auto_web_search: autoWebSearch }),
+  });
+}
+
+export async function getAppendHistory(
+  entityId: string,
+): Promise<{ items: Record<string, unknown>[]; total: number }> {
+  return request(`/api/knowledge/${encodeURIComponent(entityId)}/append/history`);
+}
