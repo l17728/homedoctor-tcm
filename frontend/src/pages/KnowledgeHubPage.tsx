@@ -99,7 +99,11 @@ const FILTER_ORDER: string[] = [
   'all',
   'herb',
   'formula',
+  'acupoint',
+  'meridian',
   'therapy',
+  'health_practice',
+  'practice_school',
   'symptom',
   'tea_recipe',
   'health_method',
@@ -262,10 +266,14 @@ export default function KnowledgeHubPage() {
   );
 
   useEffect(() => {
-    if (!isSearching) {
+    if (!isSearching && activeType === 'all') {
       setItems([]);
       setTotal(0);
       setRagMeta(null);
+      return;
+    }
+    if (!isSearching && activeType !== 'all') {
+      void runSearch('', activeType, 1, false);
       return;
     }
     void runSearch(debouncedQuery, activeType, 1, false);
@@ -273,7 +281,7 @@ export default function KnowledgeHubPage() {
   }, [debouncedQuery, activeType, isSearching, semanticMode]);
 
   const handleLoadMore = () => {
-    if (!isSearching) return;
+    if (!isSearching && activeType === 'all') return;
     void runSearch(debouncedQuery, activeType, page + 1, true);
   };
 
