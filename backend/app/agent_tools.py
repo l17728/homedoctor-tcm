@@ -274,6 +274,70 @@ async def tool_build_index(db: DbAdapter, entity_id: str) -> dict[str, Any]:
         return {"chunks": 0, "embedded": 0, "error": str(exc)}
 
 
+async def tool_index_external_content(
+    db: DbAdapter,
+    raw_text: str,
+    source_url: str,
+    title: str,
+    entity_id: str,
+) -> dict[str, Any]:
+    """Index external content (article URL) without storing the full text.
+
+    Chunks the original text and stores each chunk in knowledge_chunks with
+    source_type='external' and source_url set. Generates BGE-M3 embeddings.
+    BM25 and semantic search naturally cover these chunks — one unified index.
+    """
+    from app.chunker import chunk_text, estimate_tokens
+    from app.embedding import get_embedding_model
+    from app.vector_store import store_embedding
+
+    existing = await db.query(
+        "SELECT id FROM knowledge_chunks WHERE source_url = ? LIMIT 1",
+        (source_url,),
+    )
+    if existing:
+        await log_action(db, "index_external", "url", source_url, entity_id,
+                         {"skipped": "already_indexed"}, "skipped")
+        return {"chunks": 0, "embedded": 0, "decision": "already_indexed"}
+
+    chunks = chunk_text(raw_text, max_tokens=512, overlap=50)
+    model = get_embedding_model()
+    embedded = 0
+    chunk_ids: list[str] = []
+    chunk_texts: list[str] = []
+
+    for cd in chunks:
+        cid = f"ext-chunk-{uuid.uuid4()}"
+        chunk_ids.append(cid)
+        chunk_texts.append(cd["text"])
+        await db.execute(
+            """INSERT INTO knowledge_chunks
+               (id, entity_id, chunk_index, chunk_text, chunk_type,
+                hierarchy_path, hierarchy_level, token_count, metadata,
+                source_url, source_type)
+               VALUES (?, ?, ?, ?, 'external', ?, ?, ?, ?, ?, 'external')""",
+            (
+                cid, entity_id, cd["index"], cd["text"],
+                cd.get("hierarchy_path", ""), cd.get("hierarchy_level", 0),
+                cd.get("token_count", estimate_tokens(cd["text"])),
+                json.dumps({"source_url": source_url, "source_title": title}, ensure_ascii=False),
+                source_url,
+            ),
+        )
+
+    if model.available and chunk_texts:
+        vectors = model.embed(chunk_texts)
+        if vectors:
+            for cid, vec in zip(chunk_ids, vectors):
+                await store_embedding(db, cid, vec)
+            embedded = len(vectors)
+
+    await log_action(db, "index_external", "url", source_url, entity_id,
+                     {"chunks": len(chunks), "embedded": embedded, "title": title},
+                     "indexed")
+    return {"chunks": len(chunks), "embedded": embedded, "decision": "indexed"}
+
+
 async def tool_push_to_modules(db: DbAdapter, entity_id: str,
                                entity_type: str = "") -> list[str]:
     """Step 8: Check which modules should be notified of new/updated knowledge."""

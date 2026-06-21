@@ -74,10 +74,10 @@ async def vector_search(
 
     rows = await db.query(
         """SELECT ce.chunk_id, ce.embedding, kc.entity_id, kc.chunk_text,
-                  kc.hierarchy_path, kc.chunk_index
+                  kc.hierarchy_path, kc.chunk_index, kc.source_url, kc.source_type
              FROM chunk_embeddings ce
              LEFT JOIN knowledge_chunks kc ON kc.id = ce.chunk_id
-         ORDER BY ce.chunk_id"""
+          ORDER BY ce.chunk_id"""
     )
     if not rows:
         return []
@@ -100,6 +100,8 @@ async def vector_search(
             "chunk_text": r.get("chunk_text", ""),
             "hierarchy_path": r.get("hierarchy_path", ""),
             "chunk_index": r.get("chunk_index", 0),
+            "source_url": r.get("source_url"),
+            "source_type": r.get("source_type") or "internal",
         })
 
     if not matrix_rows:

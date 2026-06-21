@@ -101,9 +101,14 @@ async def process_input(
         entity_id = create_result.get("entity_id", "")
         decision = create_result.get("decision", "unknown")
 
-        # Step 7: Incremental index
+        # Step 7: Incremental index (internal entity + external content)
         if entity_id:
             await tool_build_index(db, entity_id)
+            if url and raw_text and len(raw_text) > 200:
+                from app.agent_tools import tool_index_external_content
+                await tool_index_external_content(
+                    db, raw_text, url, title, entity_id,
+                )
 
         # Step 8: Push to modules
         if entity_id:

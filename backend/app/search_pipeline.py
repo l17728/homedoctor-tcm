@@ -99,7 +99,44 @@ async def bm25_search(db: DbAdapter, query: str, top_k: int = 20) -> list[dict[s
             "category": r.get("category"),
             "bm25_score": score,
             "matched_terms": sorted(matched_terms),
+            "source_type": "internal",
+            "source_url": None,
         })
+
+    scored.sort(key=lambda x: x["bm25_score"], reverse=True)
+
+    ext_chunks = await db.query(
+        """SELECT kc.id AS chunk_id, kc.entity_id, kc.chunk_text, kc.source_url,
+                  ke.title, ke.entity_type, ke.summary, ke.category,
+                  ke.source_table, ke.source_id
+             FROM knowledge_chunks kc
+             LEFT JOIN knowledge_entities ke ON ke.id = kc.entity_id
+            WHERE kc.source_type = 'external'"""
+    )
+    for ec in ext_chunks:
+        chunk_text = ec.get("chunk_text") or ""
+        score = 0.0
+        matched: set[str] = set()
+        for term in terms:
+            if term in chunk_text:
+                score += 1.5
+                matched.add(term)
+        if score > 0:
+            eid = ec.get("entity_id") or ec["chunk_id"]
+            if not any(s["entity_id"] == eid for s in scored):
+                scored.append({
+                    "entity_id": eid,
+                    "entity_type": ec.get("entity_type"),
+                    "source_table": ec.get("source_table"),
+                    "source_id": ec.get("source_id"),
+                    "title": ec.get("title") or ec.get("source_url") or "外部内容",
+                    "summary": ec.get("summary") or chunk_text[:80],
+                    "category": ec.get("category"),
+                    "bm25_score": score,
+                    "matched_terms": sorted(matched),
+                    "source_type": "external",
+                    "source_url": ec.get("source_url"),
+                })
 
     scored.sort(key=lambda x: x["bm25_score"], reverse=True)
     ranked = scored[:top_k]
@@ -173,6 +210,8 @@ async def semantic_search(
             "score": h.get("score", 0.0),
             "semantic_rank": rank,
             "chunk_text": h.get("chunk_text", ""),
+            "source_type": h.get("source_type", "internal"),
+            "source_url": h.get("source_url"),
         })
     return results
 

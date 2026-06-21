@@ -512,6 +512,8 @@ DDL_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_er_type ON entity_relationships(relationship_type)",
     # -- RAG 知识分块 (spec §RAG — 语义检索)
     # 结构化实体(knowledge_entities)被切分为语义块后嵌入向量，用于混合检索。
+    # source_type: 'internal'=知识库内容, 'external'=外部链接原文索引
+    # source_url: 外部链接时指向原文URL（内部知识为NULL）
     """CREATE TABLE IF NOT EXISTS knowledge_chunks (
         id TEXT PRIMARY KEY,
         entity_id TEXT,
@@ -522,9 +524,12 @@ DDL_STATEMENTS = [
         hierarchy_level INTEGER DEFAULT 0,
         token_count INTEGER DEFAULT 0,
         metadata TEXT DEFAULT '{}',
+        source_url TEXT,
+        source_type TEXT DEFAULT 'internal',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )""",
     "CREATE INDEX IF NOT EXISTS idx_kc_entity ON knowledge_chunks(entity_id)",
+    "CREATE INDEX IF NOT EXISTS idx_kc_source_type ON knowledge_chunks(source_type)",
     # -- RAG 向量嵌入存储 (spec §RAG — BGE-M3 1024维)
     # 嵌入以 JSON 字符串存储；检索时加载到内存做 numpy 余弦相似度。
     """CREATE TABLE IF NOT EXISTS chunk_embeddings (
@@ -782,7 +787,28 @@ async def _migrate_knowledge_tenant_id(db: DbAdapter) -> None:
         try:
             await db.execute(stmt)
         except Exception:
-            pass  # Table might not exist yet or column already added
+            pass
+
+    for stmt in (
+        "CREATE INDEX IF NOT EXISTS idx_kc_source_type ON knowledge_chunks(source_type)",
+    ):
+        try:
+            await db.execute(stmt)
+        except Exception:
+            pass
+
+
+async def _migrate_chunks_source(db: DbAdapter) -> None:
+    """Add source_url and source_type columns to knowledge_chunks (distributed index)."""
+    try:
+        cols = await db.query("PRAGMA table_info(knowledge_chunks)")
+        col_names = [c["name"] for c in cols]
+        if "source_url" not in col_names:
+            await db.execute("ALTER TABLE knowledge_chunks ADD COLUMN source_url TEXT")
+        if "source_type" not in col_names:
+            await db.execute("ALTER TABLE knowledge_chunks ADD COLUMN source_type TEXT DEFAULT 'internal'")
+    except Exception:
+        pass
 
 
 async def init_db(db: DbAdapter) -> None:
@@ -801,6 +827,7 @@ async def init_db(db: DbAdapter) -> None:
     await _migrate_user_profiles_liver_kidney(db)
     # Migration: add tenant_id to knowledge_entities and entity_relationships (Phase 2)
     await _migrate_knowledge_tenant_id(db)
+    await _migrate_chunks_source(db)
 
 
 async def seed_safety_rules(db: DbAdapter) -> None:
