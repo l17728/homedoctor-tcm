@@ -142,6 +142,19 @@ async def bm25_search(db: DbAdapter, query: str, top_k: int = 20) -> list[dict[s
     ranked = scored[:top_k]
     for i, item in enumerate(ranked):
         item["bm25_rank"] = i
+
+    for item in ranked:
+        eid = item.get("entity_id")
+        if eid:
+            try:
+                await db.execute(
+                    "UPDATE knowledge_chunks SET hit_count = hit_count + 1, last_hit_at = datetime('now') "
+                    "WHERE entity_id = ? AND source_type = 'external'",
+                    (eid,),
+                )
+            except Exception:
+                pass
+
     return ranked
 
 

@@ -95,8 +95,9 @@ async def summarize_conversation(
                 {"role": "user", "content": summary_prompt},
             ])
             import re
-            match = re.search(r'\{[^}]+\}', llm_response, re.DOTALL)
-            if match:
+            from app.json_extractor import extract_json
+            parsed = extract_json(llm_response)
+            if parsed:
                 extracted = json.loads(match.group())
             else:
                 extracted = {"summary": llm_response[:200]}

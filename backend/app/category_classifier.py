@@ -80,8 +80,9 @@ async def classify_category(
 
     import re
     try:
-        match = re.search(r'\{[^}]+\}', response, re.DOTALL)
-        if match:
+        from app.json_extractor import extract_json
+        parsed = extract_json(response)
+        if parsed:
             result = json.loads(match.group())
             cat = result.get("category", "").strip()
             if cat:

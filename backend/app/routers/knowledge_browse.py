@@ -393,8 +393,9 @@ async def _synthesize_augmentation(
 
     import re
     try:
-        match = re.search(r'\{[^}]+\}', response, re.DOTALL)
-        if match:
+        from app.json_extractor import extract_json
+        parsed = extract_json(response)
+        if parsed:
             result = json.loads(match.group())
             return {
                 "new_fields": result.get("new_fields", {}),

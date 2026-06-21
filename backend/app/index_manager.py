@@ -75,15 +75,19 @@ async def build_index_for_entity(
         cid = _chunk_id()
         chunk_ids.append(cid)
         chunk_texts.append(cd["text"])
+        summary = cd["text"][:80].replace("\n", " ").strip()
+        if len(cd["text"]) > 80:
+            summary += "..."
         await db.execute(
             """INSERT INTO knowledge_chunks
                    (id, entity_id, chunk_index, chunk_text, chunk_type,
-                    hierarchy_path, hierarchy_level, token_count, metadata)
-               VALUES (?, ?, ?, ?, 'content', ?, ?, ?, '{}')""",
+                    hierarchy_path, hierarchy_level, token_count, metadata, text_summary)
+               VALUES (?, ?, ?, ?, 'content', ?, ?, ?, '{}', ?)""",
             (
                 cid, entity_id, cd["index"], cd["text"],
                 cd.get("hierarchy_path", ""), cd.get("hierarchy_level", 0),
                 cd.get("token_count", estimate_tokens(cd["text"])),
+                summary,
             ),
         )
 

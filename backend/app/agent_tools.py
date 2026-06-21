@@ -401,18 +401,22 @@ async def tool_index_external_content(
         cid = f"ext-chunk-{uuid.uuid4()}"
         chunk_ids.append(cid)
         chunk_texts.append(cd["text"])
+        ext_summary = cd["text"][:80].replace("\n", " ").strip()
+        if len(cd["text"]) > 80:
+            ext_summary += "..."
         await db.execute(
             """INSERT INTO knowledge_chunks
                (id, entity_id, chunk_index, chunk_text, chunk_type,
                 hierarchy_path, hierarchy_level, token_count, metadata,
-                source_url, source_type)
-               VALUES (?, ?, ?, ?, 'external', ?, ?, ?, ?, ?, 'external')""",
+                source_url, source_type, text_summary)
+               VALUES (?, ?, ?, ?, 'external', ?, ?, ?, ?, ?, 'external', ?)""",
             (
                 cid, entity_id, cd["index"], cd["text"],
                 cd.get("hierarchy_path", ""), cd.get("hierarchy_level", 0),
                 cd.get("token_count", estimate_tokens(cd["text"])),
                 json.dumps({"source_url": source_url, "source_title": title}, ensure_ascii=False),
                 source_url,
+                ext_summary,
             ),
         )
 
@@ -520,8 +524,9 @@ def _parse_review_json(raw: str) -> dict[str, Any]:
         return {}
     import re
     text = raw.strip()
-    json_match = re.search(r'\{[^}]+\}', text, re.DOTALL)
-    if json_match:
+    from app.json_extractor import extract_json
+    parsed = extract_json(text)
+    if parsed:
         try:
             return json.loads(json_match.group())
         except json.JSONDecodeError:
