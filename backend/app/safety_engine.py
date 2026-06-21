@@ -156,6 +156,11 @@ async def run_safety_check(
                 (name,),
             )
             if ke_row:
+                from app.trust_engine import get_trust_level
+                trust = await get_trust_level(db, ke_row["id"])
+                if trust not in ("S", "A"):
+                    unknown_herbs.append(name)
+                    continue
                 import json as _json
                 props = _json.loads(ke_row["properties"]) if isinstance(ke_row.get("properties"), str) else ke_row.get("properties", {})
                 herb_info[name] = {

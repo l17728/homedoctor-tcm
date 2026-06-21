@@ -122,6 +122,9 @@ async def import_web_result(
     current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
     """One-click import: user confirmed → Agent pipeline processes."""
+    from app.url_validator import validate_external_url
+    if not validate_external_url(body.url):
+        raise HTTPException(status_code=400, detail="URL不安全或指向内部网络")
     from app.knowledge_agent import process_input
     result = await process_input(
         db,

@@ -41,7 +41,7 @@ async def client(db: SqliteAdapter):
     transport = ASGITransport(app=main_mod.app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         resp = await ac.post("/api/auth/register", json={
-            "username": "_test_auto_user",
+            "username": "admin",
             "password": "_test_auto_pass123",
             "display_name": "测试",
             "consent_privacy": True,
@@ -51,7 +51,7 @@ async def client(db: SqliteAdapter):
             token = resp.json().get("access_token", "")
         else:
             login = await ac.post("/api/auth/login", json={
-                "username": "_test_auto_user",
+                "username": "admin",
                 "password": "_test_auto_pass123",
             })
             token = login.json().get("access_token", "")

@@ -16,7 +16,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.auth import get_current_user
+from app.auth import get_current_user, require_admin
 from app.database import DbAdapter, get_db
 
 router = APIRouter(prefix="/api", tags=["p2-features"])
@@ -169,8 +169,12 @@ async def submit_feedback(
         )
         count = count_row["c"] if count_row else 0
         if count >= 3:
-            from app.trust_engine import update_trust_level
-            await update_trust_level(db, entity_id, "B", f"{count}个用户标记不准确")
+            from app.agent_tools import log_action
+            await log_action(
+                db, "trust_downgrade_request", "feedback", "", entity_id,
+                {"report_count": count, "reason": f"{count}个用户标记不准确"},
+                "pending_admin_review",
+            )
 
     return {"message": "反馈已提交", "rating": body.rating}
 
@@ -193,7 +197,7 @@ async def get_feedback(
 @router.post("/admin/freshness-check")
 async def freshness_check(
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     """Scan knowledge freshness — mark outdated content."""
     rows = await db.query(
@@ -229,7 +233,7 @@ async def freshness_check(
 @router.get("/admin/freshness-stats")
 async def freshness_stats(
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     """Freshness statistics."""
     rows = await db.query(

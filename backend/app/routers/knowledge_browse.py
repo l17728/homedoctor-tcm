@@ -222,17 +222,30 @@ async def request_append(
         pass
 
     if review_result.get("decision") == "adopted":
-        merged_props = {**current_props, **synthesized.get("new_fields", {})}
-        merged_summary = synthesized.get("new_summary") or entity.get("summary", "")
+        from app.trust_engine import get_trust_level
+        entity_trust = await get_trust_level(db, entity_id)
+        if entity_trust == "S":
+            review_result["decision"] = "pending_review"
+            review_result["level"] = "B"
+            review_result["score"] = min(review_result.get("score", 50), 79)
+        else:
+            merged_props = {**current_props, **synthesized.get("new_fields", {})}
+            merged_summary = synthesized.get("new_summary") or entity.get("summary", "")
 
-        if len(merged_summary) > len(entity.get("summary") or ""):
-            await db.execute(
-                "UPDATE knowledge_entities SET properties = ?, summary = ?, updated_at = datetime('now') WHERE id = ?",
-                (json.dumps(merged_props, ensure_ascii=False), merged_summary, entity_id),
+            if len(merged_summary) > len(entity.get("summary") or ""):
+                await db.execute(
+                    "UPDATE knowledge_entities SET properties = ?, summary = ?, updated_at = datetime('now') WHERE id = ?",
+                    (json.dumps(merged_props, ensure_ascii=False), merged_summary, entity_id),
+                )
+
+            from app.agent_tools import tool_build_index, tool_record_provenance
+            await tool_build_index(db, entity_id)
+            await tool_record_provenance(
+                db, entity_id, "append", "", body.instruction[:100],
+                trust_level=review_result.get("level", "B"),
+                trust_score=review_result.get("score", 50),
+                imported_by=current_user.get("id", ""),
             )
-
-        from app.agent_tools import tool_build_index
-        await tool_build_index(db, entity_id)
 
     from app.agent_tools import log_action
     await log_action(

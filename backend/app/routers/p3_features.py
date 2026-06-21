@@ -16,7 +16,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.auth import get_current_user
+from app.auth import get_current_user, require_admin
 from app.database import DbAdapter, get_db
 
 router = APIRouter(prefix="/api", tags=["p3-features"])
@@ -77,7 +77,7 @@ def _classify_search_domain(query: str) -> str:
 @router.post("/admin/community-consensus-scan")
 async def community_consensus_scan(
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     """Detect multi-user consensus → auto-upgrade trust level.
 
@@ -107,7 +107,7 @@ async def community_consensus_scan(
 @router.post("/admin/url-health-check")
 async def url_health_check(
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     """Check external URLs for 404 — mark stale chunks."""
     rows = await db.query(
@@ -120,6 +120,10 @@ async def url_health_check(
     stale = 0
     for row in rows:
         url = row["source_url"]
+        from app.url_validator import validate_external_url
+        if not validate_external_url(url):
+            stale += 1
+            continue
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.head(url, follow_redirects=True)
@@ -139,7 +143,7 @@ async def url_health_check(
 @router.get("/admin/url-health-stats")
 async def url_health_stats(
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     """URL health statistics."""
     total = await db.query_one(
@@ -157,7 +161,7 @@ async def url_health_stats(
 @router.post("/admin/translate-check")
 async def translate_check(
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     """Detect non-Chinese content in recent imports — flag for translation."""
     rows = await db.query(

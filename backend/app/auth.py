@@ -117,6 +117,7 @@ async def register_user(
         "sub": user_id,
         "username": username,
         "family_id": family_id,
+        "role": "user",
     })
 
     return {
@@ -151,6 +152,7 @@ async def authenticate_user(
         "sub": user["id"],
         "username": user["username"],
         "family_id": user["family_id"],
+        "role": "admin" if user["username"] == "admin" else "user",
     })
 
     return {
@@ -171,4 +173,17 @@ async def get_current_user(
         "id": payload.get("sub"),
         "username": payload.get("username"),
         "family_id": payload.get("family_id"),
+        "role": payload.get("role", "user"),
     }
+
+
+async def require_admin(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """FastAPI dependency: require admin role."""
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="需要管理员权限",
+        )
+    return current_user

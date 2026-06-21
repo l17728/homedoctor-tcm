@@ -123,9 +123,9 @@ class TestProvenance:
         assert level == LEVEL_S
 
     @pytest.mark.asyncio
-    async def test_no_provenance_defaults_s(self, trust_db):
+    async def test_no_provenance_defaults_c(self, trust_db):
         level = await get_trust_level(trust_db, "ke-trust-1")
-        assert level == LEVEL_S
+        assert level == LEVEL_C
 
     @pytest.mark.asyncio
     async def test_update_trust_level(self, trust_db):

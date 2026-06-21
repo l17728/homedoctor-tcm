@@ -54,7 +54,7 @@ class TestFeedback:
         assert resp.json()["feedback"].get("helpful", 0) >= 1
 
     @pytest.mark.asyncio
-    async def test_feedback_updates_trust(self, p2_db):
+    async def test_feedback_creates_review_request(self, p2_db):
         from app.routers.p2_features import submit_feedback
         from app.trust_engine import record_provenance, get_trust_level
 
@@ -67,16 +67,19 @@ class TestFeedback:
                 (f"fb-{i}", "ke-p2-test", f"user-{i}"),
             )
 
-        class MockUser:
-            def __getitem__(self, key):
-                return {"id": "test-admin"}.get(key, "")
-
         from app.routers.p2_features import FeedbackRequest
         req = FeedbackRequest(rating="inaccurate")
         await submit_feedback("ke-p2-test", req, p2_db, {"id": "user-4"})
 
         level = await get_trust_level(p2_db, "ke-p2-test")
-        assert level == "B"
+        assert level == "A"
+
+        log_rows = await p2_db.query(
+            "SELECT * FROM agent_logs WHERE action_type='trust_downgrade_request' AND entity_id=?",
+            ("ke-p2-test",),
+        )
+        assert len(log_rows) >= 1
+        assert log_rows[0]["decision"] == "pending_admin_review"
 
 
 class TestConversationSummary:

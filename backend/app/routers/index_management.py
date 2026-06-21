@@ -22,7 +22,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from app.auth import get_current_user
+from app.auth import get_current_user, require_admin
 from app.database import DbAdapter, get_db
 
 router = APIRouter(prefix="/api/admin", tags=["index-management"])
@@ -44,7 +44,7 @@ async def get_recommendations(
     min_hits: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     """Get chunk deletion recommendations sorted by priority."""
     rows = await db.query(
@@ -107,7 +107,7 @@ async def get_recommendations(
 async def execute_deletion(
     body: DeleteRequest,
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     """Delete chunks — admin confirmed."""
     deleted = 0
@@ -142,7 +142,7 @@ async def add_exemption(
 async def remove_exemption(
     target_id: str,
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     """Remove exemption — resume scanning for this item."""
     cursor = await db.execute(
@@ -156,7 +156,7 @@ async def remove_exemption(
 @router.get("/deletion-exemptions")
 async def list_exemptions(
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     """List all exemptions."""
     rows = await db.query("SELECT * FROM deletion_exemptions ORDER BY created_at DESC")
@@ -166,7 +166,7 @@ async def list_exemptions(
 @router.get("/index-stats")
 async def index_stats(
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     """Index statistics for admin dashboard."""
     total = await db.query_one("SELECT COUNT(*) AS c FROM knowledge_chunks")

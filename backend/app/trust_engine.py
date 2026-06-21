@@ -187,7 +187,7 @@ async def get_trust_level(db: DbAdapter, entity_id: str) -> str:
         (entity_id,),
     )
     if not rows:
-        return LEVEL_S  # Default: entities without provenance are treated as system-level
+        return LEVEL_C
     levels = [r["trust_level"] for r in rows]
     return min(levels, key=lambda l: _LEVEL_ORDER.get(l, 3))
 
@@ -231,19 +231,16 @@ async def filter_by_trust(
     """Filter entity IDs to only those meeting the minimum trust threshold."""
     if not entity_ids:
         return []
-    placeholders = ",".join("?" * len(entity_ids))
+    allowed = [lvl for lvl, order in _LEVEL_ORDER.items() if order <= _LEVEL_ORDER.get(min_level, 1)]
+    placeholders_ids = ",".join("?" * len(entity_ids))
+    placeholders_levels = ",".join("?" * len(allowed))
     rows = await db.query(
         f"""SELECT DISTINCT entity_id FROM knowledge_provenance
-            WHERE entity_id IN ({placeholders})
-            AND trust_level IN ('S','A')""",
-        tuple(entity_ids),
+            WHERE entity_id IN ({placeholders_ids})
+            AND trust_level IN ({placeholders_levels})""",
+        tuple(entity_ids) + tuple(allowed),
     )
-    trusted = {r["entity_id"] for r in rows}
-    no_provenance = set(entity_ids) - {r["entity_id"] for r in await db.query(
-        f"SELECT DISTINCT entity_id FROM knowledge_provenance WHERE entity_id IN ({placeholders})",
-        tuple(entity_ids),
-    )}
-    return list(trusted | no_provenance)
+    return [r["entity_id"] for r in rows]
 
 
 def _format_provenance(row: dict[str, Any]) -> dict[str, Any]:
