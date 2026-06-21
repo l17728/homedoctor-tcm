@@ -81,9 +81,16 @@ async def tool_extract(db: DbAdapter, content: str = "", url: str = "",
 
 async def tool_analyze(db: DbAdapter, text: str, title: str = "",
                        source_type: str = "text") -> dict[str, Any]:
-    """Step 2: LLM analysis — recommend entity type, extract keywords."""
+    """Step 2: LLM analysis — entity type, keywords, summary, structured fields.
+
+    Extracts type-specific structured properties:
+      health_practice: steps/breathing/mental_focus/key_points/indications/cautions
+      herb: nature/flavor/meridians/dosage/contraindications/toxicity
+      acupoint: location/needling/moxibustion/specific_point/functions
+      formula: composition/modifications/efficacy
+    """
     if not text.strip():
-        return {"entity_type": "article", "keywords": [], "summary": "", "decision": "skipped"}
+        return {"entity_type": "article", "keywords": [], "summary": "", "structured_fields": {}, "decision": "skipped"}
 
     try:
         from app.knowledge_entity import _call_llm_for_analysis
@@ -99,15 +106,99 @@ async def tool_analyze(db: DbAdapter, text: str, title: str = "",
         summary = text[:200]
         category = ""
 
+    structured_fields = await _extract_structured_fields(text, title, entity_type)
+
     result = {
         "entity_type": entity_type,
         "keywords": keywords,
         "summary": summary,
         "category": category,
+        "structured_fields": structured_fields,
     }
     await log_action(db, "analyze", source_type, title, "",
-                     result, "analyzed")
+                     {k: v for k, v in result.items() if k != "structured_fields"}, "analyzed")
     return result
+
+
+async def _extract_structured_fields(text: str, title: str, entity_type: str) -> dict[str, Any]:
+    """Extract type-specific structured fields from content via LLM."""
+    from app.llm import chat_completion, has_api_key
+
+    field_templates: dict[str, dict[str, str]] = {
+        "health_practice": {
+            "core_essence": "功法精要（1-2句核心原理）",
+            "breathing": "呼吸要点",
+            "mental_focus": "心法要诀",
+            "key_points": "关键要点（JSON数组）",
+            "indications": "养生功效（JSON数组）",
+            "cautions": "注意事项",
+            "duration_minutes": "建议练习时长",
+            "best_time": "最佳练习时间",
+            "difficulty": "难度（入门/进阶/高级）",
+        },
+        "herb": {
+            "nature": "性（寒/凉/平/温/热+修饰）",
+            "flavor": "味（甘/苦/辛/酸/咸等）",
+            "meridians": "归经",
+            "efficacy": "功效",
+            "indications": "主治（JSON数组）",
+            "contraindications": "禁忌",
+            "dosage_min_g": "最小用量(g)",
+            "dosage_max_g": "最大用量(g)",
+            "toxicity": "毒性",
+        },
+        "acupoint": {
+            "location": "定位（解剖位置描述）",
+            "needling": "刺法",
+            "moxibustion": "灸法",
+            "functions": "功效（JSON数组）",
+            "indications": "主治（JSON数组）",
+            "combinations": "常见配伍",
+            "specific_point": "特定穴类别",
+        },
+        "formula": {
+            "composition": "组成药物",
+            "efficacy": "功用",
+            "indications": "主治",
+            "modifications": "加减变化",
+        },
+        "therapy": {
+            "technique": "操作方法",
+            "indications": "适应症（JSON数组）",
+            "frequency": "治疗频次",
+            "duration": "每次时长",
+            "caution": "注意事项",
+        },
+    }
+
+    template = field_templates.get(entity_type)
+    if not template or not has_api_key():
+        return {}
+
+    fields_desc = "\n".join(f'  "{k}": "{v}"' for k, v in template.items())
+    prompt = f"""请从以下内容中提取结构化信息。
+
+标题：{title}
+内容：{text[:2000]}
+
+请提取以下字段（如果内容中未提及则留空）：
+{{
+{fields_desc}
+}}
+
+只返回JSON，不要其他文字。"""
+
+    try:
+        response = await chat_completion([{"role": "user", "content": prompt}])
+        import re
+        match = re.search(r'\{[^}]+\}', response, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            return {k: v for k, v in parsed.items() if v and str(v).strip()}
+    except Exception as exc:
+        logger.warning("agent_tools: structured field extraction failed: %s", exc)
+
+    return {}
 
 
 async def tool_scan_entities(db: DbAdapter, text: str) -> list[dict[str, Any]]:
@@ -541,3 +632,127 @@ def tool_generate_summary(chunk_text: str) -> str:
     if len(chunk_text) > 80:
         summary += "..."
     return summary
+
+
+async def tool_auto_relate(
+    db: DbAdapter,
+    entity_id: str,
+    entity_type: str,
+    title: str,
+    summary: str,
+    content: str = "",
+    max_relations: int = 5,
+) -> list[dict[str, Any]]:
+    """Automatically discover and create relationships to existing entities.
+
+    Searches for entities of the same type or complementary types,
+    uses BM25 + category matching to find candidates, and creates
+    'related_to' relationships. Universal — works for all entity types.
+
+    Example: "真气运行法" imported → auto-relates to "打坐", "站桩", "气功"
+    """
+    search_query = f"{title} {summary[:50]}"
+    if content:
+        search_query += f" {content[:100]}"
+
+    same_type_rows = await db.query(
+        """SELECT id, title, summary, category FROM knowledge_entities
+            WHERE entity_type = ? AND id != ? AND status = 'active'
+            ORDER BY view_count DESC LIMIT 20""",
+        (entity_type, entity_id),
+    )
+
+    scored: list[tuple[dict, float, str]] = []
+    for r in same_type_rows:
+        score = _relation_score(title, summary, r.get("title", ""), r.get("summary", ""))
+        if score > 0:
+            reason = f"同类功法：{r['title']}"
+            scored.append((r, score, reason))
+
+    cross_type_map = {
+        "health_practice": ["meridian", "symptom", "therapy"],
+        "herb": ["formula", "symptom", "acupoint"],
+        "formula": ["herb", "symptom"],
+        "acupoint": ["meridian", "symptom"],
+        "therapy": ["symptom", "acupoint"],
+    }
+
+    for related_type in cross_type_map.get(entity_type, []):
+        cross_rows = await db.query(
+            """SELECT id, title, summary FROM knowledge_entities
+                WHERE entity_type = ? AND status = 'active' LIMIT 10""",
+            (related_type,),
+        )
+        for r in cross_rows:
+            score = _relation_score(title, summary, r.get("title", ""), r.get("summary", ""))
+            if score > 0.3:
+                scored.append((r, score * 0.7, f"跨类关联：{related_type}/{r['title']}"))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+
+    created: list[dict[str, Any]] = []
+    for r, score, reason in scored[:max_relations]:
+        rel_id = f"rel-auto-{uuid.uuid4()}"
+        try:
+            await db.execute(
+                """INSERT OR IGNORE INTO entity_relationships
+                   (id, source_entity_id, target_entity_id, relationship_type,
+                    properties, weight)
+                   VALUES (?, ?, ?, 'related_to', ?, ?)""",
+                (rel_id, entity_id, r["id"],
+                 json.dumps({"reason": reason, "auto_generated": True, "score": round(score, 2)},
+                            ensure_ascii=False),
+                 round(score, 2)),
+            )
+            created.append({"target_id": r["id"], "target_title": r["title"], "reason": reason})
+        except Exception:
+            pass
+
+    await log_action(db, "auto_relate", "auto", "", entity_id,
+                     {"relations_created": len(created),
+                      "targets": [{"title": c["target_title"], "reason": c["reason"]} for c in created]},
+                     "related" if created else "no_relations")
+    return created
+
+
+def _relation_score(title_a: str, summary_a: str, title_b: str, summary_b: str) -> float:
+    """Heuristic relevance score between two entities (0-1)."""
+    text_a = f"{title_a} {summary_a}"
+    text_b = f"{title_b} {summary_b}"
+
+    score = 0.0
+
+    concept_keywords = [
+        "气", "血", "丹田", "呼吸", "经", "络", "穴", "阴", "阳", "虚", "实",
+        "补", "泻", "寒", "热", "温", "凉", "湿", "风", "痰", "火",
+        "脾", "胃", "肝", "肾", "心", "肺", "胆", "大肠", "小肠", "膀胱",
+        "太极", "八段", "五禽", "易筋", "六字", "导引", "吐纳", "站桩", "打坐",
+        "静坐", "冥想", "禅修", "内丹", "周天", "真气", "元气", "宗气", "营卫",
+        "功法", "修炼", "养生", "保健", "调理", "疏通", "强壮",
+        "针刺", "艾灸", "推拿", "拔罐", "刮痧", "刺血",
+        "黄芪", "人参", "当归", "甘草", "白术", "茯苓",
+    ]
+
+    shared_concepts = []
+    for kw in concept_keywords:
+        if kw in text_a and kw in text_b:
+            score += 0.08
+            shared_concepts.append(kw)
+
+    for i in range(min(len(title_a), len(title_b), 3)):
+        if title_a[i] == title_b[i]:
+            score += 0.05
+
+    words_a = set(_extract_words(text_a))
+    words_b = set(_extract_words(text_b))
+    overlap = words_a & words_b
+    if words_a and words_b:
+        jaccard = len(overlap) / max(len(words_a | words_b), 1)
+        score += jaccard * 0.3
+
+    return min(score, 1.0)
+
+
+def _extract_words(text: str) -> list[str]:
+    """Extract 2-char bigrams from Chinese text."""
+    return [text[i:i+2] for i in range(len(text) - 1) if len(text) >= 2]

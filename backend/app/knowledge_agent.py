@@ -69,6 +69,22 @@ async def process_input(
         keywords = analysis.get("keywords", [])
         summary = analysis.get("summary", raw_text[:200])
 
+        # Step 2b: Dynamic category classification
+        from app.category_classifier import classify_category
+        try:
+            cat_result = await classify_category(
+                db, title, summary, entity_type, raw_text[:500],
+            )
+            category = cat_result.get("category", analysis.get("category", ""))
+            if cat_result.get("is_new"):
+                logger.info(
+                    "knowledge_agent: new category '%s' created for '%s' (%s)",
+                    category, title, entity_type,
+                )
+        except Exception as exc:
+            logger.warning("knowledge_agent: category classification failed: %s", exc)
+            category = analysis.get("category", "")
+
         # Step 3: Scan for known entities
         mentions = await tool_scan_entities(db, raw_text)
 
@@ -120,7 +136,7 @@ async def process_input(
             summary=summary,
             properties=properties,
             keywords=keywords,
-            category=analysis.get("category", ""),
+            category=category,
             source_type=source_type,
             duplicates=duplicates,
         )
@@ -150,6 +166,17 @@ async def process_input(
                 await tool_index_external_content(
                     db, raw_text, url, title, entity_id,
                 )
+
+        # Step 7b: Auto-relate to existing entities (universal — all types)
+        relations_created: list = []
+        if entity_id:
+            from app.agent_tools import tool_auto_relate
+            try:
+                relations_created = await tool_auto_relate(
+                    db, entity_id, entity_type, title, summary, raw_text[:500],
+                )
+            except Exception as exc:
+                logger.warning("knowledge_agent: auto_relate failed: %s", exc)
 
         # Step 8: Push to modules
         if entity_id:
@@ -203,7 +230,7 @@ def _build_properties(
     source_type: str,
     url: str,
 ) -> dict[str, Any]:
-    """Build properties JSON from analysis results."""
+    """Build properties JSON from analysis + structured fields."""
     props: dict[str, Any] = {
         "source_type": source_type,
         "content_length": len(raw_text),
@@ -214,6 +241,11 @@ def _build_properties(
         props["category"] = analysis["category"]
     if analysis.get("keywords"):
         props["ai_keywords"] = analysis["keywords"]
+
+    structured = analysis.get("structured_fields", {})
+    if structured:
+        props.update(structured)
+
     if mentions:
         props["related_entities"] = [
             {"name": m.get("name"), "type": m.get("type")}
