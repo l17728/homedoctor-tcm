@@ -605,3 +605,14 @@ export async function getAppendHistory(
 ): Promise<{ items: Record<string, unknown>[]; total: number }> {
   return request(`/api/knowledge/${encodeURIComponent(entityId)}/append/history`);
 }
+
+export async function getNote(entityId: string): Promise<{ content: string; updated_at: string }> {
+  return request(`/api/knowledge/${encodeURIComponent(entityId)}/note`);
+}
+
+export async function saveNote(entityId: string, content: string): Promise<Record<string, unknown>> {
+  return request(`/api/knowledge/${encodeURIComponent(entityId)}/note`, {
+    method: 'PUT',
+    body: JSON.stringify({ content }),
+  });
+}
