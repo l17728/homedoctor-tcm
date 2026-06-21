@@ -539,6 +539,68 @@ DDL_STATEMENTS = [
         dim INTEGER DEFAULT 1024,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )""",
+    # -- 知识血缘表 (trust hierarchy + provenance)
+    """CREATE TABLE IF NOT EXISTS knowledge_provenance (
+        id TEXT PRIMARY KEY,
+        entity_id TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        source_url TEXT,
+        source_title TEXT,
+        source_domain TEXT,
+        trust_level TEXT DEFAULT 'C',
+        trust_score REAL DEFAULT 0,
+        review_details TEXT DEFAULT '{}',
+        content_date TEXT,
+        freshness_status TEXT DEFAULT 'current',
+        imported_by TEXT,
+        imported_at TEXT NOT NULL DEFAULT (datetime('now')),
+        verified_by TEXT,
+        verified_at TEXT,
+        FOREIGN KEY (entity_id) REFERENCES knowledge_entities(id)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_prov_entity ON knowledge_provenance(entity_id)",
+    "CREATE INDEX IF NOT EXISTS idx_prov_trust ON knowledge_provenance(trust_level)",
+    # -- 知识冲突记录
+    """CREATE TABLE IF NOT EXISTS knowledge_conflicts (
+        id TEXT PRIMARY KEY,
+        entity_id TEXT NOT NULL,
+        field TEXT NOT NULL,
+        conflict_type TEXT NOT NULL,
+        existing_value TEXT,
+        incoming_value TEXT,
+        resolution TEXT,
+        resolved INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_conf_entity ON knowledge_conflicts(entity_id)",
+    # -- 删除推荐豁免
+    """CREATE TABLE IF NOT EXISTS deletion_exemptions (
+        id TEXT PRIMARY KEY,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        exempted_by TEXT NOT NULL,
+        exempt_reason TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(target_type, target_id)
+    )""",
+    # -- 知识质量反馈
+    """CREATE TABLE IF NOT EXISTS knowledge_feedback (
+        id TEXT PRIMARY KEY,
+        entity_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        rating TEXT NOT NULL,
+        comment TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(entity_id, user_id)
+    )""",
+    # -- 用户兴趣画像
+    """CREATE TABLE IF NOT EXISTS user_interest_profiles (
+        user_id TEXT NOT NULL,
+        interest_domain TEXT NOT NULL,
+        search_count INTEGER DEFAULT 0,
+        last_searched TEXT,
+        PRIMARY KEY (user_id, interest_domain)
+    )""",
 ]
 
 FTS_STATEMENTS = [
@@ -799,14 +861,19 @@ async def _migrate_knowledge_tenant_id(db: DbAdapter) -> None:
 
 
 async def _migrate_chunks_source(db: DbAdapter) -> None:
-    """Add source_url and source_type columns to knowledge_chunks (distributed index)."""
+    """Add source columns + lifecycle tracking to knowledge_chunks."""
     try:
         cols = await db.query("PRAGMA table_info(knowledge_chunks)")
         col_names = [c["name"] for c in cols]
-        if "source_url" not in col_names:
-            await db.execute("ALTER TABLE knowledge_chunks ADD COLUMN source_url TEXT")
-        if "source_type" not in col_names:
-            await db.execute("ALTER TABLE knowledge_chunks ADD COLUMN source_type TEXT DEFAULT 'internal'")
+        for col, ddl in [
+            ("source_url", "ALTER TABLE knowledge_chunks ADD COLUMN source_url TEXT"),
+            ("source_type", "ALTER TABLE knowledge_chunks ADD COLUMN source_type TEXT DEFAULT 'internal'"),
+            ("hit_count", "ALTER TABLE knowledge_chunks ADD COLUMN hit_count INTEGER DEFAULT 0"),
+            ("last_hit_at", "ALTER TABLE knowledge_chunks ADD COLUMN last_hit_at TEXT"),
+            ("text_summary", "ALTER TABLE knowledge_chunks ADD COLUMN text_summary TEXT"),
+        ]:
+            if col not in col_names:
+                await db.execute(ddl)
     except Exception:
         pass
 
