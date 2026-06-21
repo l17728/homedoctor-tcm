@@ -218,25 +218,19 @@ async def tool_scan_entities(db: DbAdapter, text: str) -> list[dict[str, Any]]:
 
 async def tool_check_duplicates(db: DbAdapter, title: str,
                                 content: str, top_k: int = 5) -> list[dict[str, Any]]:
-    """Step 4: Check for duplicates via title exact match + BM25 similarity."""
+    """Step 4: Check for duplicates — title exact match only (not fuzzy).
+
+    BM25 fuzzy matching was too aggressive (merged "真气运行法" into "站桩"
+    because both are health_practice with overlapping keywords). Now only
+    exact title match triggers merge. Fuzzy matches are returned as
+    'related' candidates but NOT used for merge.
+    """
     exact = await db.query(
         "SELECT id, title, entity_type, summary FROM knowledge_entities "
         "WHERE title = ? AND status = 'active' LIMIT 3",
         (title,),
     )
     candidates = list(exact)
-
-    if len(candidates) < top_k and content.strip():
-        try:
-            from app.search_pipeline import bm25_search
-            bm25_results = await bm25_search(db, title or content[:50], top_k=top_k)
-            seen_ids = {c["id"] for c in candidates}
-            for r in bm25_results:
-                if r.get("entity_id") and r["entity_id"] not in seen_ids:
-                    candidates.append(r)
-                    seen_ids.add(r["entity_id"])
-        except Exception:
-            pass
 
     await log_action(db, "dedup", "text", title, "",
                      {"exact_matches": len(exact), "total_candidates": len(candidates)},
