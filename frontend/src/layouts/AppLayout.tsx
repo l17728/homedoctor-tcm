@@ -17,6 +17,7 @@ import {
   RobotOutlined,
   ShareAltOutlined,
   AlertOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -42,6 +43,7 @@ const ROUTE_BREADCRUMBS: { path: string; items: string[] }[] = [
   { path: '/chat', items: ['AI助手'] },
   { path: '/triage', items: ['急症分诊'] },
   { path: '/settings', items: ['设置'] },
+  { path: '/admin', items: ['系统管理'] },
   { path: '/classics', items: ['经典读诵'] },
   { path: '/herbs', items: ['知识库', '中药'] },
   { path: '/formulas', items: ['知识库', '方剂'] },
@@ -265,6 +267,11 @@ export default function AppLayout() {
       key: '/settings',
       icon: <SettingOutlined />,
       label: '设置',
+    },
+    {
+      key: '/admin',
+      icon: <DatabaseOutlined />,
+      label: '系统管理',
     },
   ];
 
