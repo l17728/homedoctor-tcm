@@ -22,6 +22,17 @@ from app.database import DbAdapter, get_db
 router = APIRouter(prefix="/api", tags=["p3-features"])
 
 
+@router.post("/admin/feeder/scan")
+async def feeder_scan(
+    max_feeds: int = 10,
+    db: DbAdapter = Depends(get_db),
+    _: dict = Depends(require_admin),
+) -> dict[str, Any]:
+    """Trigger knowledge feeder scan — discovers gaps and feeds URLs."""
+    from app.knowledge_feeder import run_feeder_scan
+    return await run_feeder_scan(db, max_feeds=max_feeds)
+
+
 @router.get("/user/interests")
 async def get_user_interests(
     db: DbAdapter = Depends(get_db),

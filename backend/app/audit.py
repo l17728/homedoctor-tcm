@@ -9,6 +9,7 @@ Chain formula:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -20,7 +21,16 @@ from app.database import DbAdapter
 
 logger = logging.getLogger(__name__)
 
-GENESIS_HASH = "0" * 64  # Genesis block hash for the first entry
+GENESIS_HASH = "0" * 64
+
+_audit_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_audit_lock(tenant_id: str) -> asyncio.Lock:
+    """Get per-tenant audit lock (lazy init to avoid cross-event-loop issues)."""
+    if tenant_id not in _audit_locks:
+        _audit_locks[tenant_id] = asyncio.Lock()
+    return _audit_locks[tenant_id]
 
 
 def compute_hash(
@@ -72,23 +82,24 @@ async def log_audit(
     Returns:
         The hash of the newly created audit entry.
     """
-    # Fetch the latest hash in this tenant's chain
-    row = await db.query_one(
-        "SELECT hash FROM audit_log WHERE tenant_id = ? ORDER BY rowid DESC LIMIT 1",
-        (tenant_id,),
-    )
-    prev_hash = row["hash"] if row else GENESIS_HASH
+    lock = _get_audit_lock(tenant_id)
+    async with lock:
+        row = await db.query_one(
+            "SELECT hash FROM audit_log WHERE tenant_id = ? ORDER BY rowid DESC LIMIT 1",
+            (tenant_id,),
+        )
+        prev_hash = row["hash"] if row else GENESIS_HASH
 
-    timestamp = datetime.now(timezone.utc).isoformat()
-    changes_str = json.dumps(changes or {}, ensure_ascii=False, sort_keys=True)
-    new_hash = compute_hash(prev_hash, action, entity_type, entity_id, changes_str, timestamp)
-    entry_id = str(uuid.uuid4())
+        timestamp = datetime.now(timezone.utc).isoformat()
+        changes_str = json.dumps(changes or {}, ensure_ascii=False, sort_keys=True)
+        new_hash = compute_hash(prev_hash, action, entity_type, entity_id, changes_str, timestamp)
+        entry_id = str(uuid.uuid4())
 
-    await db.execute(
-        """INSERT INTO audit_log (id, tenant_id, user_id, action, entity_type, entity_id, changes, prev_hash, hash, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (entry_id, tenant_id, user_id, action, entity_type, entity_id, changes_str, prev_hash, new_hash, timestamp),
-    )
+        await db.execute(
+            """INSERT INTO audit_log (id, tenant_id, user_id, action, entity_type, entity_id, changes, prev_hash, hash, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (entry_id, tenant_id, user_id, action, entity_type, entity_id, changes_str, prev_hash, new_hash, timestamp),
+        )
 
     logger.debug("Audit log: %s %s/%s (hash=%s...)", action, entity_type, entity_id, new_hash[:12])
     return new_hash
