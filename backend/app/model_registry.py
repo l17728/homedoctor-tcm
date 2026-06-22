@@ -33,11 +33,12 @@ async def get_model(db: DbAdapter, model_id: str) -> dict[str, Any] | None:
 
 
 async def get_default_models(db: DbAdapter, capability: str = "text") -> list[dict[str, Any]]:
+    """Get enabled models with RAW (unmasked) API keys for direct calling."""
     rows = await db.query(
         "SELECT * FROM ai_models WHERE enabled = 1 AND capabilities LIKE ? ORDER BY is_default DESC",
         (f'%"{capability}"%',),
     )
-    return [_format(r) for r in rows]
+    return [_format_raw(r) for r in rows]
 
 
 async def create_model(db: DbAdapter, **kwargs: Any) -> str:
@@ -101,11 +102,12 @@ async def call_model_direct(model: dict[str, Any], messages: list[dict[str, str]
     """Call a model via direct HTTP (bypasses opencode for speed).
 
     Falls back to empty string on any error (graceful degradation).
+    NOTE: model dict must have UNMASKED api_key. Use get_model_raw() not list_models().
     """
     import httpx
     endpoint = model.get("api_endpoint", "")
     api_key = model.get("api_key", "")
-    if not endpoint or not api_key:
+    if not endpoint or not api_key or "***" in api_key:
         return ""
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -189,6 +191,24 @@ def _format(row: dict[str, Any]) -> dict[str, Any]:
         "model_id": row.get("model_id", ""),
         "api_endpoint": row.get("api_endpoint") or "",
         "api_key": (row.get("api_key") or "")[:8] + "***" if row.get("api_key") else "",
+        "access_type": row.get("access_type", "api"),
+        "capabilities": _parse_json_list(row.get("capabilities")),
+        "max_tokens": row.get("max_tokens", 4096),
+        "temperature": row.get("temperature", 0.3),
+        "enabled": bool(row.get("enabled", 1)),
+        "is_default": bool(row.get("is_default", 0)),
+    }
+
+
+def _format_raw(row: dict[str, Any]) -> dict[str, Any]:
+    """Format with UNMASKED api_key — internal use only."""
+    return {
+        "id": row.get("id", ""),
+        "name": row.get("name", ""),
+        "provider": row.get("provider", ""),
+        "model_id": row.get("model_id", ""),
+        "api_endpoint": row.get("api_endpoint", ""),
+        "api_key": row.get("api_key", ""),
         "access_type": row.get("access_type", "api"),
         "capabilities": _parse_json_list(row.get("capabilities")),
         "max_tokens": row.get("max_tokens", 4096),
