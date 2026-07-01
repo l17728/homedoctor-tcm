@@ -917,3 +917,54 @@ async def memory_save_tool(db: DbAdapter, agent_name: str, content: str,
     """Wrapper for agent_memory.memory_save (tool interface)."""
     from app.agent_memory import memory_save
     return await memory_save(db, agent_name, content, memory_type, confidence=confidence)
+
+
+# ---------------------------------------------------------------------------
+# Config tools
+# ---------------------------------------------------------------------------
+
+_AGENT_CONFIGS: dict[str, dict[str, Any]] = {
+    "knowledge_agent": {
+        "temperature": 0.3,
+        "max_tokens": 2048,
+        "quality_threshold": 50,
+        "trust_threshold_adopt": 80,
+        "dedup_mode": "exact_title",
+        "auto_relate_enabled": True,
+        "structured_extraction_enabled": True,
+        "max_entities_per_import": 10,
+    },
+    "patrol_agent": {
+        "scan_interval_hours": 24,
+        "max_feeds_per_scan": 10,
+        "tcm_only": True,
+        "gap_threshold": 2,
+        "search_query_limit": 3,
+    },
+    "shared": {
+        "enhanced_mode": False,
+        "enhanced_num_models": 4,
+        "min_trust_for_safety": "A",
+        "bm25_field_weights": {"title": 3.0, "summary": 2.0, "keywords": 1.0, "tags": 1.0},
+    },
+}
+
+
+async def tool_get_config(db: DbAdapter, agent_name: str = "shared", key: str | None = None) -> dict[str, Any]:
+    """Get agent configuration (all keys or specific key)."""
+    config = _AGENT_CONFIGS.get(agent_name, {})
+    if key:
+        return {"agent": agent_name, "key": key, "value": config.get(key)}
+    return {"agent": agent_name, "config": config}
+
+
+async def tool_set_config(db: DbAdapter, agent_name: str, key: str, value: Any) -> dict[str, Any]:
+    """Set agent configuration parameter."""
+    if agent_name not in _AGENT_CONFIGS:
+        _AGENT_CONFIGS[agent_name] = {}
+    old_value = _AGENT_CONFIGS[agent_name].get(key)
+    _AGENT_CONFIGS[agent_name][key] = value
+    await log_action(db, "config_change", "config", key, "",
+                     {"agent": agent_name, "key": key, "old": old_value, "new": value},
+                     "updated")
+    return {"agent": agent_name, "key": key, "old_value": old_value, "new_value": value}
