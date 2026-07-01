@@ -190,3 +190,80 @@ async def translate_check(
             flagged.append({"entity_id": row["id"], "title": row["title"]})
 
     return {"checked": len(rows), "flagged_for_translation": len(flagged), "items": flagged[:10]}
+
+
+# ---------------------------------------------------------------------------
+# Agent memory & conversation API
+# ---------------------------------------------------------------------------
+
+@router.get("/admin/agent/memories")
+async def list_agent_memories(
+    agent_name: str | None = None,
+    memory_type: str | None = None,
+    q: str | None = None,
+    limit: int = 20,
+    db: DbAdapter = Depends(get_db),
+    _: dict = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.agent_memory import memory_search
+    results = await memory_search(db, agent_name, q or "", memory_type, limit=limit)
+    return {"items": results, "total": len(results)}
+
+
+@router.post("/admin/agent/memories")
+async def save_agent_memory(
+    body: dict[str, Any],
+    db: DbAdapter = Depends(get_db),
+    _: dict = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.agent_memory import memory_save
+    mid = await memory_save(
+        db,
+        body.get("agent_name", "shared"),
+        body.get("content", ""),
+        body.get("memory_type", "experience"),
+        confidence=body.get("confidence", 0.5),
+    )
+    return {"id": mid, "message": "记忆已保存"}
+
+
+@router.delete("/admin/agent/memories/{memory_id}")
+async def delete_agent_memory(
+    memory_id: str,
+    db: DbAdapter = Depends(get_db),
+    _: dict = Depends(require_admin),
+) -> dict[str, Any]:
+    await db.execute("UPDATE agent_memories SET superseded_by = 'deleted' WHERE id = ?", (memory_id,))
+    return {"message": "已标记为过时"}
+
+
+@router.get("/admin/agent/conversations")
+async def list_agent_conversations(
+    agent_name: str | None = None,
+    limit: int = 30,
+    db: DbAdapter = Depends(get_db),
+    _: dict = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.agent_communication import get_conversation_history
+    results = await get_conversation_history(db, agent_name, limit)
+    return {"items": results, "total": len(results)}
+
+
+@router.get("/admin/agent/config")
+async def get_agent_config(
+    agent_name: str = "shared",
+    db: DbAdapter = Depends(get_db),
+    _: dict = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.agent_tools import tool_get_config
+    return await tool_get_config(db, agent_name)
+
+
+@router.put("/admin/agent/config")
+async def set_agent_config(
+    body: dict[str, Any],
+    db: DbAdapter = Depends(get_db),
+    _: dict = Depends(require_admin),
+) -> dict[str, Any]:
+    from app.agent_tools import tool_set_config
+    return await tool_set_config(db, body.get("agent_name", "shared"), body.get("key", ""), body.get("value"))
