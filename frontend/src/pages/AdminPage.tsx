@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Typography, Card, Table, Tag, Button, Space, Statistic, Row, Col,
-  Tabs, Modal, Input, message, Empty, Spin, Descriptions,
+  Tabs, Modal, Input, message, Empty, Spin, Descriptions, Select,
 } from 'antd';
 import {
   DatabaseOutlined, ReloadOutlined, DeleteOutlined,
@@ -42,6 +42,8 @@ export default function AdminPage() {
         { key: 'indexes', label: '索引管理', children: <IndexTab /> },
         { key: 'logs', label: 'Agent日志', children: <LogsTab /> },
         { key: 'feeder', label: '巡检Agent', children: <FeederTab /> },
+        { key: 'memories', label: 'Agent记忆', children: <MemoriesTab /> },
+        { key: 'conversations', label: 'Agent对话', children: <ConversationsTab /> },
       ]} />
     </div>
   );
@@ -281,6 +283,109 @@ function FeederTab() {
           </Descriptions>
         ) : null}
       </Card>
+    </div>
+  );
+}
+
+function MemoriesTab() {
+  const [items, setItems] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [agentFilter, setAgentFilter] = useState<string | undefined>(undefined);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (agentFilter) params.set('agent_name', agentFilter);
+      params.set('limit', '30');
+      const data = await request<{ items: Record<string, unknown>[] }>(`/api/admin/agent/memories?${params}`);
+      setItems(data.items ?? []);
+    } catch { setItems([]); }
+    finally { setLoading(false); }
+  }, [agentFilter]);
+  useEffect(() => { void load(); }, [load]);
+
+  const typeColors: Record<string, string> = { experience: 'green', lesson: 'red', strategy: 'blue', pattern: 'purple', rule: 'orange' };
+  return (
+    <div>
+      <Space style={{ marginBottom: 16 }}>
+        <Button icon={<ReloadOutlined />} onClick={load}>刷新</Button>
+        <Select
+          value={agentFilter ?? '__all__'}
+          onChange={(v) => setAgentFilter(v === '__all__' ? undefined : v)}
+          style={{ width: 180 }}
+          size="small"
+          options={[
+            { value: '__all__', label: '全部Agent' },
+            { value: 'knowledge_agent', label: '知识Agent' },
+            { value: 'patrol_agent', label: '巡检Agent' },
+            { value: 'shared', label: '共享记忆' },
+          ]}
+        />
+      </Space>
+      <Table loading={loading} dataSource={items} rowKey="id" size="small" pagination={{ pageSize: 15 }}
+        columns={[
+          { title: 'Agent', dataIndex: 'agent_name', key: 'agent_name', width: 120,
+            render: (v: string) => <Tag color={v === 'shared' ? 'gold' : v === 'knowledge_agent' ? 'blue' : 'green'}>{v}</Tag> },
+          { title: '类型', dataIndex: 'memory_type', key: 'memory_type', width: 90,
+            render: (v: string) => <Tag color={typeColors[v] || 'default'}>{v}</Tag> },
+          { title: '内容', dataIndex: 'content', key: 'content', ellipsis: true },
+          { title: '置信度', dataIndex: 'confidence', key: 'confidence', width: 70,
+            render: (v: number) => <Text style={{ color: v > 0.7 ? '#52c41a' : v > 0.4 ? '#faad14' : '#ff4d4f' }}>{(v ?? 0).toFixed(2)}</Text> },
+          { title: '使用', key: 'usage', width: 70,
+            render: (_: unknown, r: Record<string, unknown>) => <Text type="secondary">{String(r.times_used ?? 0)}次</Text> },
+          { title: '时间', dataIndex: 'created_at', key: 'created_at', width: 140,
+            render: (v: string) => v?.substring(0, 16) },
+        ]}
+      />
+      {items.length === 0 && !loading ? <Empty description="暂无记忆" /> : null}
+    </div>
+  );
+}
+
+function ConversationsTab() {
+  const [items, setItems] = useState<Record<string, unknown>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await request<{ items: Record<string, unknown>[] }>('/api/admin/agent/conversations?limit=50');
+      setItems(data.items ?? []);
+    } catch { setItems([]); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const msgColors: Record<string, string> = { message: 'blue', ask: 'orange', reply: 'green', propose: 'purple', debate: 'magenta' };
+  const agentColors: Record<string, string> = { knowledge_agent: '#1890ff', patrol_agent: '#52c41a' };
+  return (
+    <div>
+      <Button icon={<ReloadOutlined />} onClick={load} style={{ marginBottom: 16 }}>刷新</Button>
+      <div style={{ maxWidth: 700 }}>
+        {loading ? <Spin /> : items.length === 0 ? <Empty description="暂无对话" /> :
+          items.map((msg) => (
+            <div key={msg.id as string} style={{
+              marginBottom: 12, padding: 12, borderRadius: 8,
+              background: msg.from_agent === 'patrol_agent' ? '#f6ffed' : '#e6f4ff',
+              borderLeft: `3px solid ${agentColors[msg.from_agent as string] || '#d9d9d9'}`,
+            }}>
+              <Space style={{ marginBottom: 4 }}>
+                <Tag color={agentColors[msg.from_agent as string] === '#52c41a' ? 'green' : 'blue'}>
+                  {msg.from_agent as string}
+                </Tag>
+                <Text type="secondary">→</Text>
+                <Tag>{msg.to_agent as string}</Tag>
+                <Tag color={msgColors[msg.message_type as string] || 'default'}>{msg.message_type as string}</Tag>
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  {(msg.created_at as string)?.substring(0, 16)}
+                </Text>
+              </Space>
+              <Paragraph style={{ margin: 0, fontSize: 14 }}>
+                {msg.content as string}
+              </Paragraph>
+            </div>
+          ))
+        }
+      </div>
     </div>
   );
 }
