@@ -611,6 +611,33 @@ DDL_STATEMENTS = [
         UNIQUE(entity_id, user_id)
     )""",
     "CREATE INDEX IF NOT EXISTS idx_notes_entity ON user_notes(entity_id)",
+    """CREATE TABLE IF NOT EXISTS agent_memories (
+        id TEXT PRIMARY KEY,
+        agent_name TEXT NOT NULL,
+        memory_type TEXT NOT NULL,
+        content TEXT NOT NULL,
+        tags TEXT DEFAULT '[]',
+        context TEXT DEFAULT '{}',
+        confidence REAL DEFAULT 0.5,
+        times_used INTEGER DEFAULT 0,
+        success_count INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        superseded_by TEXT
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_mem_agent ON agent_memories(agent_name)",
+    "CREATE INDEX IF NOT EXISTS idx_mem_type ON agent_memories(memory_type)",
+    """CREATE TABLE IF NOT EXISTS agent_conversations (
+        id TEXT PRIMARY KEY,
+        from_agent TEXT NOT NULL,
+        to_agent TEXT NOT NULL,
+        message_type TEXT NOT NULL,
+        content TEXT NOT NULL,
+        reply_to TEXT,
+        metadata TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_conv_created ON agent_conversations(created_at DESC)",
 ]
 
 FTS_STATEMENTS = [

@@ -755,3 +755,165 @@ def _relation_score(title_a: str, summary_a: str, title_b: str, summary_b: str) 
 def _extract_words(text: str) -> list[str]:
     """Extract 2-char bigrams from Chinese text."""
     return [text[i:i+2] for i in range(len(text) - 1) if len(text) >= 2]
+
+
+# ---------------------------------------------------------------------------
+# CRUD completion tools (Delete + Relationship management + Metadata)
+# ---------------------------------------------------------------------------
+
+
+async def tool_delete_entity(db: DbAdapter, entity_id: str, confirm: bool = False) -> dict[str, Any]:
+    """Delete a knowledge entity and its chunks/embeddings. Requires confirm=True."""
+    if not confirm:
+        return {"deleted": False, "message": "需要 confirm=True 才能执行删除"}
+    await db.execute("DELETE FROM chunk_embeddings WHERE chunk_id IN (SELECT id FROM knowledge_chunks WHERE entity_id = ?)", (entity_id,))
+    await db.execute("DELETE FROM knowledge_chunks WHERE entity_id = ?", (entity_id,))
+    await db.execute("DELETE FROM entity_relationships WHERE source_entity_id = ? OR target_entity_id = ?", (entity_id, entity_id))
+    await db.execute("DELETE FROM knowledge_provenance WHERE entity_id = ?", (entity_id,))
+    cursor = await db.execute("DELETE FROM knowledge_entities WHERE id = ?", (entity_id,))
+    await log_action(db, "delete_entity", "manual", "", entity_id, {"confirmed": True}, "deleted" if cursor.rowcount > 0 else "not_found")
+    return {"deleted": cursor.rowcount > 0, "entity_id": entity_id}
+
+
+async def tool_create_relationship(
+    db: DbAdapter, source_id: str, target_id: str,
+    rel_type: str, properties: dict[str, Any] | None = None,
+) -> str:
+    """Create a specific relationship between two entities."""
+    rid = f"rel-manual-{uuid.uuid4()}"
+    await db.execute(
+        """INSERT OR IGNORE INTO entity_relationships
+           (id, source_entity_id, target_entity_id, relationship_type, properties, weight)
+           VALUES (?, ?, ?, ?, ?, 1.0)""",
+        (rid, source_id, target_id, rel_type,
+         json.dumps(properties or {}, ensure_ascii=False)),
+    )
+    return rid
+
+
+async def tool_delete_relationship(db: DbAdapter, relationship_id: str) -> bool:
+    """Delete a specific relationship."""
+    cursor = await db.execute("DELETE FROM entity_relationships WHERE id = ?", (relationship_id,))
+    return cursor.rowcount > 0
+
+
+async def tool_list_entity_types(db: DbAdapter) -> list[dict[str, Any]]:
+    """List all entity types with counts (meta-data self-introspection)."""
+    rows = await db.query(
+        """SELECT entity_type, COUNT(*) as count
+           FROM knowledge_entities WHERE status = 'active'
+           GROUP BY entity_type ORDER BY count DESC"""
+    )
+    return [{"type": r["entity_type"], "count": r["count"]} for r in rows]
+
+
+async def tool_list_categories(db: DbAdapter, entity_type: str | None = None) -> list[dict[str, Any]]:
+    """List all categories, optionally filtered by entity type."""
+    if entity_type:
+        rows = await db.query(
+            """SELECT category, COUNT(*) as count FROM knowledge_entities
+               WHERE status = 'active' AND entity_type = ? AND category IS NOT NULL AND category != ''
+               GROUP BY category ORDER BY count DESC""",
+            (entity_type,),
+        )
+    else:
+        rows = await db.query(
+            """SELECT category, entity_type, COUNT(*) as count FROM knowledge_entities
+               WHERE status = 'active' AND category IS NOT NULL AND category != ''
+               GROUP BY category, entity_type ORDER BY count DESC"""
+        )
+    return [dict(r) for r in rows]
+
+
+async def tool_query_logs(
+    db: DbAdapter,
+    entity_id: str | None = None,
+    action_type: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """Query agent processing logs (self-history introspection)."""
+    conditions = []
+    params: list[Any] = []
+    if entity_id:
+        conditions.append("entity_id = ?")
+        params.append(entity_id)
+    if action_type:
+        conditions.append("action_type = ?")
+        params.append(action_type)
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    rows = await db.query(
+        f"SELECT * FROM agent_logs {where} ORDER BY created_at DESC LIMIT ?",
+        tuple(params + [limit]),
+    )
+    return [dict(r) for r in rows]
+
+
+async def tool_optimize_prompt(
+    db: DbAdapter, agent_name: str, current_prompt: str,
+) -> dict[str, Any]:
+    """Analyze own prompt + memories, suggest optimizations."""
+    from app.llm_unified import llm_chat
+    from app.agent_memory import memory_search
+    from app.json_extractor import extract_json
+
+    lessons = await memory_search(db, agent_name, memory_type="lesson", min_confidence=0.6, limit=10)
+
+    prompt = f"""你是{agent_name}。请审视你的系统提示词和最近的教训，提出优化建议。
+
+当前提示词：
+{current_prompt[:1000]}
+
+最近的教训（高置信度）：
+{chr(10).join(f'- {m["content"][:80]}' for m in lessons) if lessons else '无'}
+
+请分析：
+1. 哪些教训应该融入提示词？
+2. 提示词中哪些规则可以被简化？
+3. 是否有新规则应该添加？
+
+返回JSON：{{"additions": [...], "deletions": [...], "modifications": [...]}}"""
+
+    reply = await llm_chat(db, [{"role": "user", "content": prompt}])
+    suggestions = extract_json(reply)
+
+    await memory_save_tool(db, agent_name,
+        f"提示词优化建议：{json.dumps(suggestions, ensure_ascii=False)[:200] if isinstance(suggestions, dict) else reply[:200]}",
+        "experience", confidence=0.6)
+
+    return suggestions if isinstance(suggestions, dict) else {"raw_suggestions": reply[:500]}
+
+
+async def tool_generalize_experience(
+    db: DbAdapter, agent_name: str, case_description: str,
+) -> dict[str, Any]:
+    """Extract a generalizable pattern from a specific case."""
+    from app.llm_unified import llm_chat
+    from app.json_extractor import extract_json
+
+    prompt = f"""从以下具体处理案例中，提取通用规则：
+
+案例：{case_description}
+
+请提取：
+1. 这属于哪类问题？
+2. 适用的通用解决方案是什么？
+3. 下次遇到类似问题应该怎么做？
+
+返回JSON：{{"problem_type": "...", "pattern": "...", "strategy": "..."}}"""
+
+    reply = await llm_chat(db, [{"role": "user", "content": prompt}])
+    result = extract_json(reply)
+
+    if isinstance(result, dict):
+        await memory_save_tool(db, agent_name,
+            f"通用模式[{result.get('problem_type', '')}]：{result.get('strategy', '')}",
+            "pattern", confidence=0.7)
+
+    return result if isinstance(result, dict) else {"raw": reply[:500]}
+
+
+async def memory_save_tool(db: DbAdapter, agent_name: str, content: str,
+                           memory_type: str = "experience", confidence: float = 0.5) -> str:
+    """Wrapper for agent_memory.memory_save (tool interface)."""
+    from app.agent_memory import memory_save
+    return await memory_save(db, agent_name, content, memory_type, confidence=confidence)

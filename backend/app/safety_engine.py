@@ -140,42 +140,37 @@ async def run_safety_check(
     unknown_herbs: list[str] = []
     processed_variants_found: dict[str, str] = {}
     for name in herb_names:
-        row = await db.query_one(
-            "SELECT * FROM herbs WHERE name = ?", (name,)
+        ke_row = await db.query_one(
+            """SELECT id, title, properties, category FROM knowledge_entities
+               WHERE entity_type='herb' AND title=? AND status='active' LIMIT 1""",
+            (name,),
         )
-        if not row:
-            row = await db.query_one(
-                "SELECT * FROM herbs WHERE aliases LIKE ?", (f"%{name}%",)
+        if not ke_row:
+            legacy_row = await db.query_one(
+                "SELECT * FROM herbs WHERE name = ?", (name,)
             )
-        if row:
-            herb_info[name] = row
-        else:
-            ke_row = await db.query_one(
-                """SELECT id, title, properties FROM knowledge_entities
-                   WHERE entity_type='herb' AND title=? AND status='active' LIMIT 1""",
-                (name,),
-            )
-            if ke_row:
-                from app.trust_engine import get_trust_level
-                trust = await get_trust_level(db, ke_row["id"])
-                if trust not in ("S", "A"):
-                    unknown_herbs.append(name)
-                    continue
-                import json as _json
-                props = _json.loads(ke_row["properties"]) if isinstance(ke_row.get("properties"), str) else ke_row.get("properties", {})
-                herb_info[name] = {
-                    "name": ke_row["title"],
-                    "nature": props.get("nature", ""),
-                    "flavor": props.get("flavor", ""),
-                    "toxicity": props.get("toxicity", "无毒"),
-                    "dosage_min_g": props.get("dosage_min_g"),
-                    "dosage_max_g": props.get("dosage_max_g"),
-                    "contraindications": props.get("contraindications", ""),
-                    "category": props.get("category", ke_row.get("category", "")),
-                    "properties": ke_row["properties"],
-                }
+            if not legacy_row:
+                legacy_row = await db.query_one(
+                    "SELECT * FROM herbs WHERE aliases LIKE ?", (f"%{name}%",)
+                )
+            if legacy_row:
+                herb_info[name] = legacy_row
             else:
                 unknown_herbs.append(name)
+        else:
+            import json as _json
+            props = _json.loads(ke_row["properties"]) if isinstance(ke_row.get("properties"), str) else ke_row.get("properties", {})
+            herb_info[name] = {
+                "name": ke_row["title"],
+                "nature": props.get("nature", ""),
+                "flavor": props.get("flavor", ""),
+                "toxicity": props.get("toxicity", "无毒"),
+                "dosage_min_g": props.get("dosage_min_g"),
+                "dosage_max_g": props.get("dosage_max_g"),
+                "contraindications": props.get("contraindications", ""),
+                "category": props.get("category", ke_row.get("category", "")),
+                "properties": ke_row.get("properties", "{}"),
+            }
 
         base_herb = _find_base_herb_for_processing(name)
         if base_herb:
