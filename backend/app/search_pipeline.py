@@ -32,13 +32,15 @@ RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 # ---------------------------------------------------------------------------
 
 async def bm25_search(db: DbAdapter, query: str, top_k: int = 20) -> list[dict[str, Any]]:
-    """Lexical search over knowledge_entities (title/summary/keywords/tags).
+    """IDF-weighted BM25-style lexical search over knowledge_entities.
 
-    Uses 2-gram (bigram) matching suited for Chinese text: generates all
-    length-2 substrings of the query, then scores each entity by how many
-    bigrams hit each field (title=3, summary=2, keywords=1, tags=1).
-    Returns ranked candidates with ``bm25_score`` and ``bm25_rank``.
+    Upgraded from fixed-weight bigram matching to include IDF (Inverse
+    Document Frequency): common terms (e.g. '中药') score lower, rare terms
+    (e.g. '真气运行法') score higher. Formula: score = field_weight * IDF(term).
+    IDF(term) = log(N / (1 + df(term))) where N=total docs, df=docs containing term.
     """
+    import math
+
     if not query or not query.strip():
         return []
 
@@ -54,6 +56,18 @@ async def bm25_search(db: DbAdapter, query: str, top_k: int = 20) -> list[dict[s
             WHERE status = 'active'"""
     )
 
+    N = len(rows)
+    if N == 0:
+        return []
+
+    field_docs: dict[str, int] = {}
+    for term in terms:
+        df = sum(1 for r in rows if term in (r.get("title") or "") + (r.get("summary") or "")
+                 + (r.get("keywords") or "") + (r.get("tags") or "") + (r.get("content_preview") or ""))
+        field_docs[term] = max(df, 1)
+
+    FIELD_WEIGHTS = {"title": 3.0, "summary": 2.0, "keywords": 1.0, "tags": 1.0, "preview": 0.5}
+
     scored: list[dict[str, Any]] = []
     for r in rows:
         title = r.get("title") or ""
@@ -65,25 +79,24 @@ async def bm25_search(db: DbAdapter, query: str, top_k: int = 20) -> list[dict[s
         score = 0.0
         matched_terms: set[str] = set()
         for term in terms:
-            in_title = term in title
-            in_summary = term in summary
-            in_keywords = term in keywords
-            in_tags = term in tags
-            in_preview = term in preview
-            if in_title:
-                score += 3.0
+            idf = math.log(N / field_docs[term]) if field_docs[term] < N else 0.1
+            if idf < 0.01:
+                idf = 0.01
+
+            if term in title:
+                score += FIELD_WEIGHTS["title"] * idf
                 matched_terms.add(term)
-            if in_summary:
-                score += 2.0
+            if term in summary:
+                score += FIELD_WEIGHTS["summary"] * idf
                 matched_terms.add(term)
-            if in_keywords:
-                score += 1.0
+            if term in keywords:
+                score += FIELD_WEIGHTS["keywords"] * idf
                 matched_terms.add(term)
-            if in_tags:
-                score += 1.0
+            if term in tags:
+                score += FIELD_WEIGHTS["tags"] * idf
                 matched_terms.add(term)
-            if in_preview:
-                score += 0.5
+            if term in preview:
+                score += FIELD_WEIGHTS["preview"] * idf
                 matched_terms.add(term)
 
         if score <= 0:
