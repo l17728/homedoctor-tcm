@@ -141,23 +141,18 @@ async def run_safety_check(
     processed_variants_found: dict[str, str] = {}
     for name in herb_names:
         ke_row = await db.query_one(
-            """SELECT id, title, properties, category FROM knowledge_entities
-               WHERE entity_type='herb' AND title=? AND status='active' LIMIT 1""",
+            """SELECT ke.id, ke.title, ke.properties, ke.category,
+                      COALESCE((SELECT trust_level FROM knowledge_provenance
+                        WHERE entity_id = ke.id ORDER BY imported_at DESC LIMIT 1), 'C') AS trust_level
+                 FROM knowledge_entities ke
+                WHERE ke.entity_type='herb' AND ke.title=? AND ke.status='active'
+                ORDER BY CASE COALESCE((SELECT trust_level FROM knowledge_provenance
+                        WHERE entity_id = ke.id ORDER BY imported_at DESC LIMIT 1), 'C')
+                    WHEN 'S' THEN 0 WHEN 'A' THEN 1 WHEN 'B' THEN 2 ELSE 3 END
+                LIMIT 1""",
             (name,),
         )
-        if not ke_row:
-            legacy_row = await db.query_one(
-                "SELECT * FROM herbs WHERE name = ?", (name,)
-            )
-            if not legacy_row:
-                legacy_row = await db.query_one(
-                    "SELECT * FROM herbs WHERE aliases LIKE ?", (f"%{name}%",)
-                )
-            if legacy_row:
-                herb_info[name] = legacy_row
-            else:
-                unknown_herbs.append(name)
-        else:
+        if ke_row and ke_row.get("trust_level") in ("S", "A"):
             import json as _json
             props = _json.loads(ke_row["properties"]) if isinstance(ke_row.get("properties"), str) else ke_row.get("properties", {})
             herb_info[name] = {
@@ -171,6 +166,18 @@ async def run_safety_check(
                 "category": props.get("category", ke_row.get("category", "")),
                 "properties": ke_row.get("properties", "{}"),
             }
+        else:
+            legacy_row = await db.query_one(
+                "SELECT * FROM herbs WHERE name = ?", (name,)
+            )
+            if not legacy_row:
+                legacy_row = await db.query_one(
+                    "SELECT * FROM herbs WHERE aliases LIKE ?", (f"%{name}%",)
+                )
+            if legacy_row:
+                herb_info[name] = legacy_row
+            else:
+                unknown_herbs.append(name)
 
         base_herb = _find_base_herb_for_processing(name)
         if base_herb:

@@ -310,7 +310,13 @@ async def tool_create_or_update_entity(
                 elif isinstance(current.get("properties"), dict):
                     current_props = current["properties"]
 
-                merged = {**current_props, **properties}
+                merged = dict(current_props)
+                for key, new_val in properties.items():
+                    if key in merged and isinstance(merged[key], list) and isinstance(new_val, list):
+                        seen = set(str(x) for x in merged[key])
+                        merged[key] = merged[key] + [x for x in new_val if str(x) not in seen]
+                    else:
+                        merged[key] = new_val
                 merged_summary = summary if len(summary) > len(current.get("summary") or "") else current.get("summary", "")
 
                 await db.execute(
@@ -766,16 +772,26 @@ def _extract_words(text: str) -> list[str]:
 
 
 async def tool_delete_entity(db: DbAdapter, entity_id: str, confirm: bool = False) -> dict[str, Any]:
-    """Delete a knowledge entity and its chunks/embeddings. Requires confirm=True."""
+    """Delete a knowledge entity and its chunks/embeddings. Requires confirm=True.
+    S-level (system authoritative) entities cannot be deleted."""
     if not confirm:
         return {"deleted": False, "message": "需要 confirm=True 才能执行删除"}
+
+    from app.trust_engine import get_trust_level
+    trust = await get_trust_level(db, entity_id)
+    if trust == "S":
+        return {"deleted": False, "message": "S级系统知识不可删除，请先降级或申请豁免"}
+
+    await db.execute("DELETE FROM knowledge_conflicts WHERE entity_id = ?", (entity_id,))
+    await db.execute("DELETE FROM knowledge_feedback WHERE entity_id = ?", (entity_id,))
+    await db.execute("DELETE FROM user_notes WHERE entity_id = ?", (entity_id,))
     await db.execute("DELETE FROM chunk_embeddings WHERE chunk_id IN (SELECT id FROM knowledge_chunks WHERE entity_id = ?)", (entity_id,))
     await db.execute("DELETE FROM knowledge_chunks WHERE entity_id = ?", (entity_id,))
     await db.execute("DELETE FROM entity_relationships WHERE source_entity_id = ? OR target_entity_id = ?", (entity_id, entity_id))
     await db.execute("DELETE FROM knowledge_provenance WHERE entity_id = ?", (entity_id,))
     cursor = await db.execute("DELETE FROM knowledge_entities WHERE id = ?", (entity_id,))
-    await log_action(db, "delete_entity", "manual", "", entity_id, {"confirmed": True}, "deleted" if cursor.rowcount > 0 else "not_found")
-    return {"deleted": cursor.rowcount > 0, "entity_id": entity_id}
+    await log_action(db, "delete_entity", "manual", "", entity_id, {"confirmed": True, "trust_level": trust}, "deleted" if cursor.rowcount > 0 else "not_found")
+    return {"deleted": cursor.rowcount > 0, "entity_id": entity_id, "trust_level": trust}
 
 
 async def tool_create_relationship(

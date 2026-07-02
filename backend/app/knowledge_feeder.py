@@ -152,30 +152,53 @@ async def _detect_gaps(db: DbAdapter) -> list[dict[str, Any]]:
 
 
 async def _search_tcm_content(query: str) -> list[dict[str, str]]:
-    """Search for TCM content — uses LLM to suggest relevant URLs."""
+    """Search for TCM content using real web search API.
+
+    Falls back to LLM topic suggestion (no URLs) if no search API configured.
+    Never returns hallucinated URLs.
+    """
+    import os
+    api_key = os.environ.get("WEB_SEARCH_API_KEY", "")
+
+    if api_key:
+        try:
+            return await _search_via_api(query, 3, api_key)
+        except Exception as exc:
+            logger.warning("feeder: web search API failed: %s", exc)
+
     from app.llm_unified import llm_chat
+    prompt = f"""搜索需求：{query}
 
-    prompt = f"""请推荐2个包含以下中医知识的权威网页URL。
-
-搜索需求：{query}
-
-要求：
-1. 只推荐中医药、经络、功法相关的权威网站
-2. 优先推荐：知网、万方、中医世家、中药大辞典等
-3. 不要推荐西医、西药相关内容
-4. 不要推荐需要登录才能查看的页面
-
-返回JSON数组：[{{"title":"...", "url":"...", "summary":"..."}}]
-如果无法确定具体URL，返回空数组 []"""
+请列出与此主题相关的权威中医知识来源（书名、期刊、网站名称），但不要编造URL。
+返回JSON：{{"topics": ["主题1", "主题2"], "sources": ["来源1", "来源2"]}}"""
 
     reply = await llm_chat(query_db_adapter(), [{"role": "user", "content": prompt}])
 
     from app.json_extractor import extract_json
     parsed = extract_json(reply)
-    if isinstance(parsed, list):
-        return [{"title": p.get("title", ""), "url": p.get("url", ""), "summary": p.get("summary", "")}
-                for p in parsed if p.get("url")]
+    if isinstance(parsed, dict):
+        topics = parsed.get("topics", [])
+        sources = parsed.get("sources", [])
+        logger.info("feeder: LLM suggested topics (no URLs to avoid hallucination): %s, sources: %s", topics, sources)
+
     return []
+
+
+async def _search_via_api(query: str, num: int, api_key: str) -> list[dict[str, str]]:
+    import httpx
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            "https://api.exa.ai/search",
+            json={"query": query, "numResults": num, "type": "neural"},
+            headers={"x-api-key": api_key},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return [
+            {"title": item.get("title", ""), "url": item.get("url", ""),
+             "summary": (item.get("text") or item.get("summary") or "")[:300]}
+            for item in data.get("results", [])
+        ]
 
 
 _db_ref: DbAdapter | None = None
