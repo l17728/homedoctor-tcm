@@ -184,6 +184,22 @@ async def process_input(
         else:
             pushed = []
 
+        # Step 8b: Save processing experience to memory (self-evolution)
+        try:
+            from app.agent_memory import memory_save
+            memory_content = f"处理{entity_type}/{title}: decision={decision}, score={review_result.get('score', 0):.0f}, level={review_result.get('level', '?')}, conflicts={len(conflicts)}, mentions={len(mentions)}"
+            tags = [entity_type, decision]
+            if conflicts:
+                tags.append("has_conflicts")
+            await memory_save(
+                db, "knowledge_agent", memory_content,
+                memory_type="experience" if decision == "created" else "lesson",
+                tags=tags,
+                confidence=0.6 if decision == "created" else 0.4,
+            )
+        except Exception as exc:
+            logger.warning("knowledge_agent: memory_save failed: %s", exc)
+
         await log_action(
             db, "pipeline_end", source_type, url or title, entity_id,
             {

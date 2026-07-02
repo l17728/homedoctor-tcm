@@ -20,7 +20,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.auth import get_current_user
+from app.auth import get_current_user, require_admin
 from app.database import DbAdapter, get_db
 from app.model_registry import (
     create_model, delete_model, get_model, list_models,
@@ -79,7 +79,7 @@ class LogReview(BaseModel):
 async def get_models(
     enabled_only: bool = Query(False),
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     models = await list_models(db, enabled_only=enabled_only)
     return {"items": models, "total": len(models)}
@@ -89,7 +89,7 @@ async def get_models(
 async def add_model(
     body: ModelCreate,
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     mid = await create_model(db, **body.model_dump())
     return {"id": mid, "message": "模型已添加"}
@@ -100,7 +100,7 @@ async def edit_model(
     model_id: str,
     body: ModelUpdate,
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     updated = await update_model(db, model_id, **body.model_dump(exclude_none=True))
     if not updated:
@@ -112,7 +112,7 @@ async def edit_model(
 async def remove_model(
     model_id: str,
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     deleted = await delete_model(db, model_id)
     if not deleted:
@@ -124,7 +124,7 @@ async def remove_model(
 async def vote(
     body: VoteRequest,
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     return await multi_model_vote(db, body.messages, body.num_models, body.capability)
 
@@ -154,7 +154,7 @@ async def get_logs(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     conditions = []
     params: list[Any] = []
@@ -185,7 +185,7 @@ async def get_logs(
 async def get_log(
     log_id: str,
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     rows = await db.query("SELECT * FROM agent_logs WHERE id = ?", (log_id,))
     if not rows:
@@ -198,7 +198,7 @@ async def review_log(
     log_id: str,
     body: LogReview,
     db: DbAdapter = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
     cursor = await db.execute(
         "UPDATE agent_logs SET user_reviewed = 1, user_action = ? WHERE id = ?",

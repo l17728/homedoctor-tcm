@@ -788,6 +788,10 @@ class SqliteAdapter(DbAdapter):
             await self._conn.execute(f"PRAGMA key = '{self._encryption_key}'")
             await self._conn.execute("PRAGMA cipher_compatibility = 4")
 
+        if not self._encryption_key:
+            await self._conn.execute("PRAGMA journal_mode=WAL")
+            await self._conn.execute("PRAGMA synchronous=NORMAL")
+
     async def close(self) -> None:
         if self._conn:
             await self._conn.close()

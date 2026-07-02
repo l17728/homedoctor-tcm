@@ -224,7 +224,7 @@ async def request_append(
     if review_result.get("decision") == "adopted":
         from app.trust_engine import get_trust_level
         entity_trust = await get_trust_level(db, entity_id)
-        if entity_trust == "S":
+        if entity_trust in ("S", "A"):
             review_result["decision"] = "pending_review"
             review_result["level"] = "B"
             review_result["score"] = min(review_result.get("score", 50), 79)
@@ -395,8 +395,8 @@ async def _synthesize_augmentation(
     try:
         from app.json_extractor import extract_json
         parsed = extract_json(response)
-        if parsed:
-            result = json.loads(match.group())
+        if isinstance(parsed, dict):
+            result = parsed
             return {
                 "new_fields": result.get("new_fields", {}),
                 "new_summary": result.get("new_summary", ""),

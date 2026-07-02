@@ -83,7 +83,7 @@ async def classify_category(
         from app.json_extractor import extract_json
         parsed = extract_json(response)
         if parsed:
-            result = json.loads(match.group())
+            result = parsed if isinstance(parsed, dict) else {}
             cat = result.get("category", "").strip()
             if cat:
                 return {

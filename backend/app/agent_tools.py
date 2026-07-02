@@ -190,10 +190,9 @@ async def _extract_structured_fields(text: str, title: str, entity_type: str) ->
 
     try:
         response = await chat_completion([{"role": "user", "content": prompt}])
-        import re
-        match = re.search(r'\{[^}]+\}', response, re.DOTALL)
-        if match:
-            parsed = json.loads(match.group())
+        from app.json_extractor import extract_json
+        parsed = extract_json(response)
+        if isinstance(parsed, dict):
             return {k: v for k, v in parsed.items() if v and str(v).strip()}
     except Exception as exc:
         logger.warning("agent_tools: structured field extraction failed: %s", exc)
@@ -498,11 +497,15 @@ async def tool_multi_model_review(
 """
 
     messages = [{"role": "user", "content": prompt}]
-    reviews: list[dict[str, Any]] = []
+    selected = models[:3]
 
-    for model in models[:3]:
-        text = await call_model_direct(model, messages)
-        if text:
+    import asyncio as _aio
+    tasks = [call_model_direct(m, messages) for m in selected]
+    raw_texts = await _aio.gather(*tasks, return_exceptions=True)
+
+    reviews: list[dict[str, Any]] = []
+    for text in raw_texts:
+        if isinstance(text, str) and text:
             parsed = _parse_review_json(text)
             if parsed:
                 reviews.append(parsed)
@@ -522,7 +525,7 @@ def _parse_review_json(raw: str) -> dict[str, Any]:
     parsed = extract_json(text)
     if parsed:
         try:
-            return json.loads(json_match.group())
+            return parsed if isinstance(parsed, dict) else {}
         except json.JSONDecodeError:
             pass
     try:
