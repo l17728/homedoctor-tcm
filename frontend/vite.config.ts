@@ -9,4 +9,16 @@ export default defineConfig({
       '/api': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'antd-vendor': ['antd', '@ant-design/icons'],
+          'markdown-vendor': ['react-markdown'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600,
+  },
 });
