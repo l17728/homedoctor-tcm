@@ -902,6 +902,52 @@ async def tool_optimize_prompt(
     return suggestions if isinstance(suggestions, dict) else {"raw_suggestions": reply[:500]}
 
 
+async def tool_apply_prompt_optimization(
+    db: DbAdapter, agent_name: str, suggestions: dict[str, Any],
+) -> dict[str, Any]:
+    applied: list[dict[str, Any]] = []
+
+    for suggestion in suggestions.get("modifications", []):
+        field = suggestion.get("field")
+        new_value = suggestion.get("new_value", suggestion.get("new"))
+        if field and new_value is not None:
+            result = await tool_set_config(db, agent_name, f"prompt_{field}", new_value)
+            applied.append(result)
+
+    for i, addition in enumerate(suggestions.get("additions", [])):
+        if addition:
+            result = await tool_set_config(db, agent_name, f"prompt_addition_{i}", addition)
+            applied.append(result)
+
+    summary = {
+        "agent": agent_name,
+        "applied_count": len(applied),
+        "changes": applied,
+    }
+
+    await memory_save_tool(db, agent_name,
+        f"提示词优化已应用：{len(applied)}项变更",
+        "experience", confidence=0.7)
+
+    return summary
+
+
+async def tool_optimize_and_apply(
+    db: DbAdapter, agent_name: str, current_prompt: str,
+) -> dict[str, Any]:
+    suggestions = await tool_optimize_prompt(db, agent_name, current_prompt)
+
+    has_actionable = bool(
+        suggestions.get("modifications") or suggestions.get("additions")
+    )
+
+    applied: dict[str, Any] = {}
+    if has_actionable:
+        applied = await tool_apply_prompt_optimization(db, agent_name, suggestions)
+
+    return {"suggestions": suggestions, "applied": applied}
+
+
 async def tool_generalize_experience(
     db: DbAdapter, agent_name: str, case_description: str,
 ) -> dict[str, Any]:
@@ -969,6 +1015,21 @@ _AGENT_CONFIGS: dict[str, dict[str, Any]] = {
 }
 
 
+async def _load_configs_from_db(db: DbAdapter) -> None:
+    try:
+        rows = await db.query("SELECT agent_name, config_key, config_value FROM agent_configs")
+        for row in rows:
+            agent = row["agent_name"]
+            key = row["config_key"]
+            try:
+                value = json.loads(row["config_value"])
+            except (json.JSONDecodeError, TypeError):
+                continue
+            _AGENT_CONFIGS.setdefault(agent, {})[key] = value
+    except Exception:
+        logger.warning("Failed to load agent configs from DB", exc_info=True)
+
+
 async def tool_get_config(db: DbAdapter, agent_name: str = "shared", key: str | None = None) -> dict[str, Any]:
     """Get agent configuration (all keys or specific key)."""
     config = _AGENT_CONFIGS.get(agent_name, {})
@@ -983,6 +1044,14 @@ async def tool_set_config(db: DbAdapter, agent_name: str, key: str, value: Any) 
         _AGENT_CONFIGS[agent_name] = {}
     old_value = _AGENT_CONFIGS[agent_name].get(key)
     _AGENT_CONFIGS[agent_name][key] = value
+    try:
+        await db.execute(
+            "INSERT OR REPLACE INTO agent_configs (agent_name, config_key, config_value, updated_at) "
+            "VALUES (?, ?, ?, datetime('now'))",
+            (agent_name, key, json.dumps(value)),
+        )
+    except Exception:
+        logger.warning("Failed to persist agent config to DB", exc_info=True)
     await log_action(db, "config_change", "config", key, "",
                      {"agent": agent_name, "key": key, "old": old_value, "new": value},
                      "updated")

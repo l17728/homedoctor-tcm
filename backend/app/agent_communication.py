@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from typing import Any
 
@@ -136,6 +137,51 @@ async def agent_propose(
     )
 
 
+_CONFIG_PATTERNS = [
+    re.compile(r'建议将\s*(\w+)[的.]\s*(\w+)\s*设置为\s*(.+?)[\s。，；;,]\s*'),
+    re.compile(r'config:\s*(\w+)\.(\w+)\s*=\s*(.+?)[\s\n;,；；]'),
+]
+
+
+async def auto_apply_debate_results(db: DbAdapter, summary_text: Any) -> list[dict[str, Any]]:
+    """Parse debate summary for config-change suggestions and apply them.
+
+    Recognizes patterns like:
+        建议将knowledge_agent的temperature设置为0.5
+        config: patrol_agent.gap_threshold = 3
+    """
+    from app.agent_tools import tool_set_config
+
+    applied: list[dict[str, Any]] = []
+
+    if isinstance(summary_text, dict):
+        action_items = summary_text.get("action_items", [])
+        search_text = "\n".join(str(item) for item in action_items)
+    else:
+        search_text = str(summary_text or "")
+
+    if not search_text.strip():
+        return applied
+
+    for pattern in _CONFIG_PATTERNS:
+        for match in pattern.finditer(search_text):
+            agent_name, key, raw_value = (
+                match.group(1), match.group(2), match.group(3).strip(),
+            )
+            try:
+                value: Any = json.loads(raw_value)
+            except (json.JSONDecodeError, ValueError):
+                value = raw_value
+            try:
+                result = await tool_set_config(db, agent_name, key, value)
+                applied.append(result)
+                logger.info("auto_apply_debate: %s.%s = %s", agent_name, key, value)
+            except Exception as exc:
+                logger.warning("auto_apply_debate: failed %s.%s=%s: %s", agent_name, key, value, exc)
+
+    return applied
+
+
 async def agent_debate(
     db: DbAdapter,
     from_agent: str,
@@ -193,6 +239,13 @@ async def agent_debate(
             memory_type="experience",
             confidence=0.7,
         )
+
+    try:
+        applied = await auto_apply_debate_results(db, summary)
+        if applied:
+            logger.info("agent_debate: auto-applied %d config changes", len(applied))
+    except Exception as exc:
+        logger.warning("agent_debate: auto-apply failed: %s", exc)
 
     return messages
 

@@ -638,6 +638,13 @@ DDL_STATEMENTS = [
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )""",
     "CREATE INDEX IF NOT EXISTS idx_conv_created ON agent_conversations(created_at DESC)",
+    """CREATE TABLE IF NOT EXISTS agent_configs (
+        agent_name TEXT NOT NULL,
+        config_key TEXT NOT NULL,
+        config_value TEXT NOT NULL,
+        updated_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (agent_name, config_key)
+    )""",
 ]
 
 FTS_STATEMENTS = [
@@ -940,6 +947,9 @@ async def init_db(db: DbAdapter) -> None:
     await _migrate_knowledge_tenant_id(db)
     await _migrate_chunks_source(db)
     await _migrate_chunks_source(db)
+
+    from app.agent_tools import _load_configs_from_db
+    await _load_configs_from_db(db)
 
 
 async def seed_safety_rules(db: DbAdapter) -> None:

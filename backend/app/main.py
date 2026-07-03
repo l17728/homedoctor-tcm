@@ -48,6 +48,7 @@ async def _warmup_models() -> None:
     await loop.run_in_executor(None, _load_embedder)
     await loop.run_in_executor(None, _load_reranker)
 from app.middleware.tenant import TenantMiddleware
+from app.scheduler import start_scheduler, stop_scheduler
 
 
 @asynccontextmanager
@@ -74,8 +75,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     asyncio.create_task(_warmup_models())
 
+    scheduler_task = start_scheduler(adapter)
+
     yield
 
+    await stop_scheduler(scheduler_task)
     await adapter.close()
     set_db(None)  # type: ignore
 

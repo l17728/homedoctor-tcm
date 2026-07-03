@@ -49,14 +49,31 @@ async def bm25_search(db: DbAdapter, query: str, top_k: int = 20) -> list[dict[s
     if not terms:
         return []
 
+    cjk_terms = [t for t in terms if any(ord(c) > 0x2E00 for c in t)]
+    prefilter_terms = cjk_terms[:8] if cjk_terms else terms[:3]
+
+    like_conditions: list[str] = []
+    like_params: list[str] = []
+    for term in prefilter_terms:
+        pat = f"%{term}%"
+        like_conditions.append(
+            "(title LIKE ? OR summary LIKE ? OR keywords LIKE ? OR tags LIKE ? OR content_preview LIKE ?)"
+        )
+        like_params.extend([pat] * 5)
+
+    where_clause = " OR ".join(like_conditions) if like_conditions else "1=1"
     rows = await db.query(
-        """SELECT id, entity_type, source_table, source_id, title, summary,
+        f"""SELECT id, entity_type, source_table, source_id, title, summary,
                   keywords, tags, category, content_preview, properties
              FROM knowledge_entities
-            WHERE status = 'active'"""
+            WHERE status = 'active' AND ({where_clause})""",
+        tuple(like_params),
     )
 
-    N = len(rows)
+    total_row = await db.query_one(
+        "SELECT COUNT(*) AS c FROM knowledge_entities WHERE status = 'active'"
+    )
+    N = total_row["c"] if total_row else 0
     if N == 0:
         return []
 

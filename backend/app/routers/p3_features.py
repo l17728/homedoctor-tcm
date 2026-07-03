@@ -267,3 +267,22 @@ async def set_agent_config(
 ) -> dict[str, Any]:
     from app.agent_tools import tool_set_config
     return await tool_set_config(db, body.get("agent_name", "shared"), body.get("key", ""), body.get("value"))
+
+
+@router.post("/admin/agent/optimize-prompt")
+async def optimize_agent_prompt(
+    body: dict[str, Any],
+    db: DbAdapter = Depends(get_db),
+    _: dict = Depends(require_admin),
+) -> dict[str, Any]:
+    agent_name = body.get("agent_name", "shared")
+    current_prompt = body.get("current_prompt", "")
+    auto_apply = body.get("auto_apply", False)
+
+    if auto_apply:
+        from app.agent_tools import tool_optimize_and_apply
+        return await tool_optimize_and_apply(db, agent_name, current_prompt)
+
+    from app.agent_tools import tool_optimize_prompt
+    suggestions = await tool_optimize_prompt(db, agent_name, current_prompt)
+    return {"suggestions": suggestions}
