@@ -927,14 +927,18 @@ async def init_db(db: DbAdapter) -> None:
         try:
             await db.execute(stmt)
         except Exception:
-            # FTS5 might not be available in all SQLite builds; skip gracefully
             pass
-    # Migration: add family_member_id to reminders for existing databases
+
+    for table in ("herbs_fts", "formulas_fts"):
+        try:
+            await db.execute(f"INSERT INTO {table}({table}) VALUES('rebuild')")
+        except Exception:
+            pass
+
     await _migrate_reminders_member_id(db)
-    # Migration: add liver_disease/kidney_disease to user_profiles for existing databases
     await _migrate_user_profiles_liver_kidney(db)
-    # Migration: add tenant_id to knowledge_entities and entity_relationships (Phase 2)
     await _migrate_knowledge_tenant_id(db)
+    await _migrate_chunks_source(db)
     await _migrate_chunks_source(db)
 
 

@@ -102,6 +102,10 @@ async def bm25_search(db: DbAdapter, query: str, top_k: int = 20) -> list[dict[s
         if score <= 0:
             continue
 
+        title_match = any(term in title for term in terms)
+        if not title_match and score < 0.5:
+            continue
+
         scored.append({
             "entity_id": r["id"],
             "entity_type": r.get("entity_type"),
