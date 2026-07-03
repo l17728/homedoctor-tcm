@@ -190,10 +190,19 @@ def _extract_terms(query: str) -> list[str]:
             seen.add(q)
     for i in range(len(q) - 1):
         bigram = q[i:i + 2]
-        if bigram not in seen:
+        if bigram not in seen and _is_meaningful_bigram(bigram):
             terms.append(bigram)
             seen.add(bigram)
     return terms
+
+
+def _is_meaningful_bigram(bigram: str) -> bool:
+    """A bigram is meaningful for search if it contains CJK characters.
+
+    ASCII bigrams (e.g. 'st', 'te', 'on') from English/URL queries produce
+    false-positive matches with inflated IDF in a Chinese knowledge base.
+    """
+    return any(ord(c) > 0x2E00 for c in bigram)
 
 
 # ---------------------------------------------------------------------------
