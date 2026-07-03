@@ -113,7 +113,9 @@ async def vector_search(
     mat_norm = mat / (np.linalg.norm(mat, axis=1, keepdims=True) + 1e-12)
     scores = mat_norm @ query_norm
 
-    ranked_idx = np.argsort(-scores)[:top_k]
+    # Filter out noise: cosine similarity below 0.3 is essentially unrelated
+    MIN_SIMILARITY = 0.3
+    ranked_idx = [i for i in np.argsort(-scores) if scores[i] >= MIN_SIMILARITY][:top_k]
     results: list[dict[str, Any]] = []
     for rank, i in enumerate(ranked_idx):
         entry = dict(meta[i])

@@ -167,9 +167,9 @@ class TestVectorStore:
             """INSERT INTO knowledge_chunks (id, entity_id, chunk_index, chunk_text, chunk_type, token_count, metadata)
                VALUES ('chunk-b', 'ke-2', 0, '人参补气', 'content', 4, '{}')"""
         )
-        await store_embedding(rag_db, "chunk-a", [1.0, 0.0])
-        await store_embedding(rag_db, "chunk-b", [0.0, 1.0])
-        results = await vector_search(rag_db, [0.9, 0.1], top_k=2)
+        await store_embedding(rag_db, "chunk-a", [1.0, 0.0, 0.0])
+        await store_embedding(rag_db, "chunk-b", [0.0, 1.0, 0.0])
+        results = await vector_search(rag_db, [0.8, 0.5, 0.3], top_k=2)
         assert len(results) == 2
         assert results[0]["score"] >= results[1]["score"]
         assert results[0]["chunk_id"] == "chunk-a"

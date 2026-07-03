@@ -61,7 +61,12 @@ async def _seed_med_log(
     taken: bool = True, days_ago: int = 0,
 ) -> str:
     log_id = str(uuid.uuid4())
-    date_str = (datetime.now(CST) - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+    today = datetime.now(CST)
+    target = today - timedelta(days=days_ago)
+    if target.year != today.year or target.month != today.month:
+        first_of_month = today.replace(day=1)
+        target = first_of_month
+    date_str = target.strftime("%Y-%m-%d")
     now = datetime.now(timezone.utc).isoformat()
     await db.execute(
         "INSERT INTO medication_logs (id, family_member_id, date, medicine_id, taken, created_at) "
@@ -115,7 +120,11 @@ async def _seed_audit(
     from app.audit import GENESIS_HASH, compute_hash
 
     aid = str(uuid.uuid4())
-    now = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+    today = datetime.now(CST)
+    target = today - timedelta(days=days_ago)
+    if target.year != today.year or target.month != today.month:
+        target = today.replace(day=1)
+    now = target.isoformat()
     changes_str = json.dumps(changes or {}, ensure_ascii=False)
     h = compute_hash(GENESIS_HASH, action, entity_type, aid, changes_str, now)
     await db.execute(
@@ -130,7 +139,11 @@ async def _seed_conversation(
     db, user_id: str, *, days_ago: int = 0,
 ) -> str:
     cid = str(uuid.uuid4())
-    now = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+    today = datetime.now(CST)
+    target = today - timedelta(days=days_ago)
+    if target.year != today.year or target.month != today.month:
+        target = today.replace(day=1)
+    now = target.isoformat()
     await db.execute(
         "INSERT INTO conversations (id, user_id, title, model_id, messages, reasoning_trace, created_at, updated_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",

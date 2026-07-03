@@ -139,58 +139,69 @@ async def run_safety_check(
     herb_info: dict[str, dict] = {}
     unknown_herbs: list[str] = []
     processed_variants_found: dict[str, str] = {}
-    for name in herb_names:
-        ke_row = await db.query_one(
-            """SELECT ke.id, ke.title, ke.properties, ke.category,
+
+    if herb_names:
+        placeholders = ",".join("?" * len(herb_names))
+        ke_rows = await db.query(
+            f"""SELECT ke.id, ke.title, ke.properties, ke.category,
                       COALESCE((SELECT trust_level FROM knowledge_provenance
                         WHERE entity_id = ke.id ORDER BY imported_at DESC LIMIT 1), 'C') AS trust_level
                  FROM knowledge_entities ke
-                WHERE ke.entity_type='herb' AND ke.title=? AND ke.status='active'
+                WHERE ke.entity_type='herb' AND ke.title IN ({placeholders}) AND ke.status='active'
                 ORDER BY CASE COALESCE((SELECT trust_level FROM knowledge_provenance
                         WHERE entity_id = ke.id ORDER BY imported_at DESC LIMIT 1), 'C')
-                    WHEN 'S' THEN 0 WHEN 'A' THEN 1 WHEN 'B' THEN 2 ELSE 3 END
-                LIMIT 1""",
-            (name,),
+                    WHEN 'S' THEN 0 WHEN 'A' THEN 1 WHEN 'B' THEN 2 ELSE 3 END""",
+            tuple(herb_names),
         )
-        if ke_row and ke_row.get("trust_level") in ("S", "A"):
-            import json as _json
-            props = _json.loads(ke_row["properties"]) if isinstance(ke_row.get("properties"), str) else ke_row.get("properties", {})
-            herb_info[name] = {
-                "name": ke_row["title"],
-                "nature": props.get("nature", ""),
-                "flavor": props.get("flavor", ""),
-                "toxicity": props.get("toxicity", "无毒"),
-                "dosage_min_g": props.get("dosage_min_g"),
-                "dosage_max_g": props.get("dosage_max_g"),
-                "contraindications": props.get("contraindications", ""),
-                "category": props.get("category", ke_row.get("category", "")),
-                "properties": ke_row.get("properties", "{}"),
-            }
-        else:
-            legacy_row = await db.query_one(
-                "SELECT * FROM herbs WHERE name = ?", (name,)
-            )
-            if not legacy_row:
-                legacy_row = await db.query_one(
-                    "SELECT * FROM herbs WHERE aliases LIKE ?", (f"%{name}%",)
-                )
-            if legacy_row:
-                herb_info[name] = legacy_row
-            else:
-                unknown_herbs.append(name)
+        ke_by_name: dict[str, dict] = {}
+        for row in ke_rows:
+            name = row["title"]
+            if name not in ke_by_name or row.get("trust_level", "C") < ke_by_name[name].get("trust_level", "C"):
+                ke_by_name[name] = row
 
-        base_herb = _find_base_herb_for_processing(name)
-        if base_herb:
-            processed_variants_found[name] = base_herb
+        legacy_rows = await db.query(
+            f"SELECT * FROM herbs WHERE name IN ({placeholders})",
+            tuple(herb_names),
+        )
+        legacy_by_name = {r["name"]: r for r in legacy_rows}
+
+        for name in herb_names:
+            ke_row = ke_by_name.get(name)
+            if ke_row and ke_row.get("trust_level") in ("S", "A"):
+                import json as _json
+                props = _json.loads(ke_row["properties"]) if isinstance(ke_row.get("properties"), str) else ke_row.get("properties", {})
+                herb_info[name] = {
+                    "name": ke_row["title"],
+                    "nature": props.get("nature", ""),
+                    "flavor": props.get("flavor", ""),
+                    "toxicity": props.get("toxicity", "无毒"),
+                    "dosage_min_g": props.get("dosage_min_g"),
+                    "dosage_max_g": props.get("dosage_max_g"),
+                    "contraindications": props.get("contraindications", ""),
+                    "category": props.get("category", ke_row.get("category", "")),
+                    "properties": ke_row.get("properties", "{}"),
+                }
+            else:
+                legacy_row = legacy_by_name.get(name)
+                if legacy_row:
+                    herb_info[name] = legacy_row
+                else:
+                    unknown_herbs.append(name)
+
+            base_herb = _find_base_herb_for_processing(name)
+            if base_herb:
+                processed_variants_found[name] = base_herb
 
     unknown_medicines: list[str] = []
     tenant = current_tenant_id.get()
-    for med in medicine_names:
-        row = await db.query_one(
-            "SELECT id FROM medicines WHERE name = ? AND tenant_id = ? LIMIT 1", (med, tenant)
+    if medicine_names:
+        med_placeholders = ",".join("?" * len(medicine_names))
+        med_rows = await db.query(
+            f"SELECT name FROM medicines WHERE name IN ({med_placeholders}) AND tenant_id = ?",
+            (*medicine_names, tenant),
         )
-        if not row:
-            unknown_medicines.append(med)
+        known_meds = {r["name"] for r in med_rows}
+        unknown_medicines = [m for m in medicine_names if m not in known_meds]
 
     # --- Layer 1a: 中药×中药配伍禁忌 (十八反十九畏) ---
     layer1a_warnings = await _check_herb_herb_contraindications(db, herb_names)
@@ -265,27 +276,27 @@ async def _check_herb_herb_contraindications(
     if len(herb_names) < 2:
         return warnings
 
+    all_rules = await db.query(
+        """SELECT * FROM safety_rules WHERE enabled = 1
+           AND rule_type IN ('十八反', '十九畏')"""
+    )
+    herb_set = set(herb_names)
     seen_ids: set[str] = set()
-    for i, a in enumerate(herb_names):
-        for b in herb_names[i + 1:]:
-            rows = await db.query(
-                """SELECT * FROM safety_rules WHERE enabled = 1
-                   AND ((drug_a = ? AND drug_b = ?) OR (drug_a = ? AND drug_b = ?))
-                   AND rule_type IN ('十八反', '十九畏')""",
-                (a, b, b, a),
-            )
-            for r in rows:
-                if r["id"] not in seen_ids:
-                    seen_ids.add(r["id"])
-                    warnings.append(SafetyWarning(
-                        layer=1,
-                        severity="critical",
-                        title=f"配伍禁忌（{r['rule_type']}）",
-                        detail=r["mechanism"],
-                        herbs=[r["drug_a"], r["drug_b"]],
-                        action="禁止",
-                        source=r["source"],
-                    ))
+    for r in all_rules:
+        if r["id"] in seen_ids:
+            continue
+        a, b = r.get("drug_a", ""), r.get("drug_b", "")
+        if a in herb_set and b in herb_set:
+            seen_ids.add(r["id"])
+            warnings.append(SafetyWarning(
+                layer=1,
+                severity="critical",
+                title=f"配伍禁忌（{r['rule_type']}）",
+                detail=r["mechanism"],
+                herbs=[a, b],
+                action="禁止",
+                source=r["source"],
+            ))
     return warnings
 
 
@@ -331,60 +342,47 @@ async def _check_herb_drug_interactions(
     if not medicine_names or not herb_names:
         return warnings
 
-    seen_ids: set[str] = set()
-
+    western_drugs: list[str] = []
     for drug in medicine_names:
-        # --- drugClass awareness (spec §15.2) ---
-        # Only 西药 medicines trigger Layer 1b (中西药交互).
-        # 中药 / 中成药 medicines go through Layer 1a (配伍禁忌) instead.
         drug_class = await _get_medicine_drug_class(db, drug)
-        if drug_class != "西药":
+        if drug_class == "西药":
+            western_drugs.append(drug)
+    if not western_drugs:
+        return warnings
+
+    all_rules = await db.query(
+        """SELECT * FROM safety_rules WHERE enabled = 1
+           AND rule_type = '中西药交互'"""
+    )
+    herb_set = set(herb_names)
+    drug_set = set(western_drugs)
+    seen_ids: set[str] = set()
+    for r in all_rules:
+        if r["id"] in seen_ids:
             continue
-
-        for herb in herb_names:
-            # Exact match: drug_a = western drug, drug_b = herb
-            rows = await db.query(
-                """SELECT * FROM safety_rules WHERE enabled = 1
-                   AND drug_a = ? AND drug_b = ?
-                   AND rule_type = '中西药交互'""",
-                (drug, herb),
-            )
-            for r in rows:
-                if r["id"] not in seen_ids:
-                    seen_ids.add(r["id"])
-                    sev = r["severity"]
-                    action = "禁止" if sev == "critical" else "谨慎"
-                    warnings.append(SafetyWarning(
-                        layer=1,
-                        severity=sev,
-                        title=f"中西药交互（{r.get('source', '')}）",
-                        detail=r["mechanism"],
-                        herbs=[herb],
-                        action=action,
-                        source=r.get("source", ""),
-                    ))
-
-        # Also check fuzzy match (drug_a contains drug name, e.g. "华法林" in name)
-        rows = await db.query(
-            """SELECT * FROM safety_rules WHERE enabled = 1
-               AND drug_a LIKE ? AND rule_type = '中西药交互'""",
-            (f"%{drug}%",),
-        )
-        for r in rows:
-            if r["id"] not in seen_ids and r["drug_b"] in herb_names:
-                seen_ids.add(r["id"])
-                sev = r["severity"]
-                action = "禁止" if sev == "critical" else "谨慎"
-                warnings.append(SafetyWarning(
-                    layer=1,
-                    severity=sev,
-                    title=f"中西药交互（{r.get('source', '')}）",
-                    detail=r["mechanism"],
-                    herbs=[r["drug_b"]],
-                    action=action,
-                    source=r.get("source", ""),
-                ))
-
+        drug_a = r.get("drug_a", "")
+        drug_b = r.get("drug_b", "")
+        matched_herb = None
+        if drug_a in drug_set and drug_b in herb_set:
+            matched_herb = drug_b
+        elif drug_a in drug_set:
+            for wd in western_drugs:
+                if wd in drug_a and drug_b in herb_set:
+                    matched_herb = drug_b
+                    break
+        if matched_herb:
+            seen_ids.add(r["id"])
+            sev = r["severity"]
+            action = "禁止" if sev == "critical" else "谨慎"
+            warnings.append(SafetyWarning(
+                layer=1,
+                severity=sev,
+                title=f"中西药交互（{r.get('source', '')}）",
+                detail=r["mechanism"],
+                herbs=[matched_herb],
+                action=action,
+                source=r.get("source", ""),
+            ))
     return warnings
 
 
@@ -405,32 +403,41 @@ async def _check_food_interactions(
     if not all_items:
         return warnings
 
+    all_rules = await db.query(
+        """SELECT * FROM safety_rules WHERE enabled = 1
+           AND rule_type = '食物禁忌'"""
+    )
+    item_set = set(all_items)
     seen_ids: set[str] = set()
-    for item in all_items:
-        rows = await db.query(
-            """SELECT * FROM safety_rules WHERE enabled = 1
-               AND rule_type = '食物禁忌'
-               AND (drug_a = ? OR drug_b = ?)""",
-            (item, item),
-        )
-        for r in rows:
-            if r["id"] not in seen_ids:
-                seen_ids.add(r["id"])
-                sev = r["severity"]
-                action = "禁止" if sev == "critical" else "谨慎"
-                affected = [item]
-                other = r["drug_b"] if r["drug_a"] == item else r["drug_a"]
-                if other:
-                    affected.append(other)
-                warnings.append(SafetyWarning(
-                    layer=1,
-                    severity=sev,
-                    title=f"食物禁忌（{r.get('source', '')}）",
-                    detail=r["mechanism"],
-                    herbs=affected,
-                    action=action,
-                    source=r.get("source", ""),
-                ))
+    for r in all_rules:
+        if r["id"] in seen_ids:
+            continue
+        drug_a = r.get("drug_a", "")
+        drug_b = r.get("drug_b", "")
+        matched_item = None
+        other = None
+        if drug_a in item_set:
+            matched_item = drug_a
+            other = drug_b
+        elif drug_b in item_set:
+            matched_item = drug_b
+            other = drug_a
+        if matched_item:
+            seen_ids.add(r["id"])
+            sev = r["severity"]
+            action = "禁止" if sev == "critical" else "谨慎"
+            affected = [matched_item]
+            if other:
+                affected.append(other)
+            warnings.append(SafetyWarning(
+                layer=1,
+                severity=sev,
+                title=f"食物禁忌（{r.get('source', '')}）",
+                detail=r["mechanism"],
+                herbs=affected,
+                action=action,
+                source=r.get("source", ""),
+            ))
 
     return warnings
 

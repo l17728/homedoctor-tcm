@@ -122,41 +122,56 @@ async def process_input(
             except Exception:
                 pass
 
-        # Step 6: Create or merge entity
+        # Step 6: Create or merge entity (atomic with provenance)
         properties = _build_properties(raw_text, analysis, mentions, source_type, url)
         if conflicts:
             for c in conflicts:
                 resolution = c.get("resolution", {})
                 if isinstance(resolution, dict) and "keep" in resolution:
                     properties[c["field"]] = resolution["keep"]
-        create_result = await tool_create_or_update_entity(
-            db,
-            entity_type=entity_type,
-            title=title,
-            summary=summary,
-            properties=properties,
-            keywords=keywords,
-            category=category,
-            source_type=source_type,
-            duplicates=duplicates,
-        )
-        entity_id = create_result.get("entity_id", "")
-        decision = create_result.get("decision", "unknown")
+        try:
+            await db.execute("BEGIN")
+        except Exception:
+            pass
+        try:
+            create_result = await tool_create_or_update_entity(
+                db,
+                entity_type=entity_type,
+                title=title,
+                summary=summary,
+                properties=properties,
+                keywords=keywords,
+                category=category,
+                source_type=source_type,
+                duplicates=duplicates,
+            )
+            entity_id = create_result.get("entity_id", "")
+            decision = create_result.get("decision", "unknown")
 
-        # Step 6b: Record provenance (blood lineage)
-        if entity_id:
-            from app.agent_tools import tool_record_provenance
+            # Step 6b: Record provenance (blood lineage)
+            if entity_id:
+                from app.agent_tools import tool_record_provenance
+                try:
+                    await tool_record_provenance(
+                        db, entity_id, source_type, url, title,
+                        trust_level=review_result.get("level", "B"),
+                        trust_score=review_result.get("score", 50),
+                        review_details={"reviews": review_result.get("reviews", []),
+                                       "conflicts": len(conflicts)},
+                        content_date="",
+                    )
+                except Exception as exc:
+                    logger.warning("knowledge_agent: provenance recording failed: %s", exc)
             try:
-                await tool_record_provenance(
-                    db, entity_id, source_type, url, title,
-                    trust_level=review_result.get("level", "B"),
-                    trust_score=review_result.get("score", 50),
-                    review_details={"reviews": review_result.get("reviews", []),
-                                   "conflicts": len(conflicts)},
-                    content_date="",
-                )
-            except Exception as exc:
-                logger.warning("knowledge_agent: provenance recording failed: %s", exc)
+                await db.execute("COMMIT")
+            except Exception:
+                pass
+        except Exception as exc:
+            try:
+                await db.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise exc
 
         # Step 7: Incremental index (internal entity + external content)
         if entity_id:

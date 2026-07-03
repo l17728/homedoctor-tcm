@@ -103,7 +103,7 @@ async def bm25_search(db: DbAdapter, query: str, top_k: int = 20) -> list[dict[s
             continue
 
         title_match = any(term in title for term in terms)
-        if not title_match and score < 0.5:
+        if not title_match and score < 1.0:
             continue
 
         scored.append({
@@ -121,6 +121,7 @@ async def bm25_search(db: DbAdapter, query: str, top_k: int = 20) -> list[dict[s
         })
 
     scored.sort(key=lambda x: x["bm25_score"], reverse=True)
+    scored = [s for s in scored if s["bm25_score"] > 0.001]
 
     ext_chunks = await db.query(
         """SELECT kc.id AS chunk_id, kc.entity_id, kc.chunk_text, kc.source_url,
@@ -160,17 +161,18 @@ async def bm25_search(db: DbAdapter, query: str, top_k: int = 20) -> list[dict[s
     for i, item in enumerate(ranked):
         item["bm25_rank"] = i
 
-    for item in ranked:
-        eid = item.get("entity_id")
-        if eid:
-            try:
-                await db.execute(
-                    "UPDATE knowledge_chunks SET hit_count = hit_count + 1, last_hit_at = datetime('now') "
-                    "WHERE entity_id = ? AND source_type = 'external'",
-                    (eid,),
-                )
-            except Exception:
-                pass
+    ext_eids = [item["entity_id"] for item in ranked
+                if item.get("entity_id") and item.get("source_type") == "external"]
+    if ext_eids:
+        ext_placeholders = ",".join("?" * len(ext_eids))
+        try:
+            await db.execute(
+                f"UPDATE knowledge_chunks SET hit_count = hit_count + 1, last_hit_at = datetime('now') "
+                f"WHERE entity_id IN ({ext_placeholders}) AND source_type = 'external'",
+                tuple(ext_eids),
+            )
+        except Exception:
+            pass
 
     return ranked
 
@@ -384,6 +386,8 @@ async def search(
             lists.append(sem_res)
             ran.append("semantic")
 
+    bm25_count = len(lists[0]) if (ran and ran[0] == "bm25") else 0
+
     if len(lists) > 1:
         fused = rrf_fusion(*lists)
     elif len(lists) == 1:
@@ -395,6 +399,12 @@ async def search(
         fused.sort(key=lambda x: x.get("rrf_score", 0.0), reverse=True)
     else:
         fused = []
+
+    if bm25_count == 0 and fused:
+        fused = [
+            item for item in fused
+            if item.get("score", 0) >= 0.5
+        ]
 
     reranked = False
     if enable_rerank and len(fused) > top_k:

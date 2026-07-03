@@ -257,13 +257,12 @@ async def test_vector_search_returns_empty_when_no_embeddings(db: DbAdapter):
 
 @pytest.mark.asyncio
 async def test_store_and_search_embedding(db: DbAdapter):
-    # Insert a chunk row first (FK-like expectation).
     await db.execute(
         """INSERT INTO knowledge_chunks (id, entity_id, chunk_index, chunk_text)
            VALUES ('kc-1', 'ke-huangqi', 0, '黄芪补气')"""
     )
-    vec_a = [1.0] + [0.0] * 1023
-    vec_b = [0.0, 1.0] + [0.0] * 1022
+    vec_a = [1.0, 0.8] + [0.0] * 1022
+    vec_b = [0.8, 1.0] + [0.0] * 1022
     await store_embedding(db, "kc-1", vec_a)
     await db.execute(
         """INSERT INTO knowledge_chunks (id, entity_id, chunk_index, chunk_text)
