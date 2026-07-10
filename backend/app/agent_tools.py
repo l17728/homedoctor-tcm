@@ -713,8 +713,8 @@ async def tool_auto_relate(
                  round(score, 2)),
             )
             created.append({"target_id": r["id"], "target_title": r["title"], "reason": reason})
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("auto_relate item failed: %s", exc)
 
     await log_action(db, "auto_relate", "auto", "", entity_id,
                      {"relations_created": len(created),

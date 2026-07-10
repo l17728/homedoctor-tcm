@@ -55,6 +55,23 @@ async def process_input(
     )
 
     try:
+        # Step 0: Recall past experiences for context
+        past_lessons: list[dict] = []
+        try:
+            from app.agent_memory import memory_search
+            memory_query = f"{title or url or content[:50]} {source_type}"
+            past_lessons = await memory_search(
+                db, "knowledge_agent",
+                query=memory_query,
+                memory_type="lesson",
+                min_confidence=0.5,
+                limit=5,
+            )
+            if past_lessons:
+                logger.info("knowledge_agent: recalled %d past lessons", len(past_lessons))
+        except Exception as exc:
+            logger.warning("knowledge_agent: memory recall failed: %s", exc)
+
         # Step 1: Extract
         extracted = await tool_extract(db, content=content, url=url, source_type=source_type)
         raw_text = extracted["text"]
@@ -222,6 +239,7 @@ async def process_input(
                 "decision": decision,
                 "quality_score": quality.get("score", 0),
                 "duplicates_found": len(duplicates),
+                "memories_recalled": len(past_lessons),
                 "mentions_found": len(mentions),
                 "modules_pushed": pushed,
             },

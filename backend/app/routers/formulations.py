@@ -8,6 +8,9 @@ Endpoints:
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
+
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -79,8 +82,8 @@ async def recommend_endpoint(
                 source_type="formulation",
                 relationship_type="recommends",
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("scan_and_link failed: %s", exc)
 
     return result
 

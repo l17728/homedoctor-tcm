@@ -245,8 +245,8 @@ async def chat(
             source_type="chat", source_id=current_user["id"],
             relationship_type="mentions",
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("scan_and_link failed: %s", exc)
 
     return {
         "reply": reply_text,

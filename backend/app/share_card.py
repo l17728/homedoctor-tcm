@@ -22,6 +22,9 @@ Data flows:
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
+
 import json
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -329,8 +332,8 @@ def _term_brief_advice(term: str) -> str:
         diet = info.get("diet", [])
         if diet and isinstance(diet, list):
             return str(diet[0])
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("diet lookup failed: %s", exc)
     season = get_season(term)
     return f"{season}季养生，注意起居调摄"
 
@@ -356,8 +359,8 @@ async def generate_seasonal_card(
         from app.routers.seasonal_health import TERM_DETAIL
 
         term_info = TERM_DETAIL.get(current_term, {})
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("seasonal term detail lookup failed: %s", exc)
 
     from app.report_engine import (
         CONSTITUTION_DIET,

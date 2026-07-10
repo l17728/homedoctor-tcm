@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+logger = logging.getLogger(__name__)
+
 import json
 from datetime import datetime, timezone, timedelta
 from typing import Any
@@ -79,8 +82,8 @@ async def create_medicine(
             source_type="medicine", source_id=medicine_id,
             relationship_type="references",
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("scan_and_link failed: %s", exc)
     return _parse_medicine(medicine)
 
 

@@ -231,7 +231,7 @@ async def agent_debate(
     summary_reply = await llm_chat(db, [{"role": "user", "content": summary_prompt}])
     summary = extract_json(summary_reply)
 
-    from app.agent_memory import memory_save
+    from app.agent_memory import memory_save, SHARED
     if isinstance(summary, dict):
         await memory_save(
             db, SHARED,

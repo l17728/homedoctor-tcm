@@ -188,8 +188,8 @@ async def bm25_search(db: DbAdapter, query: str, top_k: int = 20) -> list[dict[s
                 f"WHERE entity_id IN ({ext_placeholders}) AND source_type = 'external'",
                 tuple(ext_eids),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("hit_count batch update failed: %s", exc)
 
     return ranked
 
