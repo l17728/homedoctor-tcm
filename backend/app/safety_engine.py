@@ -10,6 +10,10 @@ Layer 5:  免责声明 — always attach disclaimer
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 from dataclasses import dataclass, field
 

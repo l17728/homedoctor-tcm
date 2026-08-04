@@ -13,6 +13,10 @@ All cards/reports are persisted so they can be listed, retrieved, and deleted.
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import uuid
 from datetime import datetime, timezone, timedelta

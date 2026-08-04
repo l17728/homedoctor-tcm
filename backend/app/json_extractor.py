@@ -2,6 +2,9 @@
 
 Replaces fragile `re.search(r'\\{[^}]+\\}')` which truncates nested JSON.
 """
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def extract_json(text: str) -> dict | list | None:

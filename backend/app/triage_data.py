@@ -17,6 +17,10 @@ Relationship to safety_keywords.py (spec §14.6):
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Disclaimer — ALWAYS attached to every triage result (non-negotiable)
 # ---------------------------------------------------------------------------

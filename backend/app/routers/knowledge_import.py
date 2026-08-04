@@ -18,6 +18,10 @@ Chinese domain language throughout (spec §1.7).
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import os
 import re

@@ -15,6 +15,10 @@ Note: this router is registered in ``main.py`` alongside the other routers.
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status

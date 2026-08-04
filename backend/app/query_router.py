@@ -14,6 +14,10 @@ Design (AGENTS.md §1.7 中文领域语言): intent keywords are Chinese.
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 import re
 
 BROWSE = "BROWSE"

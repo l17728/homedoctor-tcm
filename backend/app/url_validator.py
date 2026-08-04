@@ -5,6 +5,10 @@ Blocks private IPs, loopback, link-local, and non-http schemes.
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 import ipaddress
 import socket
 from urllib.parse import urlparse

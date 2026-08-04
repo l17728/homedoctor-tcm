@@ -14,6 +14,10 @@ from pydantic_settings import BaseSettings
 from app.secrets import get_secret
 
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 

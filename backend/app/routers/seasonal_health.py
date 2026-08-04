@@ -6,6 +6,10 @@ acupressure points, seasonal herbs, and recommended formulas.
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 from datetime import date
 
 from fastapi import APIRouter, Depends

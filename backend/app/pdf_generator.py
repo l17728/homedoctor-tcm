@@ -16,6 +16,10 @@ PDF document ready to be sent as an ``application/pdf`` response body.
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 import io
 import json
 from datetime import datetime, timezone, timedelta

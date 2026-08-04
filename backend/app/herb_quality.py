@@ -13,6 +13,10 @@ The router in ``app/routers/medicines.py`` wraps it for the HTTP layer.
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any

@@ -14,6 +14,10 @@ All herbs sharing 归经="脾,肺" are linked through the same concept nodes
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import uuid
 from typing import Any

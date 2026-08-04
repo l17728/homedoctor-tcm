@@ -10,6 +10,10 @@ Enhanced with ref-edge sync engine (port of /fighting refs.ts + anchors.ts):
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import re
 from typing import Any

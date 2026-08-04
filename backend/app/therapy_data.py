@@ -6,6 +6,10 @@ All data in Chinese domain language (AGENTS.md §1.7).
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 from typing import Any
 
 

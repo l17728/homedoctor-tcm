@@ -11,6 +11,10 @@ for health/wellness advisory purposes.
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 from datetime import date, datetime, timedelta
 
 

@@ -5,6 +5,10 @@ No external packages. Covers characters used in the 203 seeded herb names.
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 HERB_PINYIN: dict[str, str] = {
     # 补虚药
     "黄": "huang", "芪": "qi", "参": "shen", "术": "zhu", "甘": "gan", "草": "cao",

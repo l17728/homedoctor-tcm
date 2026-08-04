@@ -18,6 +18,10 @@ All endpoints require authentication (AGENTS.md §T1 — security boundary).
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import os
 import tempfile

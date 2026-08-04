@@ -11,6 +11,10 @@ All reports are read-only aggregations over structured SQLite data (spec §1.4).
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status

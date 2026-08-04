@@ -13,6 +13,10 @@ All text values are Chinese domain language (spec §1.7).
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import uuid
 from datetime import datetime, timedelta, timezone

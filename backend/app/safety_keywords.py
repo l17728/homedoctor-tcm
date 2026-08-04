@@ -7,6 +7,10 @@ to seek emergency medical attention (dial 120).
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 # Spec §14.6 — 急症关键词列表 (expanded from 29 to 63 based on medical expert review)
 EMERGENCY_KEYWORDS: list[str] = [
     # --- Original 29 ---

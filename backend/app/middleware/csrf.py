@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+
+logger = logging.getLogger(__name__)
 
 
 def _build_allowed_origins() -> set[str]:
@@ -37,6 +40,7 @@ class CsrfMiddleware(BaseHTTPMiddleware):
         if request.method in ("POST", "PUT", "DELETE", "PATCH"):
             origin = request.headers.get("Origin", "")
             if origin and origin not in self.ALLOWED_ORIGINS:
+                logger.warning("CSRF_REJECT origin=%s path=%s method=%s", origin, request.url.path, request.method)
                 return Response(
                     content='{"detail":"请求来源不被允许"}',
                     status_code=403,

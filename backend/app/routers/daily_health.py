@@ -5,6 +5,10 @@ Returns: 当前节气, 体质建议, 药箱库存预警, 季节养生贴士.
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 from datetime import date, datetime, timezone
 from typing import Any

@@ -8,6 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.auth import authenticate_user, get_current_user, register_user
 from app.database import DbAdapter, get_db
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 

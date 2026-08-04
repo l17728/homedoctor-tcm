@@ -14,6 +14,10 @@ Design rules (per AGENTS.md):
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 from typing import Any
 

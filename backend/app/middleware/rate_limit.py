@@ -8,6 +8,7 @@ Health & docs endpoints are exempt. Exceeding the limit returns 429 with a
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from typing import Dict, List
@@ -15,6 +16,8 @@ from typing import Dict, List
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -141,6 +144,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         hits = store.get(ip, [])
         if len(hits) >= limit:
             retry_after = self._retry_after(hits, now, window)
+            logger.warning("RATE_LIMIT ip=%s path=%s limit=%d retry_after=%ds", ip, path, limit, retry_after)
             return JSONResponse(
                 status_code=429,
                 content={"detail": "请求过于频繁，请稍后再试"},

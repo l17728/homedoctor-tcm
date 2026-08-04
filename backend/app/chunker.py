@@ -12,6 +12,10 @@ Design (AGENTS.md §1.7 — 中文领域语言):
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 import re
 from dataclasses import dataclass, field
 from typing import Any

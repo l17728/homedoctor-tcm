@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 __all__ = ["DDL_STATEMENTS", "FTS_STATEMENTS", "FTS_TRIGGERS"]
 
 DDL_STATEMENTS = [

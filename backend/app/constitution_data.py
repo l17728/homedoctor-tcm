@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 NINE_CONSTITUTION_TYPES = [
     "平和质",
     "气虚质",

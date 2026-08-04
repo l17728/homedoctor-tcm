@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends
 
 from app.database import DbAdapter, get_db
