@@ -176,6 +176,19 @@ async def submit_feedback(
                 {"report_count": count, "reason": f"{count}个用户标记不准确"},
                 "pending_admin_review",
             )
+    elif body.rating == "helpful":
+        try:
+            from app.trust_engine import check_trust_upgrade
+            upgrade = await check_trust_upgrade(db, entity_id)
+            if upgrade["eligible"]:
+                from app.agent_tools import log_action
+                await log_action(
+                    db, "trust_upgrade", "feedback", "", entity_id,
+                    {"new_level": upgrade["new_level"], "reason": upgrade["reason"]},
+                    "upgraded",
+                )
+        except Exception:
+            pass
 
     return {"message": "反馈已提交", "rating": body.rating}
 

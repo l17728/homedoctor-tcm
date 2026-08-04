@@ -267,3 +267,94 @@ def _format_provenance(row: dict[str, Any]) -> dict[str, Any]:
         "verified_by": row.get("verified_by") or "",
         "verified_at": row.get("verified_at") or "",
     }
+
+
+UPGRADE_THRESHOLDS = {
+    LEVEL_B: {"min_helpful": 5, "max_negative": 0, "min_age_days": 7},
+    LEVEL_A: {"min_helpful": 10, "max_negative": 0, "min_age_days": 30},
+}
+
+
+async def check_trust_upgrade(db: DbAdapter, entity_id: str) -> dict[str, Any]:
+    """Check if an entity qualifies for a trust level upgrade based on feedback.
+
+    Returns {"eligible": bool, "new_level": str, "reason": str}.
+    """
+    current = await get_trust_level(db, entity_id)
+    if current not in (LEVEL_B, LEVEL_A):
+        return {"eligible": False, "new_level": current, "reason": "当前级别不支持自动升级"}
+
+    threshold = UPGRADE_THRESHOLDS.get(current)
+    if not threshold:
+        return {"eligible": False, "new_level": current, "reason": "无升级路径"}
+
+    helpful = await db.query_one(
+        "SELECT COUNT(*) AS c FROM knowledge_feedback WHERE entity_id = ? AND rating = 'helpful'",
+        (entity_id,),
+    )
+    helpful_count = helpful["c"] if helpful else 0
+
+    negative = await db.query_one(
+        "SELECT COUNT(*) AS c FROM knowledge_feedback WHERE entity_id = ? AND rating IN ('inaccurate','report')",
+        (entity_id,),
+    )
+    negative_count = negative["c"] if negative else 0
+
+    age_row = await db.query_one(
+        """SELECT julianday('now') - julianday(MIN(imported_at)) AS age_days
+           FROM knowledge_provenance WHERE entity_id = ?""",
+        (entity_id,),
+    )
+    age_days = age_row["age_days"] if age_row and age_row["age_days"] else 0
+
+    if helpful_count < threshold["min_helpful"]:
+        return {"eligible": False, "new_level": current,
+                "reason": f"需要{threshold['min_helpful']}个好评，当前{helpful_count}"}
+    if negative_count > threshold["max_negative"]:
+        return {"eligible": False, "new_level": current,
+                "reason": f"存在{negative_count}个差评/举报"}
+    if age_days < threshold["min_age_days"]:
+        return {"eligible": False, "new_level": current,
+                "reason": f"需要入库{threshold['min_age_days']}天，当前{int(age_days)}天"}
+
+    new_level = LEVEL_A if current == LEVEL_B else LEVEL_S
+    await update_trust_level(
+        db, entity_id, new_level,
+        reason=f"自动升级：{helpful_count}好评/{negative_count}差评/入库{int(age_days)}天",
+        verified_by="auto_upgrade",
+    )
+    logger.info("trust_upgrade: %s %s→%s (%d helpful, %d negative, %d days)",
+                entity_id, current, new_level, helpful_count, negative_count, int(age_days))
+    return {"eligible": True, "new_level": new_level,
+            "reason": f"满足升级条件：{helpful_count}好评/{negative_count}差评/入库{int(age_days)}天"}
+
+
+async def auto_upgrade_eligible_entities(db: DbAdapter) -> list[dict[str, Any]]:
+    """Scan all B/A-level entities and upgrade those meeting feedback thresholds.
+
+    Called periodically by the scheduler.
+    """
+    rows = await db.query(
+        """SELECT DISTINCT ke.id FROM knowledge_entities ke
+           JOIN knowledge_provenance kp ON kp.entity_id = ke.id
+           WHERE ke.status = 'active' AND kp.trust_level IN ('B', 'A')
+           AND kp.id = (
+               SELECT id FROM knowledge_provenance
+               WHERE entity_id = ke.id ORDER BY imported_at DESC LIMIT 1
+           )"""
+    )
+    upgraded: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            result = await check_trust_upgrade(db, row["id"])
+            if result["eligible"]:
+                upgraded.append({
+                    "entity_id": row["id"],
+                    "new_level": result["new_level"],
+                    "reason": result["reason"],
+                })
+        except Exception as exc:
+            logger.warning("trust_upgrade check failed for %s: %s", row.get("id"), exc)
+    if upgraded:
+        logger.info("trust_upgrade: %d entities upgraded", len(upgraded))
+    return upgraded
