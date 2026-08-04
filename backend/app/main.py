@@ -93,6 +93,12 @@ def create_app() -> FastAPI:
 
     import os
 
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
     _cors_origins = [
         "http://localhost:3000",
         "http://localhost:5173",
@@ -118,9 +124,9 @@ def create_app() -> FastAPI:
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(TenantMiddleware)
     app.add_middleware(CsrfMiddleware)
-    app.add_middleware(AuthMiddleware)
     from app.middleware.request_audit import RequestAuditMiddleware
     app.add_middleware(RequestAuditMiddleware)
+    app.add_middleware(AuthMiddleware)
 
     from app.routers import health, auth, herbs, formulas, medicines, medicine_ocr, ai_classify, safety, chat, daily_health, dashboard, reminders, constitution, profile, favorites, bookmarks, comparisons, seasonal_health, family_members, export, backup, account, triage, schemas, prescriptions, therapies, medication_plans, extractor, formulations, remote_assist, reports, voice, knowledge_import, knowledge_graph, knowledge_hub, classics, share_cards, health_logs, rag_search, unified_knowledge, personal_knowledge, medical_visits, model_registry, smart_search, index_management, knowledge_browse, p2_features, p3_features
 
