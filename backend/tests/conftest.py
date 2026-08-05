@@ -3,14 +3,23 @@
 from __future__ import annotations
 
 import os
-
 os.environ["HOMEDOCTOR_TESTING"] = "1"
 
 import pytest
 import pytest_asyncio
+
 from httpx import ASGITransport, AsyncClient
 
 from app.database import SqliteAdapter, init_db, seed_safety_rules, seed_test_data
+
+
+@pytest.fixture(autouse=True)
+def reset_agent_configs():
+    from app.tools.config import _AGENT_CONFIGS
+    original = {k: dict(v) for k, v in _AGENT_CONFIGS.items()}
+    yield
+    _AGENT_CONFIGS.clear()
+    _AGENT_CONFIGS.update(original)
 
 
 @pytest_asyncio.fixture

@@ -32,12 +32,16 @@ from app.agent_tools import (
 
 @pytest_asyncio.fixture
 async def cfg_db():
+    from app.tools.config import _AGENT_CONFIGS
+    original = {k: dict(v) for k, v in _AGENT_CONFIGS.items()}
     adapter = SqliteAdapter(":memory:")
     await adapter.connect()
     await init_db(adapter)
     await seed_safety_rules(adapter)
     await seed_test_data(adapter)
     yield adapter
+    _AGENT_CONFIGS.clear()
+    _AGENT_CONFIGS.update(original)
     await adapter.close()
 
 
