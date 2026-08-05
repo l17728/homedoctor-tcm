@@ -82,7 +82,7 @@ export default function MeridianAcupointPage() {
     return (
       <Row gutter={[16, 16]}>
         {meridians.map((m) => {
-          const props = m.properties as Record<string, unknown>;
+          const props = (m.properties ?? {}) as Record<string, unknown>;
           const cat = (m.category as string) || '正经';
           const code = (props.code as string) || '';
           const pointCount = (props.point_count as number) || 0;
@@ -135,7 +135,7 @@ export default function MeridianAcupointPage() {
       key: 'code',
       width: 80,
       render: (_: unknown, record: KnowledgeEntity) => {
-        const code = (record.properties as Record<string, unknown>)?.code as string;
+        const code = (record.properties as Record<string, unknown> | null)?.code as string;
         return code ? <Badge count={code} color="#eb2f96" /> : null;
       },
     },
@@ -224,10 +224,10 @@ export default function MeridianAcupointPage() {
   const renderDetail = () => {
     if (detailLoading) return <Skeleton active paragraph={{ rows: 10 }} />;
     if (!detail) return <Empty description="未找到穴位信息" />;
-    const props = detail.properties as Record<string, unknown>;
-    const functions = (props.functions as string[]) || [];
-    const indications = (props.indications as string[]) || [];
-    const groups = detail.groupedRelationships || {};
+    const props = (detail.properties ?? {}) as Record<string, unknown>;
+    const functions = Array.isArray(props.functions) ? props.functions as string[] : [];
+    const indications = Array.isArray(props.indications) ? props.indications as string[] : [];
+    const groups = detail.groupedRelationships ?? {};
 
     return (
       <div>
@@ -290,7 +290,7 @@ export default function MeridianAcupointPage() {
           <div>
             <Text strong>关联知识：</Text>
             {Object.entries(groups).map(([type, items]) => (
-              items.length > 0 && (
+              Array.isArray(items) && items.length > 0 && (
                 <div key={type} style={{ marginTop: 8 }}>
                   <Text type="secondary">{type}：</Text>
                   <Space wrap>

@@ -24,6 +24,7 @@ import {
   PictureOutlined,
   CloseOutlined,
 } from '@ant-design/icons';
+import ReactMarkdown from 'react-markdown';
 import {
   sendMessage,
   sendMessageStream,
@@ -396,7 +397,13 @@ export default function ChatPage() {
                     <span style={{ marginRight: 8 }}>
                       {msg.role === 'assistant' ? <RobotOutlined /> : <UserOutlined />}
                     </span>
-                    <Text style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</Text>
+                    {msg.role === 'assistant' && msg.content ? (
+                      <div className="chat-markdown">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <Text style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</Text>
+                    )}
                     {/* Enhancement 3 — typing indicator while streaming this turn */}
                     {streaming &&
                       msg.role === 'assistant' &&
@@ -640,6 +647,31 @@ export default function ChatPage() {
           0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
           30% { transform: translateY(-4px); opacity: 1; }
         }
+        .chat-markdown p { margin: 0 0 8px 0; line-height: 1.7; }
+        .chat-markdown p:last-child { margin-bottom: 0; }
+        .chat-markdown h1, .chat-markdown h2, .chat-markdown h3 {
+          font-size: 16px; margin: 12px 0 6px; font-weight: 600;
+        }
+        .chat-markdown ul, .chat-markdown ol {
+          padding-left: 20px; margin: 4px 0 8px;
+        }
+        .chat-markdown li { margin-bottom: 4px; line-height: 1.6; }
+        .chat-markdown strong { font-weight: 600; }
+        .chat-markdown code {
+          background: #f5f5f5; padding: 2px 6px; border-radius: 3px;
+          font-size: 0.9em; font-family: monospace;
+        }
+        .chat-markdown blockquote {
+          border-left: 3px solid #d9d9d9; padding-left: 12px;
+          margin: 8px 0; color: #666;
+        }
+        .chat-markdown table {
+          border-collapse: collapse; width: 100%; margin: 8px 0;
+        }
+        .chat-markdown th, .chat-markdown td {
+          border: 1px solid #d9d9d9; padding: 6px 10px; text-align: left;
+        }
+        .chat-markdown th { background: #fafafa; font-weight: 600; }
       `}</style>
     </div>
   );
