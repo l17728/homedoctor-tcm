@@ -2,18 +2,19 @@
 
 > **定位**：本文件是所有 AI Agent（Sisyphus、OpenCode、Claude Code 等）在"家庭医生"项目中工作的核心指令。
 > **权威源**：产品规格说明书 `/homedoctor/family-doctor-spec.md`（v2.2，3185 行，25 章）。
-> **参考项目**：`/fighting`（作战管理工具，生产验证：739 后端测试 + 185 E2E 测试 + 持续部署）。
 
 ---
 
 ## 0. 项目概况
 
-- **技术栈**：FastAPI (Python) + React SPA (TypeScript) + SQLite (SQLCipher) + Docker Compose
-- **前端**：React 18 + Ant Design 5 + Vite + react-router-dom v6
-- **后端**：FastAPI + aiosqlite（同步方案：better-sqlite3 的 Python 等价物）
+- **技术栈**：FastAPI (Python) + React SPA (TypeScript) + SQLite WAL (SQLCipher) + Docker Compose
+- **前端**：React 18 + Ant Design 5 + Vite + react-router-dom v6（35 页面，首屏 455KB gzip）
+- **后端**：FastAPI + aiosqlite（模块化：`app/tools/` 5子模块 + `app/db/` 5子模块）
+- **Agent系統**：8步知識管道 + 巡檢Agent(24h定時) + 信任分級SABC(自動升降級) + 多AI評審 + 記憶系統
+- **可觀測性**：4中間件日誌(auth/csrf/rate_limit/tenant) + RequestAuditMiddleware(全局追踪) + 118模塊logger
 - **部署**：Docker Compose，本地优先，无云端依赖
+- **测试**：1888 后端测试（84%+覆盖率）+ 37 E2E 测试文件
 - **目标用户**：银发用户 55-70 岁（王阿姨原型）+ 父母 30-45 岁（李芳/张伟原型）
-- **MVP**：12 周交付，200 味中药 + 80 首方剂 + 中西药交互安全检查
 
 ---
 
@@ -384,7 +385,39 @@ chore: 构建/配置
 |------|------|
 | `/homedoctor/family-doctor-spec.md` | 产品规格说明书 v2.2（3185 行，25 章） |
 | `/homedoctor/AGENTS.md` | 本文件 — AI Agent 开发指令 |
-| `/fighting/` | 参考项目（作战管理工具） |
-| `/fighting/AGENTS.md` | 参考项目 Agent 指令 |
-| `/fighting/CLAUDE.md` | 参考项目核心原则 |
-| `/fighting/.learnings/` | 参考项目学习记录 |
+| `/homedoctor/README.md` | 项目总览 + API 参考 + 统计 |
+| `/homedoctor/backend/README.md` | 后端架构 + Agent系统 + 测试 + CLI |
+| `/homedoctor/frontend/README.md` | 前端页面 + 构建 + 性能 + E2E |
+| `/homedoctor/docs/design-self-growing-knowledge-system.md` | 自成长知识系统设计（25章） |
+| `/homedoctor/docs/design-self-evolving-dual-agent-system.md` | 双Agent系统设计（9章） |
+| `/homedoctor/docs/design-distributed-knowledge-index.md` | 分布式知识索引设计 |
+| `/homedoctor/docs/SAFETY_DESIGN.md` | 安全引擎五层设计 |
+| `/homedoctor/docs/DEPLOYMENT.md` | 部署指南 |
+| `/homedoctor/docs/API_REFERENCE.md` | API 参考文档 |
+
+### 关键源文件索引
+
+| 文件 | 说明 |
+|------|------|
+| `backend/app/tools/pipeline.py` | 知识管道（提取→分析→入库→索引，433行） |
+| `backend/app/tools/review.py` | 多模型评审 + 冲突检测（158行） |
+| `backend/app/tools/entities.py` | 实体管理 + 关系引擎（262行） |
+| `backend/app/tools/config.py` | 配置持久化 + 提示词优化（227行） |
+| `backend/app/agent_tools.py` | log_action + re-export 层（87行） |
+| `backend/app/db/schema.py` | 45 张表 DDL + FTS5（679行） |
+| `backend/app/db/adapter.py` | DbAdapter + SqliteAdapter（209行） |
+| `backend/app/db/migrations.py` | 迁移 + init_db（109行） |
+| `backend/app/db/seeds.py` | 安全规则 + 种子数据（581行） |
+| `backend/app/database.py` | 薄 re-export 层（31行） |
+| `backend/app/knowledge_agent.py` | 8步管道 + 记忆回读 |
+| `backend/app/knowledge_feeder.py` | 巡检Agent |
+| `backend/app/agent_communication.py` | Agent对话 + 辩论自动执行 |
+| `backend/app/scheduler.py` | 24h asyncio 定时调度 |
+| `backend/app/trust_engine.py` | SABC信任 + 自动升降级 |
+| `backend/app/search_pipeline.py` | BM25(IDF) + 语义 + RRF融合 |
+| `backend/app/safety_engine.py` | 五层安全检查（批量优化） |
+| `backend/app/llm_unified.py` | 统一LLM调用（单模型+多模型评审） |
+| `backend/app/middleware/` | 4中间件 + 请求追踪（5文件） |
+| `frontend/src/App.tsx` | React.lazy 路由分块（35页面） |
+| `frontend/vite.config.ts` | manualChunks 函数化 vendor分块 |
+| `frontend/nginx.conf` | gzip压缩 + 静态资源缓存 |

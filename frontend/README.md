@@ -11,7 +11,7 @@ npm run build      # 生产构建 → dist/
 npm run preview    # 预览构建结果
 ```
 
-## 页面清单
+## 页面清单（35 页）
 
 | 路由 | 页面 | 说明 |
 |------|------|------|
@@ -22,11 +22,34 @@ npm run preview    # 预览构建结果
 | `/formulas` | FormulaList | 方剂列表 + 搜索 |
 | `/formulas/:id` | FormulaDetail | 方剂详情（组成/用法/安全检查） |
 | `/medicines` | MedicineList | 药箱 CRUD |
-| `/chat` | ChatPage | AI 问答（语音输入 + TTS 播报） |
+| `/chat` | ChatPage | AI 问答（语音输入 + TTS 播报 + 图谱上下文注入） |
 | `/reminders` | RemindersPage | 吃药提醒 CRUD + 今日时间轴 |
 | `/constitution` | ConstitutionPage | 体质自测（66 题问卷 + 评分） |
 | `/profile` | ProfilePage | 健康档案 |
 | `/settings` | SettingsPage | 设置（深色模式 + 长辈模式） |
+| `/safety-check` | SafetyCheckPage | 五层安全检查 |
+| `/formulation` | FormulationPage | 智能配伍引擎 |
+| `/knowledge-hub` | KnowledgeHubPage | 知识中枢 |
+| `/knowledge-browse` | KnowledgeBrowsePage | 知识浏览（wiki式 + 笔记 + 追加） |
+| `/admin` | AdminPage | 管理面板（7Tab: 概览/模型/索引/日志/巡检/记忆/对话） |
+| `/knowledge-graph` | KnowledgeGraphPage | 知识图谱可视化（AntV G6） |
+| `/classics` | ClassicsBookshelf | 经典书柜 |
+| `/classics/:id` | ClassicReader | 经典阅读器（批注 + AI问答） |
+| `/therapies` | TherapiesPage | 外治理疗（7类105条） |
+| `/meridians` | MeridianAcupointPage | 经络穴位浏览器 |
+| `/health-practice` | HealthPracticePage | 养生功法 |
+| `/medication-plans` | MedicationPlansPage | 用药套餐 |
+| `/medication-schedule` | MedicationSchedulePage | 智能服药排程 |
+| `/bookmarks` | BookmarksPage | 书签管理 |
+| `/comparison` | ComparisonPage | 中药对比 |
+| `/knowledge-import` | KnowledgeImportPage | 知识导入（PDF/Word/URL/OCR） |
+| `/reports` | ReportsPage | 报告体系（体质/趋势/就诊准备） |
+| `/health-log` | HealthLogPage | 每日健康打卡 |
+| `/remote-assist` | RemoteAssistPage | 子女远程协助 |
+| `/share-cards` | ShareCardsPage | 家庭分享卡 |
+| `/triage` | TriagePage | 儿童急症分诊 |
+| `/family-members` | FamilyMembersPage | 家庭成员管理 |
+| `/favorites` | FavoritesPage | 收藏夹 |
 
 ## 组件架构
 
@@ -106,34 +129,51 @@ ChatPage 集成 Web Speech API：
 
 ```bash
 npm run build
-# → dist/index.html
-# → dist/assets/index-[hash].js  (~1.3MB)
-# → dist/assets/index-[hash].css (~1.2KB)
-# 构建时间: ~7-9s
+# → dist/assets/index-[hash].js   (29KB gzip: 10KB) — 入口
+# → dist/assets/antd-vendor.js    (1.27MB gzip: 394KB) — Ant Design（1年缓存）
+# → dist/assets/g6-vendor.js      (1.41MB gzip: 408KB) — 图谱库（仅图谱页加载）
+# → dist/assets/react-vendor.js   (161KB gzip: 53KB)
+# → dist/assets/markdown-vendor.js(118KB gzip: 36KB)
+# → dist/assets/[PageName].js     (3-30KB each) — 路由级懒加载
+# 构建时间: ~15s
+# 首屏 gzip 传输量: 455KB（不含G6）
 ```
+
+### 性能优化
+
+| 优化 | 效果 |
+|------|------|
+| nginx gzip 压缩 | 所有 JS/CSS 传输时压缩 |
+| G6 vendor 分离 | 1.4MB 图谱库仅访问知识图谱页时加载 |
+| manualChunks 函数化 | rc-* 子包正确归入 antd-vendor |
+| React.lazy 路由分块 | 35 个页面各自独立 chunk |
+| 静态资源 1 年缓存 | vendor chunk 永久缓存（immutable） |
 
 生产 Docker 构建：`Dockerfile`（多阶段：node:22 build → nginx:alpine serve）
 
 ## E2E 测试
 
 ```bash
-npx playwright test                      # 全部 83 tests
+npx playwright test                      # 全部 37 test files
 npx playwright test e2e/auth             # 认证
 npx playwright test e2e/reminders        # 提醒
 npx playwright test e2e/constitution     # 体质
 npx playwright test e2e/profile-elderly  # 档案+长辈模式
+npx playwright test e2e/admin-knowledge-agent  # 管理页+知识浏览
 npx playwright test --ui                 # 交互模式
 ```
 
-| 测试文件 | 数量 | 覆盖 |
-|---------|------|------|
-| auth.spec.ts | ~10 | 登录/注册/退出/AuthGuard |
-| dashboard.spec.ts | ~8 | 首页/统计/养生卡 |
-| herbs.spec.ts | ~10 | 列表/搜索/详情导航 |
-| medicines.spec.ts | ~10 | CRUD 全生命周期 |
-| reminders.spec.ts | 13 | 导航/创建/今日/toggle/删除/AuthGuard |
-| constitution.spec.ts | 11 | 介绍页/问卷流程/分页/结果/AuthGuard |
-| profile-elderly.spec.ts | 22 | 档案CRUD/体质信息/长辈模式切换/3-Tab导航 |
+| 测试文件 | 覆盖 |
+|---------|------|
+| auth.spec.ts | 登录/注册/退出/AuthGuard |
+| dashboard.spec.ts | 首页/统计/养生卡 |
+| herbs.spec.ts | 列表/搜索/详情导航 |
+| medicines.spec.ts | CRUD 全生命周期 |
+| reminders.spec.ts | 导航/创建/今日/toggle/删除 |
+| constitution.spec.ts | 问卷流程/分页/结果 |
+| profile-elderly.spec.ts | 档案CRUD/长辈模式/3-Tab导航 |
+| admin-knowledge-agent.spec.ts | AdminPage/KnowledgeBrowse/KnowledgeHub |
+| personas/*.spec.ts (10个) | 多角色用户旅程（老人/父母/医生/学生等） |
 
 ## 技术约束
 
