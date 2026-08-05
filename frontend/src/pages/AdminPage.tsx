@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   DatabaseOutlined, ReloadOutlined, DeleteOutlined,
-  PlusOutlined, ScanOutlined,
+  PlusOutlined, ScanOutlined, ThunderboltOutlined,
 } from '@ant-design/icons';
 import { request } from '../api/client';
 
@@ -38,6 +38,7 @@ export default function AdminPage() {
       </Title>
       <Tabs activeKey={tab} onChange={setTab} items={[
         { key: 'overview', label: '概览', children: <OverviewTab /> },
+        { key: 'kscan', label: '知识巡检', children: <KnowledgeScanTab /> },
         { key: 'models', label: 'AI模型管理', children: <ModelsTab /> },
         { key: 'indexes', label: '索引管理', children: <IndexTab /> },
         { key: 'logs', label: 'Agent日志', children: <LogsTab /> },
@@ -386,6 +387,145 @@ function ConversationsTab() {
           ))
         }
       </div>
+    </div>
+  );
+}
+
+function KnowledgeScanTab() {
+  const [loading, setLoading] = useState(false);
+  const [maxFills, setMaxFills] = useState(20);
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
+
+  const handleScan = async (fill: boolean) => {
+    setLoading(true);
+    setResult(null);
+    try {
+      const data = await request<Record<string, unknown>>('/api/admin/knowledge/scan-all', {
+        method: 'POST',
+        body: JSON.stringify({ max_fills: maxFills, scan_only: !fill }),
+      });
+      setResult(data);
+      const filled = (data.filled_count as number) || 0;
+      const gaps = (data.total_gaps_found as number) || 0;
+      message.success(fill
+        ? `巡检完成：填补 ${filled} 条，发现 ${gaps} 个缺口`
+        : `扫描完成：发现 ${gaps} 个知识缺口`);
+    } catch {
+      message.error('巡检失败，请检查AI模型配置');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const typeSummary = (result?.type_summary ?? {}) as Record<string, { total: number; gaps: number; avg_completeness: number }>;
+  const filled = (result?.filled ?? []) as Array<{ title: string; type: string; filled_fields: string[] }>;
+  const skippedCount = (result?.skipped_count as number) || 0;
+  const errorCount = (result?.error_count as number) || 0;
+
+  return (
+    <div>
+      <Card style={{ marginBottom: 16 }}>
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <div>
+            <Title level={5} style={{ marginBottom: 4 }}>
+              <ThunderboltOutlined /> 一键知识巡检
+            </Title>
+            <Text type="secondary">
+              扫描所有栏目（中药/穴位/经络/方剂/理疗/功法），自动发现并填补缺失内容
+            </Text>
+          </div>
+
+          <Space wrap>
+            <Button
+              type="primary"
+              size="large"
+              icon={<ThunderboltOutlined />}
+              loading={loading}
+              onClick={() => handleScan(true)}
+            >
+              一键巡检并填补
+            </Button>
+            <Button
+              size="large"
+              icon={<ScanOutlined />}
+              loading={loading}
+              onClick={() => handleScan(false)}
+            >
+              仅扫描（不填补）
+            </Button>
+            <Text>填补上限：</Text>
+            <Select
+              value={maxFills}
+              onChange={setMaxFills}
+              options={[
+                { value: 10, label: '10条' },
+                { value: 20, label: '20条' },
+                { value: 50, label: '50条' },
+                { value: 100, label: '100条' },
+              ]}
+              style={{ width: 80 }}
+            />
+          </Space>
+
+          {loading && (
+            <div style={{ textAlign: 'center', padding: 20 }}>
+              <Spin tip="正在巡检知识库，请耐心等待..." />
+            </div>
+          )}
+        </Space>
+      </Card>
+
+      {result && !loading && (
+        <>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={6}>
+              <Card><Statistic title="发现缺口" value={Number(result.total_gaps_found || 0)} /></Card>
+            </Col>
+            <Col span={6}>
+              <Card><Statistic title="已填补" value={Number(result.filled_count || 0)} valueStyle={{ color: '#52c41a' }} /></Card>
+            </Col>
+            <Col span={6}>
+              <Card><Statistic title="跳过" value={skippedCount} valueStyle={{ color: '#faad14' }} /></Card>
+            </Col>
+            <Col span={6}>
+              <Card><Statistic title="失败" value={errorCount} valueStyle={{ color: '#ff4d4f' }} /></Card>
+            </Col>
+          </Row>
+
+          {Object.keys(typeSummary).length > 0 && (
+            <Card title="各栏目完整度" size="small" style={{ marginBottom: 16 }}>
+              <Table
+                dataSource={Object.entries(typeSummary).map(([type, s]) => ({ key: type, type, ...s }))}
+                columns={[
+                  { title: '栏目', dataIndex: 'type', key: 'type', render: (t: string) => <Tag>{t}</Tag> },
+                  { title: '总数', dataIndex: 'total', key: 'total' },
+                  { title: '缺口数', dataIndex: 'gaps', key: 'gaps', render: (v: number) => v > 0 ? <Text type="danger">{v}</Text> : v },
+                  { title: '平均完整度', dataIndex: 'avg_completeness', key: 'avg',
+                    render: (v: number) => <Text style={{ color: v >= 80 ? '#52c41a' : v >= 50 ? '#faad14' : '#ff4d4f' }}>{v}%</Text> },
+                ]}
+                pagination={false}
+                size="small"
+              />
+            </Card>
+          )}
+
+          {filled.length > 0 && (
+            <Card title={`已填补详情（${filled.length}条）`} size="small">
+              <Table
+                dataSource={filled.map((f, i) => ({ key: i, ...f }))}
+                columns={[
+                  { title: '标题', dataIndex: 'title', key: 'title', render: (t: string) => <Text strong>{t}</Text> },
+                  { title: '类型', dataIndex: 'type', key: 'type', render: (t: string) => <Tag>{t}</Tag> },
+                  { title: '填补字段', dataIndex: 'filled_fields', key: 'fields',
+                    render: (fields: string[]) => <Space wrap>{fields.map((f) => <Tag key={f} color="green">{f}</Tag>)}</Space> },
+                ]}
+                pagination={{ pageSize: 10 }}
+                size="small"
+              />
+            </Card>
+          )}
+        </>
+      )}
     </div>
   );
 }

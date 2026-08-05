@@ -290,3 +290,29 @@ async def optimize_agent_prompt(
     from app.agent_tools import tool_optimize_prompt
     suggestions = await tool_optimize_prompt(db, agent_name, current_prompt)
     return {"suggestions": suggestions}
+
+
+@router.post("/admin/knowledge/scan-all")
+async def comprehensive_knowledge_scan(
+    body: dict[str, Any] | None = None,
+    db: DbAdapter = Depends(get_db),
+    _: dict = Depends(require_admin),
+) -> dict[str, Any]:
+    """一键知识巡检 — 扫描所有栏目的知识缺失，自动填补。
+
+    Body params (all optional):
+      max_fills: int = 50  — 最多填补多少条
+      entity_types: list[str] = None  — 限定扫描的类型
+      scan_only: bool = False  — 只扫描不填补
+    """
+    body = body or {}
+    max_fills = body.get("max_fills", 50)
+    entity_types = body.get("entity_types")
+    scan_only = body.get("scan_only", False)
+
+    if scan_only:
+        from app.knowledge_gap_scanner import scan_all_gaps
+        return await scan_all_gaps(db, entity_types=entity_types)
+
+    from app.knowledge_gap_scanner import run_comprehensive_scan
+    return await run_comprehensive_scan(db, max_fills=max_fills, entity_types=entity_types)
