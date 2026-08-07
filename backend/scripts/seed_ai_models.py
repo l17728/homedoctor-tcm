@@ -11,12 +11,12 @@ API_KEY = "URpUJXRfNpfO5OHmF-zalcvvfcAxGRvCl4FYfwdIeklNawnXuCVdzhQ0q_xzQR4Huo-Zq
 ENDPOINT = "https://api.modelarts-maas.com/openai/v1/chat/completions"
 
 MODELS = [
+    {"id": "model-glm-5", "name": "智谱GLM-5.2", "provider": "智谱",
+     "model_id": "GLM-5", "capabilities": ["text"],
+     "max_tokens": 4096, "is_default": 1},
     {"id": "model-kimi-k2", "name": "Kimi-K2.6", "provider": "huawei_cloud",
      "model_id": "Kimi-K2.6", "capabilities": ["text", "vision"],
-     "max_tokens": 8192, "is_default": 1},
-    {"id": "model-glm-5", "name": "GLM-5", "provider": "huawei_cloud",
-     "model_id": "GLM-5", "capabilities": ["text"],
-     "max_tokens": 4096, "is_default": 0},
+     "max_tokens": 8192, "is_default": 0},
     {"id": "model-qwen3-235b", "name": "Qwen3-235B", "provider": "huawei_cloud",
      "model_id": "qwen3-235b-a22b", "capabilities": ["text"],
      "max_tokens": 4096, "is_default": 0},
