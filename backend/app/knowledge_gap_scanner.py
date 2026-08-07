@@ -12,6 +12,7 @@ Key design principles:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -307,17 +308,14 @@ async def fill_entity_gap(
     missing_fields: list[str],
     entity_type: str,
 ) -> dict[str, Any]:
-    """Fill a single entity's missing fields using LLM (+ optional web search).
+    """Fill a single entity's missing fields using LLM.
 
-    Returns {"entity_id": str, "filled_fields": [...], "skipped": bool, "reason": str}.
+    Skips web search — LLM training data covers TCM knowledge well enough.
     """
     entity_id = entity["entity_id"]
     title = entity["title"]
 
-    search_query = _build_search_query(title, missing_fields, entity_type)
-    web_context = await _try_web_search(search_query)
-
-    prompt = _build_llm_prompt(title, missing_fields, entity_type, web_context)
+    prompt = _build_llm_prompt(title, missing_fields, entity_type)
 
     try:
         from app.llm_unified import llm_chat
@@ -401,16 +399,21 @@ async def run_comprehensive_scan(
     skipped: list[dict[str, Any]] = []
     errors: list[str] = []
 
-    for i, gap in enumerate(gaps):
-        try:
-            result = await fill_entity_gap(db, gap, gap["missing_fields"], gap["entity_type"])
-            if result.get("skipped"):
+    batch_size = 3
+    for i in range(0, len(gaps), batch_size):
+        batch = gaps[i:i + batch_size]
+        tasks = [
+            fill_entity_gap(db, gap, gap["missing_fields"], gap["entity_type"])
+            for gap in batch
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for gap, result in zip(batch, results):
+            if isinstance(result, Exception):
+                errors.append(f"{gap['title']}: {str(result)[:60]}")
+            elif result.get("skipped"):
                 skipped.append(result)
             else:
                 filled.append(result)
-        except Exception as exc:
-            errors.append(f"{gap['title']}: {str(exc)[:60]}")
-            logger.warning("gap_fill error for %s: %s", gap.get("title"), exc)
 
     summary = {
         "scanned_types": list(scan_result["type_summary"].keys()),
