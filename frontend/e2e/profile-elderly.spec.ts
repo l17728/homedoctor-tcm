@@ -213,8 +213,11 @@ test.describe('Elderly Mode — Disable', () => {
     // Enable elderly mode
     await page.goto('/settings');
     let elderlySwitch = page.locator('.ant-form-item').filter({ hasText: '长辈模式' }).locator('.ant-switch');
-    await elderlySwitch.click();
-    await page.getByRole('button', { name: /确定切换/ }).click();
+    const alreadyEnabled = await elderlySwitch.getAttribute('aria-checked') === 'true';
+    if (!alreadyEnabled) {
+      await elderlySwitch.click();
+      await page.getByRole('button', { name: /确定切换/ }).click();
+    }
 
     // Verify elderly mode is active
     await expect(page.locator('body')).toHaveClass(/elderly-mode/);

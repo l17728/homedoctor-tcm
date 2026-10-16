@@ -247,7 +247,8 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
 
     // Use current time + 1 hour so the slot shows as "待服" not "漏服"
     // (backend marks slots >2h past as "漏服")
-    const future = new Date(Date.now() + 60 * 60 * 1000);
+    const cstNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
+    const future = new Date(cstNow.getTime() + 60 * 60 * 1000);
     await fillTimeRangePicker(page, drawer,
       String(future.getHours()).padStart(2, '0'),
       String(future.getMinutes()).padStart(2, '0'),
