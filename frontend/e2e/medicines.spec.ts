@@ -99,8 +99,8 @@ test.describe('Medicine CRUD — Create', () => {
     const medicineDrawer = page.locator('.ant-drawer:visible').last();
     await expect(medicineDrawer).toBeVisible();
     await medicineDrawer.getByRole('textbox', { name: '条形码' }).fill('6901234567892');
-    await page.getByRole('button', { name: '校验' }).click();
-    await expect(page.getByText(/条形码校验通过/)).toBeVisible();
+    await page.getByRole('button', { name: chineseText('校验') }).click();
+    await expect(page.getByText(/校验通过/)).toBeVisible();
   });
 
   test('should add a new medicine via drawer form', async ({ page }) => {

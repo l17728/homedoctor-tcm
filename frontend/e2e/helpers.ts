@@ -94,10 +94,10 @@ export async function register(
 ): Promise<void> {
   await page.goto('/login');
   // Switch to register tab (AntD Tabs component)
-  await page.getByRole('tab', { name: chineseText('注册') }).click();
-  await page.waitForTimeout(300);
+  await page.getByRole('tab', { name: chineseText('注册') }).dispatchEvent('click');
   // Scope to active tab pane — AntD keeps both login/register forms in DOM
   const activePane = page.locator('.ant-tabs-tabpane-active');
+  await expect(activePane.getByPlaceholder('确认密码')).toBeVisible();
   await activePane.getByPlaceholder('用户名').fill(username);
   await activePane.getByPlaceholder('密码', { exact: true }).fill(password);
   await activePane.getByPlaceholder('确认密码').fill(password);
