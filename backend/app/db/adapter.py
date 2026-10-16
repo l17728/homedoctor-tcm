@@ -151,6 +151,15 @@ def _try_enable_sqlcipher() -> bool:
 _SQLCIPHER_ACTIVE = _try_enable_sqlcipher()
 
 
+def _sqlcipher_dict_row(cursor: Any, row: tuple[Any, ...]) -> dict[str, Any]:
+    """Build mapping rows without sqlite3.Row's stdlib cursor type check.
+
+    ``aiosqlite.Row`` is backed by stdlib ``sqlite3.Row`` and rejects cursor
+    objects from pysqlcipher3. The adapter API exposes dictionaries anyway.
+    """
+    return {column[0]: value for column, value in zip(cursor.description or (), row)}
+
+
 def _pragma_key_sql(key: str) -> str:
     """Build a safe ``PRAGMA key = '...'`` statement for SQLCipher.
 
@@ -193,7 +202,7 @@ class SqliteAdapter(DbAdapter):
 
     async def connect(self) -> None:
         self._conn = await aiosqlite.connect(self.db_path)
-        self._conn.row_factory = aiosqlite.Row
+        self._conn.row_factory = _sqlcipher_dict_row if _SQLCIPHER_ACTIVE else aiosqlite.Row
 
         if (
             self._encryption_key

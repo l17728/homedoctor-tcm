@@ -124,6 +124,7 @@ jobs:
 
       - name: Upload Playwright report and failure artifacts
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: playwright-results

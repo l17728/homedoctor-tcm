@@ -38,6 +38,9 @@ def main() -> None:
     for script in SCRIPTS:
         print(f"[e2e] seeding {script}", flush=True)
         command = [sys.executable, str(scripts_dir / script)]
+        if script == "seed_herbs_batch2.py" and database_url:
+            # Batch 2 predates HOMEDOCTOR_DATABASE_URL and only accepts --db.
+            command.extend(["--db", database_url])
         if script == "seed_formulas.py" and database_url:
             command.append(database_url)
         subprocess.run(command, check=True, env=env)
