@@ -96,7 +96,7 @@ test.describe('Medicine CRUD — Create', () => {
     await expect(scanner.getByText(/当前浏览器不支持相机条码识别/)).toBeVisible();
     await scanner.getByRole('button', { name: '关闭相机并返回' }).click();
 
-    await page.getByLabel('条形码').fill('6901234567892');
+    await page.locator('.ant-drawer').getByLabel('条形码').fill('6901234567892');
     await page.getByRole('button', { name: '校验' }).click();
     await expect(page.getByText(/条形码校验通过/)).toBeVisible();
   });
