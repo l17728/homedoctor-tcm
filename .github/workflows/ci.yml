@@ -1,1 +1,177 @@
+name: CI
 
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      HOMEDOCTOR_SECRET_KEY: ci-only-secret-key-not-for-production
+      HOMEDOCTOR_ALLOW_INSECURE_SECRET: "1"
+      HOMEDOCTOR_DATABASE_URL: /tmp/homedoctor-ci-tests.db
+      HOMEDOCTOR_TESTING: "1"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/constraints.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -c constraints.txt -r requirements.txt
+
+      - name: Run backend test suite
+        run: python -m pytest tests -q --basetemp "${{ runner.temp }}/homedoctor-pytest"
+
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+  e2e:
+    name: End-to-end integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      CI: "true"
+      HOMEDOCTOR_SECRET_KEY: ci-only-secret-key-not-for-production
+      HOMEDOCTOR_ALLOW_INSECURE_SECRET: "1"
+      HOMEDOCTOR_DATABASE_URL: /tmp/homedoctor-ci-e2e.db
+      HOMEDOCTOR_LOG_DIR: /tmp/homedoctor-e2e-logs
+      HOMEDOCTOR_TESTING: "1"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/constraints.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install -c constraints.txt -r requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend for integration tests
+        run: npm run build
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run end-to-end suite
+        run: npm run test:e2e
+
+      - name: Upload Playwright report and failure artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  docker-smoke:
+    name: Docker image and encrypted database bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -t homedoctor-ci backend
+
+      - name: Start encrypted instance and verify complete seed
+        shell: bash
+        run: |
+          set -eu
+          docker run -d --name homedoctor-ci \
+            -p 127.0.0.1:18743:8000 \
+            -e HOMEDOCTOR_DB_ENCRYPTION_KEY=ci-only-sqlcipher-key \
+            -e HOMEDOCTOR_SECRET_KEY=ci-only-secret-key-not-for-production \
+            -e HOMEDOCTOR_ALLOW_INSECURE_SECRET=1 \
+            homedoctor-ci
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent http://127.0.0.1:18743/api/health >/dev/null; then
+              docker exec homedoctor-ci test -f /app/data/.homedoctor-seed-complete
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' homedoctor-ci)" != true ]; then
+              docker logs homedoctor-ci
+              exit 1
+            fi
+            sleep 5
+          done
+          docker logs homedoctor-ci
+          exit 1
+
+      - name: Show test container logs
+        if: failure()
+        run: docker logs homedoctor-ci 2>/dev/null || true
+
+      - name: Remove test container
+        if: always()
+        run: docker rm -f homedoctor-ci || true
