@@ -151,13 +151,24 @@ def _try_enable_sqlcipher() -> bool:
 _SQLCIPHER_ACTIVE = _try_enable_sqlcipher()
 
 
+class _SqlcipherRow(dict[str, Any]):
+    """Mapping row that also preserves sqlite.Row's positional indexing."""
+
+    def __getitem__(self, key: Any) -> Any:
+        if isinstance(key, int):
+            return tuple(self.values())[key]
+        return super().__getitem__(key)
+
+
 def _sqlcipher_dict_row(cursor: Any, row: tuple[Any, ...]) -> dict[str, Any]:
     """Build mapping rows without sqlite3.Row's stdlib cursor type check.
 
     ``aiosqlite.Row`` is backed by stdlib ``sqlite3.Row`` and rejects cursor
     objects from pysqlcipher3. The adapter API exposes dictionaries anyway.
     """
-    return {column[0]: value for column, value in zip(cursor.description or (), row)}
+    return _SqlcipherRow(
+        (column[0], value) for column, value in zip(cursor.description or (), row)
+    )
 
 
 def _pragma_key_sql(key: str) -> str:

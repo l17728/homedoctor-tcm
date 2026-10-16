@@ -19,14 +19,19 @@ def main() -> None:
 
     # This import applies the app's SQLCipher compatibility shim to stdlib
     # sqlite3 users as well as initializing SqliteAdapter for adapter seeds.
-    from app.db.adapter import _SQLCIPHER_ACTIVE, _pragma_key_sql
+    from app.db.adapter import _SQLCIPHER_ACTIVE, _pragma_key_sql, _sqlcipher_dict_row
 
     if os.environ.get("HOMEDOCTOR_DB_ENCRYPTION_KEY") and not _SQLCIPHER_ACTIVE:
         raise SystemExit("SQLCipher is required to seed an encrypted database")
 
     key = os.environ.get("HOMEDOCTOR_DB_ENCRYPTION_KEY")
     if key:
+        import aiosqlite
         import sqlite3
+
+        # Some legacy async seeders set aiosqlite.Row directly. The stdlib
+        # Row factory rejects SQLCipher cursors, so preserve both access styles.
+        aiosqlite.Row = _sqlcipher_dict_row
 
         raw_connect = sqlite3.connect
 

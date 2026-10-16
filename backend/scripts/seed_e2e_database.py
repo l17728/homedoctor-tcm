@@ -41,6 +41,8 @@ def main() -> None:
         if script == "seed_herbs_batch2.py" and database_url:
             # Batch 2 predates HOMEDOCTOR_DATABASE_URL and only accepts --db.
             command.extend(["--db", database_url])
+        if script == "seed_modifications.py" and database_url:
+            command.append(database_url)
         if script == "seed_formulas.py" and database_url:
             command.append(database_url)
         subprocess.run(command, check=True, env=env)
