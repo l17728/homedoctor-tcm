@@ -662,7 +662,7 @@ export default function MedicineList() {
           <Form.Item label="条形码" extra="可手动输入或相机扫码；校验通过后随药品信息保存">
             <Space.Compact style={{ width: '100%' }}>
               <Form.Item name="barcode" noStyle>
-                <Input />
+                <Input aria-label="条形码" />
               </Form.Item>
               <Button
                 icon={<CameraOutlined />}
