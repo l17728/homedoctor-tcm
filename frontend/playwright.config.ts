@@ -35,6 +35,7 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${webPort}`,
     locale: 'zh-CN',
+    timezoneId: 'Asia/Shanghai',
     viewport: { width: 1280, height: 720 },
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',

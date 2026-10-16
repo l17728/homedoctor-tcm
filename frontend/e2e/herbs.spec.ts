@@ -81,9 +81,12 @@ test.describe('Herb List — Search & Filter', () => {
 
     // Results should mention the searched herb (if data exists)
     // Or show empty state if no match
-    const hasResults = await page.getByRole('row', { name: /黄芪/ }).isVisible().catch(() => false);
-    const hasEmpty = await page.locator('.ant-empty').isVisible().catch(() => false);
-    expect(hasResults || hasEmpty).toBeTruthy();
+    const hasResults = page.getByRole('row', { name: /黄芪/ });
+    const hasEmpty = page.locator('.ant-empty');
+    await expect.poll(async () => (
+      await hasResults.isVisible().catch(() => false)
+      || await hasEmpty.isVisible().catch(() => false)
+    )).toBeTruthy();
   });
 
   test('should clear search results when search is emptied', async ({

@@ -133,7 +133,7 @@ test.describe('Reminders — Toggle & Delete', () => {
     await page.getByRole('button', { name: chineseText('确定') }).click();
 
     // Reminder removed
-    await expect(page.getByText('待删除提醒')).not.toBeVisible();
+    await expect(page.getByRole('row', { name: /待删除提醒/ })).toHaveCount(0);
   });
 });
 
