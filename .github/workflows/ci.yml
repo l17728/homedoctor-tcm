@@ -123,7 +123,7 @@ jobs:
         run: npm run test:e2e
 
       - name: Upload Playwright report and failure artifacts
-        if: always()
+        if: failure()
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -132,7 +132,7 @@ jobs:
             frontend/playwright-report/
             frontend/test-results/
           if-no-files-found: ignore
-          retention-days: 14
+          retention-days: 3
 
   docker-smoke:
     name: Docker image and encrypted database bootstrap
