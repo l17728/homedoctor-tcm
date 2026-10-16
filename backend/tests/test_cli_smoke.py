@@ -23,6 +23,222 @@ from typer.testing import CliRunner
 
 
 METHOD_BY_HELPER = {"get": "GET", "post": "POST", "put": "PUT", "delete": "DELETE"}
+# Exact OpenAPI operations intentionally exposed through api:request only.
+# Each entry is explicit: newly-added routes fail the audit until curated here or
+# given a domain command. Reasons explain why a dedicated CLI is deferred.
+GENERIC_ONLY_ROUTE_EXCEPTIONS: dict[str, set[tuple[str, str]]] = {
+    # Privileged maintenance and agent administration lacks a safe, curated operator workflow.
+    "admin": {
+    ("DELETE", "/api/admin/agent/memories/{}"),
+    ("DELETE", "/api/admin/deletion-exempt/{}"),
+    ("GET", "/api/admin/agent/config"),
+    ("GET", "/api/admin/agent/conversations"),
+    ("GET", "/api/admin/agent/memories"),
+    ("GET", "/api/admin/deletion-exemptions"),
+    ("GET", "/api/admin/deletion-recommendations"),
+    ("GET", "/api/admin/freshness-stats"),
+    ("GET", "/api/admin/index-stats"),
+    ("GET", "/api/admin/url-health-stats"),
+    ("GET", "/api/agent/logs"),
+    ("GET", "/api/agent/logs/{}"),
+    ("POST", "/api/admin/agent/memories"),
+    ("POST", "/api/admin/agent/optimize-prompt"),
+    ("POST", "/api/admin/community-consensus-scan"),
+    ("POST", "/api/admin/deletion-execute"),
+    ("POST", "/api/admin/deletion-exempt"),
+    ("POST", "/api/admin/feeder/scan"),
+    ("POST", "/api/admin/freshness-check"),
+    ("POST", "/api/admin/knowledge/scan-all"),
+    ("POST", "/api/admin/translate-check"),
+    ("POST", "/api/admin/url-health-check"),
+    ("POST", "/api/agent/process"),
+    ("PUT", "/api/admin/agent/config"),
+    ("PUT", "/api/agent/logs/{}/review"),
+    },
+    # Knowledge graph, index, curation, and ingestion workflows have specialized payloads and side effects.
+    "knowledge": {
+    ("GET", "/api/kg/graph"),
+    ("GET", "/api/kg/node/{}"),
+    ("GET", "/api/kg/snapshot/{}/{}"),
+    ("GET", "/api/knowledge-hub/entities/{}"),
+    ("GET", "/api/knowledge-hub/entities/{}/relationships"),
+    ("GET", "/api/knowledge-hub/popular"),
+    ("GET", "/api/knowledge-hub/recent"),
+    ("GET", "/api/knowledge-hub/relationship-types"),
+    ("GET", "/api/knowledge-hub/search"),
+    ("GET", "/api/knowledge-hub/types"),
+    ("GET", "/api/knowledge/acupoints"),
+    ("GET", "/api/knowledge/acupoints/{}"),
+    ("GET", "/api/knowledge/browse"),
+    ("GET", "/api/knowledge/categories"),
+    ("GET", "/api/knowledge/formulas"),
+    ("GET", "/api/knowledge/formulas/{}"),
+    ("GET", "/api/knowledge/graph/{}"),
+    ("GET", "/api/knowledge/herbs"),
+    ("GET", "/api/knowledge/herbs/{}"),
+    ("GET", "/api/knowledge/meridians"),
+    ("GET", "/api/knowledge/meridians/{}"),
+    ("GET", "/api/knowledge/search"),
+    ("GET", "/api/knowledge/symptoms"),
+    ("GET", "/api/knowledge/therapies"),
+    ("GET", "/api/knowledge/therapies/{}"),
+    ("GET", "/api/knowledge/{}/append/history"),
+    ("GET", "/api/knowledge/{}/feedback"),
+    ("GET", "/api/knowledge/{}/note"),
+    ("GET", "/api/rag/index/status"),
+    ("GET", "/api/rag/intent"),
+    ("GET", "/api/rag/search"),
+    ("POST", "/api/ai-classify/auto-tag"),
+    ("POST", "/api/ai-classify/duplicates"),
+    ("POST", "/api/ai-classify/merge"),
+    ("POST", "/api/ai-classify/suggest"),
+    ("POST", "/api/extractor/extract"),
+    ("POST", "/api/kg/rebuild"),
+    ("POST", "/api/knowledge-hub/entities/{}/relationships"),
+    ("POST", "/api/knowledge-hub/entities/{}/view"),
+    ("POST", "/api/knowledge-hub/import"),
+    ("POST", "/api/knowledge-hub/import-file"),
+    ("POST", "/api/knowledge-hub/import-video-url"),
+    ("POST", "/api/knowledge/{}/append"),
+    ("POST", "/api/knowledge/{}/feedback"),
+    ("POST", "/api/rag/index/rebuild"),
+    ("POST", "/api/smart-search/expand"),
+    ("POST", "/api/smart-search/import"),
+    ("PUT", "/api/knowledge-hub/entities/{}"),
+    ("PUT", "/api/knowledge/{}/note"),
+    },
+    # Less common content annotation and collection workflows remain available through the generic HTTP command.
+    "content": {
+    ("DELETE", "/api/bookmarks/collections/{}"),
+    ("DELETE", "/api/bookmarks/collections/{}/items/{}"),
+    ("DELETE", "/api/bookmarks/{}"),
+    ("DELETE", "/api/classics/annotations/{}"),
+    ("DELETE", "/api/share-cards/{}"),
+    ("GET", "/api/bookmarks/collections"),
+    ("GET", "/api/bookmarks/collections/{}"),
+    ("GET", "/api/classics/{}/chapters/{}"),
+    ("GET", "/api/classics/{}/chapters/{}/annotations"),
+    ("GET", "/api/classics/{}/study-notes"),
+    ("GET", "/api/share-cards/monthly-report/latest"),
+    ("POST", "/api/bookmarks/check"),
+    ("POST", "/api/bookmarks/collections"),
+    ("POST", "/api/bookmarks/collections/{}/items"),
+    ("POST", "/api/classics/{}/chapters/{}/annotations"),
+    ("POST", "/api/classics/{}/chapters/{}/ask"),
+    ("POST", "/api/classics/{}/chapters/{}/translate"),
+    ("POST", "/api/classics/{}/summarize"),
+    ("POST", "/api/favorites/check"),
+    ("POST", "/api/share-cards/generate"),
+    ("POST", "/api/share-cards/monthly-report"),
+    ("PUT", "/api/bookmarks/{}"),
+    ("PUT", "/api/classics/annotations/{}"),
+    ("PUT", "/api/classics/{}/chapters/{}/study-notes"),
+    ("PUT", "/api/classics/{}/chapters/{}/translation"),
+    ("PUT", "/api/favorites/{}"),
+    },
+    # Device, upload, push, and streaming workflows need specialized interaction or payload handling.
+    "media": {
+    ("DELETE", "/api/push/subscriptions"),
+    ("GET", "/api/push/config"),
+    ("POST", "/api/chat/image"),
+    ("POST", "/api/chat/stream"),
+    ("POST", "/api/knowledge-import/upload"),
+    ("POST", "/api/knowledge-import/upload-batch"),
+    ("POST", "/api/medicines/barcode-lookup"),
+    ("POST", "/api/medicines/ocr-recognize"),
+    ("POST", "/api/push/subscriptions"),
+    ("POST", "/api/voice/qa"),
+    ("POST", "/api/voice/synthesize"),
+    ("POST", "/api/voice/transcribe"),
+    },
+    # Specialized clinical/reporting workflows have domain-specific payloads and safety implications.
+    "clinical": {
+    ("DELETE", "/api/health-logs/{}"),
+    ("DELETE", "/api/medication-plans/{}"),
+    ("DELETE", "/api/visits/{}"),
+    ("GET", "/api/comparisons/herbs/{}/{}"),
+    ("GET", "/api/health-logs/{}"),
+    ("GET", "/api/medicines/alerts/expiring"),
+    ("GET", "/api/medicines/quality-alerts"),
+    ("GET", "/api/medicines/{}/quality"),
+    ("GET", "/api/reports/constitution"),
+    ("GET", "/api/reports/pre-visit"),
+    ("POST", "/api/comparisons/formulas"),
+    ("POST", "/api/comparisons/herbs"),
+    ("POST", "/api/formulations/joint-recommend"),
+    ("POST", "/api/formulations/tea-recipe"),
+    ("POST", "/api/medication-plans/auto-schedule"),
+    ("POST", "/api/medication-plans/auto-schedule/expert-review"),
+    ("POST", "/api/medication-plans/auto-schedule/verify"),
+    ("POST", "/api/medication-plans/{}/pause"),
+    ("POST", "/api/medication-plans/{}/resume"),
+    ("POST", "/api/visits"),
+    ("POST", "/api/visits/ocr"),
+    ("PUT", "/api/health-logs/{}"),
+    ("PUT", "/api/medication-plans/{}"),
+    ("PUT", "/api/visits/{}"),
+    },
+    # Secondary account, family, and sharing workflows remain callable through the generic HTTP command.
+    "account": {
+    ("DELETE", "/api/family-members/{}"),
+    ("DELETE", "/api/personal/edges/{}"),
+    ("DELETE", "/api/remote-assist/invite/{}"),
+    ("GET", "/api/family-members/current"),
+    ("GET", "/api/personal/edges"),
+    ("GET", "/api/personal/graph"),
+    ("GET", "/api/personal/symptoms"),
+    ("GET", "/api/remote-assist/consent"),
+    ("GET", "/api/remote-assist/shared-with-me"),
+    ("GET", "/api/remote-assist/{}/alerts"),
+    ("GET", "/api/remote-assist/{}/missed-alerts"),
+    ("GET", "/api/user/interests"),
+    ("POST", "/api/auth/register"),
+    ("POST", "/api/family-members/clear-switch"),
+    ("POST", "/api/personal/edges"),
+    ("POST", "/api/personal/symptoms"),
+    ("POST", "/api/remote-assist/{}/alert"),
+    ("PUT", "/api/family-members/{}"),
+    ("PUT", "/api/remote-assist/consent"),
+    },
+    # Low-frequency auxiliary operations remain callable through the generic HTTP command.
+    "miscellaneous": {
+    ("DELETE", "/api/models/{}"),
+    ("GET", "/api/constitution/history"),
+    ("GET", "/api/formulas/{}/roles"),
+    ("GET", "/api/formulas/{}/safety-check"),
+    ("GET", "/api/formulas/{}/safety-text"),
+    ("GET", "/api/formulas/{}/tree"),
+    ("GET", "/api/herbs/{}/formulas"),
+    ("GET", "/api/models"),
+    ("GET", "/api/reminders/{}"),
+    ("GET", "/api/seasonal-health"),
+    ("GET", "/api/smart-search"),
+    ("GET", "/api/therapies/categories"),
+    ("GET", "/api/therapies/search"),
+    ("GET", "/api/triage/age-groups"),
+    ("GET", "/api/triage/red-flags"),
+    ("PATCH", "/api/herbs/{}/aliases"),
+    ("POST", "/api/chat/conversations"),
+    ("POST", "/api/chat/save-card"),
+    ("POST", "/api/chat/{}/summarize"),
+    ("POST", "/api/constitution/assess"),
+    ("POST", "/api/models"),
+    ("POST", "/api/models/vote"),
+    ("POST", "/api/reminders/{}/check-in"),
+    ("PUT", "/api/models/{}"),
+    ("PUT", "/api/reminders/{}"),
+    },
+}
+GENERIC_ONLY_ROUTE_REASONS = {
+    "admin": "Privileged maintenance and agent administration lacks a safe, curated operator workflow.",
+    "knowledge": "Knowledge graph, index, curation, and ingestion workflows have specialized payloads and side effects.",
+    "content": "Less common content annotation and collection workflows remain available through the generic HTTP command.",
+    "media": "Device, upload, push, and streaming workflows need specialized interaction or payload handling.",
+    "clinical": "Specialized clinical/reporting workflows have domain-specific payloads and safety implications.",
+    "account": "Secondary account, family, and sharing workflows remain callable through the generic HTTP command.",
+    "miscellaneous": "Low-frequency auxiliary operations remain callable through the generic HTTP command."
+}
+
 
 # 匹配 _get/_post/_put/_delete[_authed](client, "..." 或 f"...")
 _CALL_RE = re.compile(
@@ -102,7 +318,7 @@ def test_cli_calls_match_openapi(openapi_routes: set[tuple[str, str]]):
 
 
 def test_every_openapi_api_route_has_a_cli_command(openapi_routes: set[tuple[str, str]]):
-    """每个 API operation 都有专用命令或由 api:request 显式兜底。"""
+    """Every operation has a domain command or an exact, explained fallback exception."""
     api_routes = {(method, path) for method, path in openapi_routes if path.startswith("/api/")}
     assert api_routes == openapi_routes, "OpenAPI 新增了未纳入覆盖审计的非 /api 路由"
 
@@ -116,12 +332,47 @@ def test_every_openapi_api_route_has_a_cli_command(openapi_routes: set[tuple[str
     source = inspect.getsource(callback)
     generic_methods = {"GET", "POST", "PUT", "PATCH", "DELETE"}
     assert all(f'"{method}"' in source for method in generic_methods), "通用命令未支持所有 OpenAPI HTTP 方法"
-    # Generic command accepts arbitrary OpenAPI method/path at runtime, so every
-    # otherwise-unmapped operation is callable through: api:request METHOD PATH.
-    uncovered = {route for route in missing if not route[1].startswith("/api/") or route[0] not in generic_methods}
-    assert not uncovered, "未覆盖的 OpenAPI 路由:\n  " + "\n  ".join(
-        f"{method} {path}" for method, path in sorted(uncovered)
+    # Generic request is a fallback, not evidence that domain coverage is done.
+    # Require a committed, exact method+path exception for every fallback use.
+    exceptions = {
+        route: group
+        for group, routes in GENERIC_ONLY_ROUTE_EXCEPTIONS.items()
+        for route in routes
+    }
+    assert len(exceptions) == sum(map(len, GENERIC_ONLY_ROUTE_EXCEPTIONS.values())), (
+        "generic-only exception is duplicated across rationale groups"
     )
+    assert (len(api_routes), len(explicit), len(missing)) == (262, 82, 180), (
+        "CLI coverage inventory changed: "
+        f"OpenAPI operations={len(api_routes)}, domain-command operations={len(explicit)}, "
+        f"generic-only operations={len(missing)}. Review the route diff and update the exact "
+        "exception inventory or add domain commands."
+    )
+    unexpected = missing - exceptions.keys()
+    stale = exceptions.keys() - missing
+    details = [
+        f"{method} {path}: no rationale (add a domain CLI command or reviewed exception)"
+        for method, path in sorted(unexpected)
+    ] + [
+        f"{method} {path}: stale exception; route now has a domain CLI command or was removed"
+        for method, path in sorted(stale)
+    ]
+    assert not details, "OpenAPI CLI coverage drift:\n  " + "\n  ".join(details)
+    assert set(exceptions.values()) <= GENERIC_ONLY_ROUTE_REASONS.keys()
+
+
+def test_high_frequency_cli_commands_cover_routes(openapi_routes: set[tuple[str, str]]):
+    calls = {(name, method, path) for name, method, path in _extract_cli_calls()}
+    expected = {
+        ("auth:me", "GET", "/api/auth/me"),
+        ("auth:consent-status", "GET", "/api/auth/consent-status"),
+        ("medicines:detail", "GET", "/api/medicines/{}"),
+        ("medicines:update", "PUT", "/api/medicines/{}"),
+        ("medicines:delete", "DELETE", "/api/medicines/{}"),
+        ("reminders:history", "GET", "/api/reminders/history"),
+    }
+    assert all((method, path) in openapi_routes for _, method, path in expected)
+    assert expected <= calls
 
 
 def test_generic_api_command_dispatches_arbitrary_route(monkeypatch):

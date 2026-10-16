@@ -134,6 +134,25 @@ def auth_logout(token: str = typer.Option(..., "--token", help="当前访问令�
 
 
 # ---------------------------------------------------------------------------
+# Additional high-frequency commands
+# ---------------------------------------------------------------------------
+@app.command("auth:me")
+def auth_me(token: str = typer.Option(..., "--token")):
+    """鏌ョ湅褰撳墠璁よ瘉鐢ㄦ埛銆"""
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/auth/me", token)
+    _print_json(result)
+
+
+@app.command("auth:consent-status")
+def auth_consent_status(token: str = typer.Option(..., "--token")):
+    """鏌ョ湅褰撳墠璐﹀彿鐨勫悓鎰忕姸鎬併"""
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/auth/consent-status", token)
+    _print_json(result)
+
+
+# ---------------------------------------------------------------------------
 # Herbs
 # ---------------------------------------------------------------------------
 
@@ -225,6 +244,43 @@ def medicines_add(
 
 
 # ---------------------------------------------------------------------------
+# Additional medicine operations
+@app.command("medicines:detail")
+def medicines_detail(medicine_id: str = typer.Argument(...)):
+    """鏌ョ湅瀹跺涵鑽涓殑鑽搧璇︽儏銆"""
+    with httpx.Client() as client:
+        result = _get(client, f"/api/medicines/{medicine_id}")
+    _print_json(result)
+
+
+@app.command("medicines:update")
+def medicines_update(
+    medicine_id: str = typer.Argument(...),
+    payload: str = typer.Argument(..., help="瑕佹洿鏂扮殑 JSON 瀛楁瀵硅薄"),
+    token: str = typer.Option(..., "--token"),
+):
+    """鏇存柊瀹跺涵鑽涓殑鑽搧淇℃伅銆"""
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        typer.echo(f"JSON 鏃犳晥: {exc}")
+        raise typer.Exit(2) from exc
+    if not isinstance(data, dict):
+        typer.echo("payload 蹇呴』鏄 JSON 瀵硅薄")
+        raise typer.Exit(2)
+    with httpx.Client() as client:
+        result = _put_authed(client, f"/api/medicines/{medicine_id}", token, data)
+    _print_json(result)
+
+
+@app.command("medicines:delete")
+def medicines_delete(medicine_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    """鍒犻櫎瀹跺涵鑽涓殑鑽搧銆"""
+    with httpx.Client() as client:
+        result = _delete_authed(client, f"/api/medicines/{medicine_id}", token)
+    _print_json(result)
+
+
 # Safety
 # ---------------------------------------------------------------------------
 
@@ -371,6 +427,19 @@ def reminders_today(
     for s in slots:
         icon = {"待服": "⏰", "已服": "✅", "漏服": "❌"}.get(s["status"], "•")
         typer.echo(f"  {icon} {s['time']} {s['title']} [{s['status']}]")
+
+
+@app.command("reminders:history")
+def reminders_history(
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+    days: int = typer.Option(30, "--days", min=1, max=365),
+):
+    """鏌ョ湅鎻愰啋鎵ц鍘嗗彶銆"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _get_authed(client, "/api/reminders/history", login["access_token"], {"days": days})
+    _print_json(result)
 
 
 @app.command("reminders:add")

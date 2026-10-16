@@ -18,6 +18,7 @@ import {
   Alert,
   Spin,
   Card,
+  Modal,
 } from 'antd';
 import {
   PlusOutlined,
@@ -45,6 +46,23 @@ import StatusTag from '../components/StatusTag';
 import { useIsMobile } from '../hooks/useIsMobile';
 
 const { Title } = Typography;
+
+interface DetectedBarcode {
+  rawValue: string;
+}
+
+interface CameraBarcodeDetector {
+  detect(source: HTMLVideoElement): Promise<DetectedBarcode[]>;
+}
+
+interface CameraBarcodeDetectorConstructor {
+  new (options?: { formats?: string[] }): CameraBarcodeDetector;
+  getSupportedFormats?: () => Promise<string[]>;
+}
+
+function getBarcodeDetectorConstructor(): CameraBarcodeDetectorConstructor | undefined {
+  return (window as Window & { BarcodeDetector?: CameraBarcodeDetectorConstructor }).BarcodeDetector;
+}
 
 const MEDICINE_TYPES = ['西药', '中成药', '中药饮片', '保健品'];
 const MEDICINE_STATUS = ['充足', '低库存', '已过期'];
@@ -74,6 +92,134 @@ export default function MedicineList() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [lowConfidenceFields, setLowConfidenceFields] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const scanFrameRef = useRef<number | null>(null);
+  const detectingRef = useRef(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerMessage, setScannerMessage] = useState('');
+  const [scannerStarting, setScannerStarting] = useState(false);
+
+  const stopBarcodeScanner = () => {
+    if (scanFrameRef.current !== null) {
+      window.cancelAnimationFrame(scanFrameRef.current);
+      scanFrameRef.current = null;
+    }
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setScannerStarting(false);
+  };
+
+  const closeBarcodeScanner = () => {
+    stopBarcodeScanner();
+    setScannerOpen(false);
+  };
+
+  useEffect(() => () => {
+    if (scanFrameRef.current !== null) window.cancelAnimationFrame(scanFrameRef.current);
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
+
+  useEffect(() => {
+    if (!drawerOpen) closeBarcodeScanner();
+    // Drawer closure must stop the camera even when caused by save or navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    if (!scannerOpen) {
+      stopBarcodeScanner();
+      return;
+    }
+    let cancelled = false;
+    const start = async () => {
+      const Detector = getBarcodeDetectorConstructor();
+      if (!Detector) {
+        setScannerMessage('当前浏览器不支持相机条码识别，请关闭此窗口后手动输入条形码。');
+        return;
+      }
+      if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) {
+        setScannerMessage('相机需要安全连接（HTTPS 或 localhost）及浏览器权限，请手动输入条形码。');
+        return;
+      }
+
+      setScannerStarting(true);
+      setScannerMessage('请允许使用相机，并将药品条形码放入取景框。');
+      try {
+        const formats = Detector.getSupportedFormats
+          ? await Detector.getSupportedFormats()
+          : ['ean_13', 'ean_8'];
+        const supported = ['ean_13', 'ean_8'].filter((format) => formats.includes(format));
+        if (supported.length === 0) {
+          setScannerMessage('当前浏览器无法识别 EAN-8/EAN-13 条码，请手动输入条形码。');
+          setScannerStarting(false);
+          return;
+        }
+        const detector = new Detector({ formats: supported });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false,
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        cameraStreamRef.current = stream;
+        const video = videoRef.current;
+        if (!video) return;
+        video.srcObject = stream;
+        await video.play();
+        setScannerStarting(false);
+
+        const scan = async () => {
+          if (cancelled || !cameraStreamRef.current || !videoRef.current) return;
+          if (!detectingRef.current && videoRef.current.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+            detectingRef.current = true;
+            try {
+              const hits = await detector.detect(videoRef.current);
+              const barcode = hits.find((hit) => hit.rawValue)?.rawValue.trim();
+              if (barcode) {
+                cancelled = true;
+                stopBarcodeScanner();
+                setScannerOpen(false);
+                form.setFieldValue('barcode', barcode);
+                try {
+                  const result = await lookupBarcode(barcode);
+                  if (result.valid) message.success('扫码成功，条形码校验通过；保存药品后将关联此条码');
+                  else message.warning(result.reason ?? '已填入扫码结果，但条形码校验未通过，请核对后再保存');
+                } catch {
+                  message.warning('已填入扫码结果，但条形码校验服务暂不可用，请手动核对后再保存');
+                }
+                return;
+              }
+            } catch {
+              setScannerMessage('条码识别暂时失败，请调整药品位置，或手动输入条形码。');
+            } finally {
+              detectingRef.current = false;
+            }
+          }
+          if (!cancelled) scanFrameRef.current = window.requestAnimationFrame(() => { void scan(); });
+        };
+        scanFrameRef.current = window.requestAnimationFrame(() => { void scan(); });
+      } catch (error) {
+        setScannerStarting(false);
+        stopBarcodeScanner();
+        setScannerMessage(error instanceof DOMException && error.name === 'NotAllowedError'
+          ? '相机权限未获允许，请在浏览器设置中允许相机，或手动输入条形码。'
+          : '无法启动相机，请检查设备及浏览器权限，或手动输入条形码。');
+      }
+    };
+    void start();
+    return () => {
+      cancelled = true;
+      if (scanFrameRef.current !== null) window.cancelAnimationFrame(scanFrameRef.current);
+      scanFrameRef.current = null;
+      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scannerOpen]);
 
   const loadMedicines = async (page?: number) => {
     setLoading(true);
@@ -513,8 +659,22 @@ export default function MedicineList() {
               : '药品名称和药箱类型不足以可靠推断 ACEI、抗凝药等药理分类。建议值：无；来源：没有经核验的成分/药理映射；置信度：无，因此不自动写入 drugClass。请依据说明书或药师核实后再维护。'}
             style={{ marginBottom: 16 }}
           />
-          <Form.Item label="条形码" name="barcode" extra="校验后随药品信息保存，可用于后续扫码识别">
-            <Input.Search enterButton="校验" onSearch={handleBarcodeCheck} />
+          <Form.Item label="条形码" extra="可手动输入或相机扫码；校验通过后随药品信息保存">
+            <Space.Compact style={{ width: '100%' }}>
+              <Form.Item name="barcode" noStyle>
+                <Input />
+              </Form.Item>
+              <Button
+                icon={<CameraOutlined />}
+                onClick={() => {
+                  setScannerMessage('');
+                  setScannerOpen(true);
+                }}
+                style={{ minHeight: 44 }}
+                aria-label="相机扫码"
+              >相机扫码</Button>
+              <Button onClick={() => handleBarcodeCheck(form.getFieldValue('barcode') ?? '')} style={{ minHeight: 44 }}>校验</Button>
+            </Space.Compact>
           </Form.Item>
           <Form.Item label="状态" name="status">
             <Select
@@ -544,6 +704,25 @@ export default function MedicineList() {
           </Form.Item>
         </Form>
       </Drawer>
+      <Modal
+        title="扫描药品条形码"
+        open={scannerOpen}
+        onCancel={closeBarcodeScanner}
+        footer={<Button onClick={closeBarcodeScanner} style={{ minHeight: 44 }}>关闭相机并返回</Button>}
+        destroyOnClose
+        maskClosable={false}
+      >
+        <video
+          ref={videoRef}
+          muted
+          playsInline
+          aria-label="药品条形码相机取景"
+          style={{ width: '100%', minHeight: 180, maxHeight: 320, objectFit: 'cover', background: '#111' }}
+        />
+        <Typography.Paragraph aria-live="polite" style={{ marginTop: 12, marginBottom: 0, fontSize: 16 }}>
+          {scannerStarting ? '正在启动相机…' : scannerMessage || '请将 EAN-8 或 EAN-13 条形码对准相机。也可以关闭后手动输入。'}
+        </Typography.Paragraph>
+      </Modal>
     </div>
   );
 }
