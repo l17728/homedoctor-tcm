@@ -80,6 +80,27 @@ test.describe('Medicine CRUD — Create', () => {
     }
   });
 
+  test('barcode scanner falls back to manual entry when camera detection is unavailable', async ({ page }) => {
+    await page.goto('/medicines');
+    const addButton = page.getByRole('button', { name: chineseText('添加') }).last();
+    await addButton.click();
+
+    // BarcodeDetector is not available in every browser. The form must keep
+    // manual entry usable and explain why camera scanning cannot start.
+    await page.evaluate(() => {
+      Object.defineProperty(window, 'BarcodeDetector', { configurable: true, value: undefined });
+    });
+    await page.getByRole('button', { name: '相机扫码' }).click();
+    const scanner = page.getByRole('dialog', { name: '扫描药品条形码' });
+    await expect(scanner).toBeVisible();
+    await expect(scanner.getByText(/当前浏览器不支持相机条码识别/)).toBeVisible();
+    await scanner.getByRole('button', { name: '关闭相机并返回' }).click();
+
+    await page.getByLabel('条形码').fill('6901234567892');
+    await page.getByRole('button', { name: '校验' }).click();
+    await expect(page.getByText(/条形码校验通过/)).toBeVisible();
+  });
+
   test('should add a new medicine via drawer form', async ({ page }) => {
     await page.goto('/medicines');
 
