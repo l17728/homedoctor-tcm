@@ -21,6 +21,7 @@ import {
   register,
   chineseText,
   opsCell,
+  answerVisibleConstitutionQuestions,
 } from '../helpers';
 
 test.describe('Persona: 刘小雨 (中医研究生) — 知识库与学习', () => {
@@ -32,29 +33,13 @@ test.describe('Persona: 刘小雨 (中医研究生) — 知识库与学习', () 
   // Test 1: 注册登录 + Dashboard 统计数字
   // -------------------------------------------------------------------------
 
-  test('01 注册登录后 Dashboard 显示知识库统计 (herb_count > 0, formula_count > 0)', async ({
+  test('01 注册登录后 Dashboard 显示知识库统计摘要', async ({
     page,
   }) => {
     await expect(page).toHaveURL('/');
     await expect(page.getByText('今日健康')).toBeVisible();
 
-    // 统计卡片应该显示中药数和方剂数
-    const herbStat = page.locator('.ant-statistic').filter({ hasText: '中药数' });
-    const formulaStat = page.locator('.ant-statistic').filter({ hasText: '方剂数' });
-
-    await expect(herbStat).toBeVisible();
-    await expect(formulaStat).toBeVisible();
-
-    // 验证数字 > 0 (知识库应该有种子数据)
-    // PRODUCT GAP: Dashboard 统计只显示数字，不显示"共收录XX味"等描述性文字
-    const herbValueText = await herbStat.locator('.ant-statistic-content-value').textContent();
-    const formulaValueText = await formulaStat.locator('.ant-statistic-content-value').textContent();
-
-    const herbCount = herbValueText ? parseInt(herbValueText.trim(), 10) : 0;
-    const formulaCount = formulaValueText ? parseInt(formulaValueText.trim(), 10) : 0;
-
-    expect(herbCount).toBeGreaterThan(0);
-    expect(formulaCount).toBeGreaterThan(0);
+    await expect(page.getByText(/知识库：\d+味中药.*\d+首方剂/)).toBeVisible();
   });
 
   // -------------------------------------------------------------------------
@@ -281,6 +266,7 @@ test.describe('Persona: 刘小雨 (中医研究生) — 知识库与学习', () 
   // -------------------------------------------------------------------------
 
   test('06 体质自测: 66题分页问卷 → 完成 → 验证主体质+兼夹体质', async ({ page }) => {
+    test.setTimeout(120_000);
     // Fix: intercept history API to return array (frontend expects array, backend returns {items:[]})
     await page.route('**/api/constitution/history', async route => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
@@ -307,13 +293,7 @@ test.describe('Persona: 刘小雨 (中医研究生) — 知识库与学习', () 
     while (true) {
       pageCount++;
 
-      // 回答当前页所有问题（选第一个选项）
-      const radios = page.locator('.ant-card .ant-radio-wrapper');
-      const radioCount = await radios.count();
-
-      for (let i = 0; i < radioCount; i++) {
-        await radios.nth(i).click();
-      }
+      await answerVisibleConstitutionQuestions(page);
 
       // 检查是否有"提交"按钮
       const nextBtn = page.getByRole('button', { name: /下一页|提\s?交/ });

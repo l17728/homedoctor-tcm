@@ -324,7 +324,7 @@ function ConstitutionReportView({
                   flexShrink: 0,
                 }}
               >
-                <div style={{ fontSize: 13, color: '#888' }}>{p.assessed_at.slice(0, 10)}</div>
+                <div style={{ fontSize: 14, color: '#666' }}>{p.assessed_at.slice(0, 10)}</div>
                 <div style={{ fontWeight: 600, fontSize: 15 }}>{p.primary_type}</div>
                 <Text style={{ color: CONSTITUTION_COLOR[p.primary_type] ?? '#1890ff', fontWeight: 600 }}>
                   {Math.round(p.primary_score)} 分
@@ -377,7 +377,7 @@ function HealthTrendView({ report }: { report: HealthTrendReport | null }) {
                 format={(p) => `${p}%`}
               />
               <div style={{ marginTop: 8, fontSize: 14, color: '#666' }}>用药依从率</div>
-              <Text type="secondary" style={{ fontSize: 12 }}>
+              <Text type="secondary" style={{ fontSize: 14 }}>
                 {medication_adherence.taken_count}/{medication_adherence.total_logs} 次按时
               </Text>
             </div>
@@ -394,7 +394,7 @@ function HealthTrendView({ report }: { report: HealthTrendReport | null }) {
               <Tag color="green">启用 {reminder_trends.enabled_reminders}</Tag>
               <Tag>暂停 {reminder_trends.disabled_reminders}</Tag>
             </div>
-            <Text type="secondary" style={{ fontSize: 12 }}>
+            <Text type="secondary" style={{ fontSize: 14 }}>
               活跃天数 {reminder_trends.active_days} 天
             </Text>
           </Card>
@@ -407,7 +407,7 @@ function HealthTrendView({ report }: { report: HealthTrendReport | null }) {
               prefix={<MessageOutlined style={{ color: '#722ed1' }} />}
               suffix={` / ${report.period_days}天`}
             />
-            <Text type="secondary" style={{ fontSize: 12 }}>
+            <Text type="secondary" style={{ fontSize: 14 }}>
               活跃 {chat_interaction.active_days} 天
             </Text>
           </Card>
@@ -514,7 +514,7 @@ function DailyCompletionBars({ data }: { data: { date: string; count: number }[]
               borderRadius: '3px 3px 0 0',
             }}
           />
-          <div style={{ fontSize: 9, color: '#999', marginTop: 2 }}>
+          <div style={{ fontSize: 14, color: '#666', marginTop: 2 }}>
             {d.date.slice(5)}
           </div>
         </div>
@@ -604,7 +604,7 @@ function HealthMetricCharts() {
         </Space>
       }
       extra={
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           数据来自每日打卡
         </Text>
       }
@@ -647,7 +647,7 @@ function ChartFrame({
       <div style={{ marginBottom: 8 }}>
         <Text strong style={{ fontSize: 15 }}>{title}</Text>
         {subtitle && (
-          <Text type="secondary" style={{ fontSize: 12, marginLeft: 6 }}>
+          <Text type="secondary" style={{ fontSize: 14, marginLeft: 6 }}>
             {subtitle}
           </Text>
         )}
@@ -661,8 +661,8 @@ function ChartFrame({
             alignItems: 'flex-end',
             padding: '4px 0',
             minWidth: 42,
-            fontSize: 11,
-            color: '#999',
+            fontSize: 14,
+            color: '#666',
             textAlign: 'right',
           }}
         >
@@ -689,8 +689,8 @@ function BloodPressureChart({ logs }: ChartProps) {
             alignItems: 'center',
             justifyContent: 'center',
             height: '100%',
-            color: '#bfbfbf',
-            fontSize: 13,
+            color: '#666',
+            fontSize: 14,
           }}
         >
           近 14 天无血压数据
@@ -761,14 +761,14 @@ function BloodPressureChart({ logs }: ChartProps) {
                   }}
                 />
               </div>
-              <div style={{ fontSize: 10, color: '#999', marginTop: 2, whiteSpace: 'nowrap' }}>
+              <div style={{ fontSize: 14, color: '#666', marginTop: 2, whiteSpace: 'nowrap' }}>
                 {log.log_date.slice(5)}
               </div>
             </div>
           );
         })}
       </div>
-      <div style={{ marginTop: 4, fontSize: 12, color: '#888' }}>
+      <div style={{ marginTop: 4, fontSize: 14, color: '#666' }}>
         <span
           style={{
             display: 'inline-block',
@@ -808,8 +808,8 @@ function WeightLineChart({ logs }: ChartProps) {
             alignItems: 'center',
             justifyContent: 'center',
             height: '100%',
-            color: '#bfbfbf',
-            fontSize: 13,
+            color: '#666',
+            fontSize: 14,
           }}
         >
           近 14 天体重数据不足
@@ -887,15 +887,15 @@ function WeightLineChart({ logs }: ChartProps) {
             bottom: 0,
             left: 0,
             right: 0,
-            fontSize: 10,
-            color: '#999',
+            fontSize: 14,
+            color: '#666',
           }}
         >
           <span>{firstLog.log_date.slice(5)}</span>
           <span>{lastLog.log_date.slice(5)}</span>
         </div>
       </div>
-      <div style={{ marginTop: 4, fontSize: 12, color: '#888' }}>
+      <div style={{ marginTop: 4, fontSize: 14, color: '#666' }}>
         <Text strong style={{ color: WEIGHT_COLOR }}>
           {lastLog.weight} kg
         </Text>
@@ -903,7 +903,7 @@ function WeightLineChart({ logs }: ChartProps) {
           {(() => {
             const diff = lastLog.weight! - firstLog.weight!;
             const sign = diff > 0 ? '+' : '';
-            const color = diff > 0 ? '#fa8c16' : diff < 0 ? '#52c41a' : '#999';
+            const color = diff > 0 ? '#fa8c16' : diff < 0 ? '#52c41a' : '#666';
             return (
               <span style={{ color }}>
                 {sign}
@@ -931,8 +931,8 @@ function BloodSugarDots({ logs }: ChartProps) {
             alignItems: 'center',
             justifyContent: 'center',
             height: '100%',
-            color: '#bfbfbf',
-            fontSize: 13,
+            color: '#666',
+            fontSize: 14,
           }}
         >
           近 14 天无血糖数据
@@ -970,8 +970,8 @@ function BloodSugarDots({ logs }: ChartProps) {
                   threshold <= 6.1 ? SUGAR_COLOR_NORMAL : SUGAR_COLOR_WARN
                 }`,
                 opacity: 0.5,
-                fontSize: 9,
-                color: '#999',
+                fontSize: 14,
+                color: '#666',
                 paddingLeft: 4,
               }}
             >
@@ -1018,7 +1018,7 @@ function BloodSugarDots({ logs }: ChartProps) {
                     boxShadow: `0 0 0 2px rgba(255,255,255,0.8)`,
                   }}
                 />
-                <div style={{ fontSize: 9, color: '#999', marginTop: 2 }}>
+                <div style={{ fontSize: 14, color: '#666', marginTop: 2 }}>
                   {log.log_date.slice(5)}
                 </div>
               </div>
@@ -1026,7 +1026,7 @@ function BloodSugarDots({ logs }: ChartProps) {
           })}
         </div>
       </div>
-      <div style={{ marginTop: 4, fontSize: 12, color: '#888' }}>
+      <div style={{ marginTop: 4, fontSize: 14, color: '#666' }}>
         <span style={{ color: SUGAR_COLOR_NORMAL }}>●</span> 正常 ≤6.1　
         <span style={{ color: SUGAR_COLOR_WARN }}>●</span> 偏高 6.1-7.8　
         <span style={{ color: SUGAR_COLOR_HIGH }}>●</span> 高 &gt;7.8
@@ -1045,8 +1045,8 @@ function MedicationAdherenceBars({ history }: { history: CheckInHistory | null }
             alignItems: 'center',
             justifyContent: 'center',
             height: '100%',
-            color: '#bfbfbf',
-            fontSize: 13,
+            color: '#666',
+            fontSize: 14,
           }}
         >
           近 7 天无打卡记录
@@ -1098,7 +1098,7 @@ function MedicationAdherenceBars({ history }: { history: CheckInHistory | null }
               }}
               title={`${day} 服药 ${stat.taken}/${stat.total}（${rate}%）`}
             >
-              <Text style={{ fontSize: 11, color: color(rate), fontWeight: 600 }}>{rate}%</Text>
+              <Text style={{ fontSize: 14, color: color(rate), fontWeight: 600 }}>{rate}%</Text>
               <div
                 style={{
                   width: '100%',
@@ -1109,14 +1109,14 @@ function MedicationAdherenceBars({ history }: { history: CheckInHistory | null }
                   marginTop: 2,
                 }}
               />
-              <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
+              <div style={{ fontSize: 14, color: '#666', marginTop: 2 }}>
                 {day.slice(5)}
               </div>
             </div>
           );
         })}
       </div>
-      <div style={{ marginTop: 4, fontSize: 12, color: '#888' }}>
+      <div style={{ marginTop: 4, fontSize: 14, color: '#666' }}>
         <Text strong>{history.taken_count}</Text> / {history.total} 次按时（
         <Text strong style={{ color: color(history.adherence_rate) }}>
           {history.adherence_rate.toFixed(0)}%
@@ -1193,7 +1193,7 @@ function PreVisitView({ report }: { report: PreVisitReport | null }) {
                     {constitution.secondary_types.map((s) => <Tag key={s}>兼：{s}</Tag>)}
                   </Space>
                 )}
-                <Paragraph style={{ fontSize: 13, marginBottom: 0, marginTop: 4 }}>
+                <Paragraph style={{ fontSize: 14, marginBottom: 0, marginTop: 4 }}>
                   {constitution.description}
                 </Paragraph>
               </Space>

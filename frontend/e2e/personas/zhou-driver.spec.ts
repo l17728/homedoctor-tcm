@@ -14,6 +14,7 @@ import { test, expect } from '@playwright/test';
 import {
   register,
   chineseText,
+  fillTimeRangePicker,
   navigateTo,
   opsCell,
 } from '../helpers';
@@ -32,8 +33,8 @@ test.describe('Persona: 周建华 — 出租车司机职业病用户', () => {
     await expect(page.getByText('今日健康')).toBeVisible();
 
     // 验证统计卡片
-    await expect(page.getByText('中药数')).toBeVisible();
-    await expect(page.getByText('今日提醒')).toBeVisible();
+    await expect(page.getByText(/知识库：\d+味中药/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: '今日健康任务' })).toBeVisible();
 
     // 验证快捷操作按钮（周建华需要快速入口）
     const addMedicineBtn = page.getByRole('button', { name: /添加药品/ });
@@ -314,7 +315,7 @@ test.describe('Persona: 周建华 — 出租车司机职业病用户', () => {
     await register(page, username);
 
     await page.goto('/reminders');
-    await expect(page.getByText('吃药提醒')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '吃药提醒' })).toBeVisible();
 
     // 点击添加提醒
     await page.getByRole('button', { name: /添加提醒/ }).click();
@@ -325,14 +326,9 @@ test.describe('Persona: 周建华 — 出租车司机职业病用户', () => {
     await page.getByLabel('提醒标题').fill('饭前服用奥美拉唑（胃药）');
 
     // 设置时间（TimePicker.RangePicker — required field）
-    const timePicker = drawer.locator('.ant-picker-range');
-    await timePicker.first().click();
-    await page.keyboard.type('08:00');
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(200);
-    await page.keyboard.type('08:00');
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(300);
+    const startDate = drawer.locator('.ant-picker').nth(1).locator('input');
+    await startDate.fill(new Date().toISOString().slice(0, 10));
+    await startDate.press('Enter');
 
     // 提交
     await page.getByRole('button', { name: chineseText('提交') }).click();
@@ -367,7 +363,7 @@ test.describe('Persona: 周建华 — 出租车司机职业病用户', () => {
     await page.goto('/medicines');
 
     // 点击添加按钮
-    const addButton = page.getByRole('button', { name: chineseText('添加') });
+    const addButton = page.getByRole('button', { name: chineseText('添加') }).last();
     if (await addButton.isVisible().catch(() => false)) {
       await addButton.click();
 
@@ -472,7 +468,7 @@ test.describe('Persona: 周建华 — 出租车司机职业病用户', () => {
     // 导航到提醒
     await navigateTo(page, '提醒');
     await page.waitForURL('/reminders');
-    await expect(page.getByText('吃药提醒')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '吃药提醒' })).toBeVisible();
 
     // 导航到AI助手
     await navigateTo(page, 'AI 助手');

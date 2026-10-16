@@ -26,7 +26,7 @@ test.describe('Dashboard', () => {
 
   test('should show sidebar navigation with main sections', async ({ page }) => {
     // Main navigation items expected in sidebar
-    const navItems = ['知识库', '药箱', 'AI 助手'];
+    const navItems = ['知识探索', '用药管理', 'AI助手'];
 
     for (const item of navItems) {
       await expect(page.getByText(item).first()).toBeVisible();
@@ -35,21 +35,24 @@ test.describe('Dashboard', () => {
 
   test('should navigate to herb list via sidebar', async ({ page }) => {
     // Click the knowledge base or herbs menu item
-    await page.getByText('知识库').first().click();
-    await page.getByText('中药').click();
+    const knowledgeGroup = page.locator('.ant-menu-submenu').filter({ hasText: '知识探索' });
+    await knowledgeGroup.locator('.ant-menu-submenu-title').click();
+    await knowledgeGroup.locator('.ant-menu-item').filter({ hasText: /^中药$/ }).click();
 
     await page.waitForURL('/herbs');
     await expect(page).toHaveURL('/herbs');
   });
 
   test('should navigate to medicine cabinet via sidebar', async ({ page }) => {
-    await page.getByText('药箱').first().click();
+    const medicineGroup = page.locator('.ant-menu-submenu').filter({ hasText: '用药管理' });
+    await medicineGroup.locator('.ant-menu-submenu-title').click();
+    await medicineGroup.getByRole('menuitem', { name: '药箱', exact: true }).click();
     await page.waitForURL('/medicines');
     await expect(page).toHaveURL('/medicines');
   });
 
   test('should navigate to AI assistant via sidebar', async ({ page }) => {
-    await page.getByText('AI 助手').first().click();
+    await page.getByRole('menuitem', { name: /AI助手/ }).click();
     await page.waitForURL('/chat');
     await expect(page).toHaveURL('/chat');
   });

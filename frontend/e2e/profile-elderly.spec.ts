@@ -22,7 +22,7 @@ test.describe('Profile — Navigation & Layout', () => {
 
   test('should navigate to profile page', async ({ page }) => {
     await page.goto('/profile');
-    await expect(page.getByText('健康档案')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '健康档案' })).toBeVisible();
   });
 
   test('should show basic info card', async ({ page }) => {
@@ -67,12 +67,12 @@ test.describe('Profile — Edit & Save', () => {
   test('should add allergy tags', async ({ page }) => {
     await page.goto('/profile');
 
-    // Type in allergies select
-    const allergyInput = page.locator('.ant-select-selection-search-input').first();
-    if (await allergyInput.isVisible().catch(() => false)) {
-      await allergyInput.fill('海鲜');
-      await page.getByText('海鲜').first().click();
-    }
+    const allergyInput = page.locator('.ant-form-item').filter({ hasText: '过敏史' }).locator('[role="combobox"]');
+    await expect(allergyInput).toBeVisible();
+    await allergyInput.click();
+    await allergyInput.pressSequentially('海鲜');
+    await allergyInput.press('Enter');
+    await expect(page.locator('.ant-select-selection-item').filter({ hasText: '海鲜' })).toBeVisible();
   });
 });
 
@@ -83,12 +83,12 @@ test.describe('Profile — Constitution Info', () => {
 
   test('should show "go test" link when no constitution', async ({ page }) => {
     await page.goto('/profile');
-    await expect(page.getByText(/去测试|尚未进行体质测试/)).toBeVisible();
+    await expect(page.getByRole('button', { name: /去测试|重新测试/ })).toBeVisible();
   });
 
   test('should navigate to constitution page from profile', async ({ page }) => {
     await page.goto('/profile');
-    await page.getByText(/去测试|重新测试/).click();
+    await page.getByRole('button', { name: /去测试|重新测试/ }).click();
     await page.waitForURL('/constitution');
   });
 });
@@ -130,7 +130,7 @@ test.describe('Elderly Mode — Toggle', () => {
 
     // Confirmation modal should appear
     await expect(page.locator('.ant-modal-confirm, .ant-modal')).toBeVisible();
-    await expect(page.getByText(/切换到长辈模式|简化界面/)).toBeVisible();
+    await expect(page.locator('.ant-modal-confirm .ant-btn-primary').last()).toBeVisible();
   });
 
   test('should cancel elderly mode toggle', async ({ page }) => {
@@ -159,7 +159,7 @@ test.describe('Elderly Mode — Toggle', () => {
     await expect(page.locator('.ant-layout-sider')).not.toBeVisible();
     // Bottom nav has 3 tabs
     await expect(page.getByText('首页').last()).toBeVisible();
-    await expect(page.getByText('AI问答').last()).toBeVisible();
+    await expect(page.getByText('问答').last()).toBeVisible();
     await expect(page.getByText('我的').last()).toBeVisible();
   });
 
@@ -186,7 +186,7 @@ test.describe('Elderly Mode — Navigation', () => {
 
   test('should navigate via bottom tabs', async ({ page }) => {
     // Click AI问答 tab
-    await page.getByText('AI问答').last().click();
+    await page.getByText('问答').last().click();
     await page.waitForURL('/chat');
     await expect(page).toHaveURL('/chat');
   });

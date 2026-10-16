@@ -22,11 +22,15 @@ import {
   DeleteOutlined,
   CloudUploadOutlined,
   EyeOutlined,
+  LogoutOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../hooks/useTheme';
 import { useElderlyMode } from '../contexts/ElderlyModeContext';
 import { request } from '../api/client';
 import { APP_VERSION } from '../constants';
+import PushNotificationSettings from '../components/PushNotificationSettings';
+import { useAuth } from '../hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -118,11 +122,15 @@ function formatDate(dateStr: string): string {
 // ===========================================================================
 
 export default function SettingsPage() {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
   const { isElderlyMode, setElderly } = useElderlyMode();
 
   // Backup state
   const [backupList, setBackupList] = useState<BackupItem[]>([]);
+  const [backupListLoading, setBackupListLoading] = useState(true);
+  const [backupListError, setBackupListError] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState<string | null>(null);
 
@@ -144,11 +152,15 @@ export default function SettingsPage() {
   // -----------------------------------------------------------------------
 
   const loadBackupList = useCallback(async () => {
+    setBackupListLoading(true);
+    setBackupListError(false);
     try {
       const res = await request<BackupListResponse>('/api/backup/list');
       setBackupList(res.backups);
     } catch {
-      // Backup endpoint unavailable — leave list empty
+      setBackupListError(true);
+    } finally {
+      setBackupListLoading(false);
     }
   }, []);
 
@@ -184,7 +196,7 @@ export default function SettingsPage() {
     try {
       await request<BackupCreateResponse>('/api/backup', { method: 'POST' });
       message.success('备份创建成功');
-      loadBackupList();
+      await loadBackupList();
     } catch {
       message.error('备份失败');
     } finally {
@@ -342,7 +354,6 @@ export default function SettingsPage() {
       width: 100,
       render: (_, record) => (
         <Button
-          size="small"
           type="link"
           icon={<CloudUploadOutlined />}
           loading={restoreLoading === record.filename}
@@ -383,48 +394,68 @@ export default function SettingsPage() {
       </Card>
 
       <Divider />
-
-      {/* 2. 数据备份 (NEW) */}
-      <Card
-        title="数据备份"
-        extra={
-          <Button
-            type="primary"
-            icon={<SaveOutlined />}
-            loading={backupLoading}
-            onClick={handleCreateBackup}
-          >
-            创建备份
-          </Button>
-        }
-      >
-        <Table<BackupItem>
-          columns={backupColumns}
-          dataSource={backupList}
-          rowKey="filename"
-          pagination={false}
-          size="middle"
-          scroll={{ x: 'max-content' }}
-          locale={{ emptyText: '暂无备份，点击上方按钮创建' }}
-        />
+      <Card title="浏览器推送">
+        <PushNotificationSettings />
       </Card>
 
       <Divider />
 
-      {/* 3. 数据导出 (NEW) */}
-      <Card title="数据导出">
-        <Paragraph type="secondary">
-          导出您的所有健康数据（药品、提醒、体质评估、健康档案等）为 JSON 文件
-        </Paragraph>
-        <Button
-          type="primary"
-          icon={<DownloadOutlined />}
-          loading={exportLoading}
-          onClick={handleExport}
-        >
-          导出数据
-        </Button>
-      </Card>
+      {/* 2. 数据备份 — 长辈模式隐藏 */}
+      {!isElderlyMode && (
+        <>
+          <Card
+            title="数据备份"
+            extra={
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                loading={backupLoading}
+                onClick={handleCreateBackup}
+              >
+                创建备份
+              </Button>
+            }
+          >
+            {backupListError ? (
+              <Alert
+                type="error"
+                showIcon
+                message="备份列表加载失败"
+                description="请检查网络或当前账户权限后重试。"
+                action={<Button onClick={() => void loadBackupList()} style={{ minHeight: 44 }}>重试</Button>}
+              />
+            ) : (
+              <Table<BackupItem>
+                columns={backupColumns}
+                dataSource={backupList}
+                rowKey="filename"
+                pagination={false}
+                loading={backupListLoading}
+                size="middle"
+                scroll={{ x: 'max-content' }}
+                locale={{ emptyText: '暂无备份，点击上方按钮创建' }}
+              />
+            )}
+          </Card>
+
+          <Divider />
+
+          {/* 3. 数据导出 — 长辈模式隐藏 */}
+          <Card title="数据导出">
+            <Paragraph type="secondary">
+              导出您的所有健康数据（药品、提醒、体质评估、健康档案等）为 JSON 文件
+            </Paragraph>
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              loading={exportLoading}
+              onClick={handleExport}
+            >
+              导出数据
+            </Button>
+          </Card>
+        </>
+      )}
 
       <Divider />
 
@@ -432,31 +463,44 @@ export default function SettingsPage() {
       <Card title="关于">
         <p>家庭医生 · 您的养生助手</p>
         <p>版本：{APP_VERSION}</p>
+        <Button
+          icon={<LogoutOutlined />}
+          style={{ minHeight: 44, marginTop: 8 }}
+          onClick={async () => {
+            await logout();
+            navigate('/login', { replace: true });
+          }}
+        >
+          退出登录
+        </Button>
       </Card>
 
-      <Divider />
-
-      {/* 5. 账户管理 (NEW — PIPL §47) */}
-      <Card title="账户管理">
-        <Alert
-          type="warning"
-          message="以下操作不可撤销，请谨慎操作"
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
-        <Space>
-          <Button
-            icon={<EyeOutlined />}
-            loading={previewLoading}
-            onClick={handlePreview}
-          >
-            查看数据概况
-          </Button>
-          <Button danger icon={<DeleteOutlined />} onClick={handleDeleteClick}>
-            删除账户
-          </Button>
-        </Space>
-      </Card>
+      {/* 5. 账户管理 — 长辈模式隐藏（危险操作不暴露给长辈） */}
+      {!isElderlyMode && (
+        <>
+          <Divider />
+          <Card title="账户管理">
+            <Alert
+              type="warning"
+              message="以下操作不可撤销，请谨慎操作"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <Space>
+              <Button
+                icon={<EyeOutlined />}
+                loading={previewLoading}
+                onClick={handlePreview}
+              >
+                查看数据概况
+              </Button>
+              <Button danger icon={<DeleteOutlined />} onClick={handleDeleteClick}>
+                删除账户
+              </Button>
+            </Space>
+          </Card>
+        </>
+      )}
 
       {/* Preview data modal */}
       <Modal

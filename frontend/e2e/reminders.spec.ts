@@ -19,10 +19,13 @@ test.describe('Reminders — Navigation & Layout', () => {
   });
 
   test('should navigate to reminders page', async ({ page }) => {
-    await page.getByText('提醒').first().click();
+    const sidebar = page.locator('.ant-layout-sider');
+    const medicineGroup = sidebar.locator('.ant-menu-submenu').first();
+    await medicineGroup.locator('.ant-menu-submenu-title').click();
+    await medicineGroup.locator('.ant-menu-item').nth(1).click();
     await page.waitForURL('/reminders');
     await expect(page).toHaveURL('/reminders');
-    await expect(page.getByText('吃药提醒')).toBeVisible();
+    await expect(page.getByRole('button', { name: /添加提醒/ })).toBeVisible();
   });
 
   test('should show add button', async ({ page }) => {
@@ -42,13 +45,13 @@ test.describe('Reminders — Create', () => {
     await page.getByRole('button', { name: /添加提醒/ }).click();
     const drawer = page.locator('.ant-drawer');
     await expect(drawer).toBeVisible();
-    await expect(page.getByText(/添加提醒/)).toBeVisible();
+    await expect(drawer).toContainText(/添加提醒/);
   });
 
   test('should show validation error for empty title', async ({ page }) => {
     await page.goto('/reminders');
     await page.getByRole('button', { name: /添加提醒/ }).click();
-    await page.getByRole('button', { name: chineseText('提交') }).click();
+    await page.locator('.ant-drawer-footer button').last().click();
     await expect(page.getByText(/请输入提醒标题/).first()).toBeVisible();
   });
 
@@ -60,13 +63,13 @@ test.describe('Reminders — Create', () => {
     await page.getByLabel('提醒标题').fill('服用维生素C');
 
     // Submit
-    await page.getByRole('button', { name: chineseText('提交') }).click();
+    await page.locator('.ant-drawer-footer button').last().click();
 
     // Drawer closes
     await expect(page.locator('.ant-drawer')).not.toBeVisible();
 
     // Reminder appears in table
-    await expect(page.getByText('服用维生素C')).toBeVisible();
+    await expect(page.getByText('服用维生素C').first()).toBeVisible();
   });
 });
 
@@ -80,7 +83,7 @@ test.describe('Reminders — Today View', () => {
     await page.goto('/reminders');
     await page.getByRole('button', { name: /添加提醒/ }).click();
     await page.getByLabel('提醒标题').fill('服用钙片');
-    await page.getByRole('button', { name: chineseText('提交') }).click();
+    await page.locator('.ant-drawer-footer button').last().click();
 
     // Today section should appear
     await expect(page.getByText('今日提醒')).toBeVisible();
@@ -101,9 +104,10 @@ test.describe('Reminders — Toggle & Delete', () => {
     await page.goto('/reminders');
     await page.getByRole('button', { name: /添加提醒/ }).click();
     await page.getByLabel('提醒标题').fill('测试toggle');
-    await page.getByRole('button', { name: chineseText('提交') }).click();
+    await page.locator('.ant-drawer-footer button').last().click();
 
     // Find the switch in the table
+    await expect(page.getByText('测试toggle').first()).toBeVisible();
     const toggle = page.locator('.ant-table-tbody .ant-switch').first();
     await expect(toggle).toBeVisible();
     await toggle.click();
@@ -115,8 +119,9 @@ test.describe('Reminders — Toggle & Delete', () => {
     await page.goto('/reminders');
     await page.getByRole('button', { name: /添加提醒/ }).click();
     await page.getByLabel('提醒标题').fill('待删除提醒');
-    await page.getByRole('button', { name: chineseText('提交') }).click();
+    await page.locator('.ant-drawer-footer button').last().click();
 
+    await expect(page.getByText('待删除提醒').first()).toBeVisible();
     const rows = page.locator('.ant-table-row');
     const rowCount = await rows.count();
     expect(rowCount).toBeGreaterThan(0);

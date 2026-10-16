@@ -61,8 +61,11 @@ async def _insert_medicine(
     db: DbAdapter,
     name: str,
     drug_class: str | None,
-    tenant_id: str = "test-tenant",
+    tenant_id: str = "default",
 ) -> None:
+    # NOTE: tenant must match the engine's lookup tenant (contextvar default
+    # "default"). The old cross-tenant fallback in _get_medicine_drug_class
+    # was an F3 violation and has been removed — tests now seed coherently.
     props = json.dumps({"drugClass": drug_class}, ensure_ascii=False) if drug_class else "{}"
     await db.execute(
         """INSERT INTO medicines
@@ -266,11 +269,21 @@ async def test_e2e_xiyao_triggers_layer1b(client: AsyncClient, db: DbAdapter):
     assert len(layer1b) >= 1
 
 
+def _client_tenant(client: AsyncClient) -> str:
+    """Decode the client's JWT to get the tenant (family_id) its requests run under."""
+    import base64
+    token = client.headers["Authorization"].split(" ", 1)[1]
+    b64 = token.split(".")[1]
+    b64 += "=" * (-len(b64) % 4)
+    payload = json.loads(base64.urlsafe_b64decode(b64))
+    return payload.get("family_id", "default")
+
+
 @pytest.mark.asyncio
 async def test_e2e_zhongchengyao_skips_layer1b(client: AsyncClient, db: DbAdapter):
     """E2E: 中成药 medicine via API → Layer 1b NOT generated."""
     await _seed_herbs(db)
-    await _insert_medicine(db, "华法林", "中成药")
+    await _insert_medicine(db, "华法林", "中成药", tenant_id=_client_tenant(client))
     await db.execute("COMMIT")
 
     resp = await client.post("/api/safety/check-v2", json={
@@ -286,7 +299,7 @@ async def test_e2e_zhongchengyao_skips_layer1b(client: AsyncClient, db: DbAdapte
 async def test_e2e_zhongyao_layer1a_still_works(client: AsyncClient, db: DbAdapter):
     """E2E: 中药 medicine + conflicting herbs → Layer 1a fires, Layer 1b skipped."""
     await _seed_herbs(db)
-    await _insert_medicine(db, "降压药", "中药")
+    await _insert_medicine(db, "降压药", "中药", tenant_id=_client_tenant(client))
     await db.execute("COMMIT")
 
     resp = await client.post("/api/safety/check-v2", json={
@@ -321,8 +334,9 @@ async def test_e2e_default_drugclass_xiyao(client: AsyncClient, db: DbAdapter):
 async def test_e2e_mixed_drugclass(client: AsyncClient, db: DbAdapter):
     """E2E: mixed drugClass — 西药 triggers, 中成药 doesn't."""
     await _seed_herbs(db)
-    await _insert_medicine(db, "华法林", "西药")
-    await _insert_medicine(db, "降压药", "中成药")
+    tenant = _client_tenant(client)
+    await _insert_medicine(db, "华法林", "西药", tenant_id=tenant)
+    await _insert_medicine(db, "降压药", "中成药", tenant_id=tenant)
     await db.execute("COMMIT")
 
     resp = await client.post("/api/safety/check-v2", json={

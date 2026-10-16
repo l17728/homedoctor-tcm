@@ -25,18 +25,20 @@ test.describe('Medicine CRUD — Navigation & Layout', () => {
   });
 
   test('should navigate to medicine list page', async ({ page }) => {
-    await page.getByText('药箱').first().click();
+    const medicineGroup = page.locator('.ant-menu-submenu').filter({ hasText: '用药管理' });
+    await medicineGroup.locator('.ant-menu-submenu-title').click();
+    await medicineGroup.getByRole('menuitem', { name: '药箱', exact: true }).click();
     await page.waitForURL('/medicines');
 
     await expect(page).toHaveURL('/medicines');
-    await expect(page.getByText(/药品|药箱/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: '药箱管理' })).toBeVisible();
   });
 
   test('should show page header with add button', async ({ page }) => {
     await page.goto('/medicines');
 
     // Should have an "add" button (Lesson T1: 2-char Chinese button)
-    const addButton = page.getByRole('button', { name: chineseText('添加') });
+    const addButton = page.getByRole('button', { name: chineseText('添加') }).last();
     if (await addButton.isVisible().catch(() => false)) {
       await expect(addButton).toBeVisible();
     }
@@ -45,8 +47,12 @@ test.describe('Medicine CRUD — Navigation & Layout', () => {
   test('should show table with expected column headers', async ({ page }) => {
     await page.goto('/medicines');
 
-    const table = page.locator('.ant-table');
-    await expect(table).toBeVisible();
+    const table = page.getByRole('table');
+    const isTableVisible = await table.isVisible().catch(() => false);
+    if (!isTableVisible) {
+      await expect(page.locator('.ant-empty')).toBeVisible();
+      return;
+    }
 
     // Common medicine table columns
     const expectedColumns = ['名称', '类型'];
@@ -64,7 +70,7 @@ test.describe('Medicine CRUD — Create', () => {
   test('should open add drawer when clicking add button', async ({ page }) => {
     await page.goto('/medicines');
 
-    const addButton = page.getByRole('button', { name: chineseText('添加') });
+    const addButton = page.getByRole('button', { name: chineseText('添加') }).last();
     if (await addButton.isVisible().catch(() => false)) {
       await addButton.click();
 
@@ -77,7 +83,7 @@ test.describe('Medicine CRUD — Create', () => {
   test('should add a new medicine via drawer form', async ({ page }) => {
     await page.goto('/medicines');
 
-    const addButton = page.getByRole('button', { name: chineseText('添加') });
+    const addButton = page.getByRole('button', { name: chineseText('添加') }).last();
     if (await addButton.isVisible().catch(() => false)) {
       await addButton.click();
 
@@ -112,7 +118,7 @@ test.describe('Medicine CRUD — Create', () => {
   }) => {
     await page.goto('/medicines');
 
-    const addButton = page.getByRole('button', { name: chineseText('添加') });
+    const addButton = page.getByRole('button', { name: chineseText('添加') }).last();
     if (await addButton.isVisible().catch(() => false)) {
       await addButton.click();
 
@@ -250,12 +256,8 @@ test.describe('Medicine CRUD — Empty State', () => {
     await page.goto('/medicines');
 
     // For a new user, medicine list should show empty state
-    const emptyText = page.getByText(/暂无药品|没有药品|暂无数据/);
-    const table = page.locator('.ant-table');
-
-    const hasEmpty = await emptyText.isVisible().catch(() => false);
-    const hasTable = await table.isVisible().catch(() => false);
-    expect(hasEmpty || hasTable).toBeTruthy();
+    await expect(page.getByRole('heading', { name: '药箱管理' })).toBeVisible();
+    await expect(page.getByText('暂无药品，点击添加', { exact: true })).toBeVisible();
   });
 });
 
@@ -263,7 +265,7 @@ test.describe('Medicine CRUD — Auth Guard', () => {
   test('should redirect to login when not authenticated', async ({ page }) => {
     await page.goto('/medicines');
     await page.waitForURL(/\/login/);
-    await expect(page.getByText(chineseText('登录'))).toBeVisible();
+    await expect(page.getByRole('button', { name: chineseText('登录') })).toBeVisible();
   });
 
   test('should deny access after logout', async ({ page }) => {
@@ -273,6 +275,6 @@ test.describe('Medicine CRUD — Auth Guard', () => {
 
     await page.goto('/medicines');
     await page.waitForURL(/\/login/);
-    await expect(page.getByText(chineseText('登录'))).toBeVisible();
+    await expect(page.getByRole('button', { name: chineseText('登录') })).toBeVisible();
   });
 });

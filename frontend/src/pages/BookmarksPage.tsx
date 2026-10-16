@@ -200,7 +200,6 @@ export default function BookmarksPage() {
         <Tooltip title={starred ? '取消星标' : '加星标'}>
           <Button
             type="text"
-            size="small"
             icon={
               starred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />
             }
@@ -228,7 +227,7 @@ export default function BookmarksPage() {
           okText="确定"
           cancelText="取消"
         >
-          <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+          <Button type="link" danger icon={<DeleteOutlined />}>
             删除
           </Button>
         </Popconfirm>

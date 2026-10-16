@@ -19,7 +19,7 @@ test.describe('Constitution — Navigation & Intro', () => {
 
   test('should navigate to constitution page', async ({ page }) => {
     await page.goto('/constitution');
-    await expect(page.getByText('体质自测')).toBeVisible();
+    await expect(page.getByRole('main').getByRole('heading', { name: '体质自测' })).toBeVisible();
   });
 
   test('should show intro card with start button', async ({ page }) => {
@@ -125,24 +125,22 @@ test.describe('Constitution — Result', () => {
     let currentPage = 1;
     while (true) {
       // Answer all visible questions
-      const radios = page.locator('.ant-card .ant-radio-wrapper');
-      const count = await radios.count();
+      const groups = page.locator('.ant-card .ant-radio-group');
+      const count = await groups.count();
 
       // Answer each question (pick first option for each)
       for (let i = 0; i < count; i++) {
-        await radios.nth(i).click();
+        await groups.nth(i).locator('.ant-radio-wrapper').first().click();
       }
 
       // Check if next button says "提交"
-      const nextBtn = page.getByRole('button', { name: /下一页|提交/ });
-      const btnText = await nextBtn.textContent();
-
-      if (btnText && btnText.includes('提交')) {
-        await nextBtn.click();
-        break;
-      }
+      const nextBtn = page.locator('button.ant-btn-primary').last();
+      const pageInfo = await page.getByRole('main').innerText();
+      const pageCounts = pageInfo.match(/(\d+)\s*\/\s*(\d+)/);
+      const isLastPage = Boolean(pageCounts && pageCounts[1] === pageCounts[2]);
       await nextBtn.click();
       currentPage++;
+      if (isLastPage) break;
     }
 
     // Result page should show primary type

@@ -1,13 +1,12 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { getTodayReminders, type TodayReminderSlot } from '../api/reminderApi';
 
-const PERMISSION_KEY = 'family_doctor_notification_permission';
 const POLL_INTERVAL = 60_000;
 const WINDOW_MINUTES = 1;
 
-type PermissionState = 'granted' | 'denied' | 'default' | 'unsupported';
+export type PermissionState = 'granted' | 'denied' | 'default' | 'unsupported';
 
-function getPermissionState(): PermissionState {
+export function getReminderNotificationPermission(): PermissionState {
   if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported';
   if (Notification.permission === 'granted') return 'granted';
   if (Notification.permission === 'denied') return 'denied';
@@ -56,36 +55,29 @@ function isWithinWindow(slotTime: string): boolean {
   return diffMs <= WINDOW_MINUTES * 60 * 1000;
 }
 
-export function useNotifications(): void {
+export interface UseNotificationsOptions {
+  /** 点击通知后的跳转回调（由 Layout 注入 useNavigate，避免 hash 跳转） */
+  onOpen?: (path: string) => void;
+}
+
+/** Must be called from a user gesture, such as the explicit enable button. */
+export async function requestReminderNotificationPermission(): Promise<PermissionState> {
+  if (getReminderNotificationPermission() !== 'default') return getReminderNotificationPermission();
+  try {
+    await Notification.requestPermission();
+  } catch {
+    // Keep the state as default so the user can retry from the explicit control.
+  }
+  return getReminderNotificationPermission();
+}
+
+export function useNotifications(options?: UseNotificationsOptions): void {
   const notifiedRef = useRef<Set<string>>(new Set());
-
-  const requestPermission = useCallback(async () => {
-    const stored = localStorage.getItem(PERMISSION_KEY);
-    const state = getPermissionState();
-
-    if (state === 'unsupported') return;
-    if (state === 'granted') {
-      localStorage.setItem(PERMISSION_KEY, 'granted');
-      return;
-    }
-    if (state === 'denied') {
-      localStorage.setItem(PERMISSION_KEY, 'denied');
-      return;
-    }
-
-    if (stored !== 'asked') {
-      localStorage.setItem(PERMISSION_KEY, 'asked');
-      try {
-        const result = await Notification.requestPermission();
-        localStorage.setItem(PERMISSION_KEY, result);
-      } catch {
-        // Some browsers throw if not in user gesture context
-      }
-    }
-  }, []);
+  const onOpenRef = useRef(options?.onOpen);
+  onOpenRef.current = options?.onOpen;
 
   const checkAndNotify = useCallback(async () => {
-    if (getPermissionState() !== 'granted') return;
+    if (getReminderNotificationPermission() !== 'granted') return;
 
     let slots: TodayReminderSlot[];
     try {
@@ -114,11 +106,7 @@ export function useNotifications(): void {
         notification.onclick = () => {
           window.focus();
           notification.close();
-          window.location.hash = '#/reminders';
-          const navigateEvent = new CustomEvent('homedoctor-navigate', {
-            detail: '/reminders',
-          });
-          window.dispatchEvent(navigateEvent);
+          onOpenRef.current?.('/reminders');
         };
       } catch {
         // Notification creation failed
@@ -135,9 +123,8 @@ export function useNotifications(): void {
   }, []);
 
   useEffect(() => {
-    requestPermission();
     checkAndNotify();
     const interval = setInterval(checkAndNotify, POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [requestPermission, checkAndNotify]);
+  }, [checkAndNotify]);
 }

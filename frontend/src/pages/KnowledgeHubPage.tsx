@@ -91,7 +91,7 @@ const FILE_TYPE_BADGES: { label: string; color: string }[] = [
   { label: '🖼️ 图片', color: '#52c41a' },
   { label: '🎵 MP3', color: '#722ed1' },
   { label: '🎬 MP4', color: '#fa8c16' },
-  { label: '📋 文本', color: '#8c8c8c' },
+  { label: '📋 文本', color: '#666' },
 ];
 
 /** 侧边栏类型过滤项顺序（与 spec §知识库 一致） */
@@ -566,13 +566,13 @@ export default function KnowledgeHubPage() {
               {entity.tags.slice(0, 4).map((t, i) => (
                 <Text
                   key={`${t}-${i}`}
-                  style={{ fontSize: 12, color: '#8c8c8c' }}
+                  style={{ fontSize: 14, color: '#666' }}
                 >
                   #{t}
                 </Text>
               ))}
               {entity.tags.length > 4 && (
-                <Text style={{ fontSize: 12, color: '#bfbfbf' }}>
+                <Text style={{ fontSize: 14, color: '#666' }}>
                   +{entity.tags.length - 4}
                 </Text>
               )}
@@ -594,8 +594,8 @@ export default function KnowledgeHubPage() {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              fontSize: 12,
-              color: '#8c8c8c',
+              fontSize: 14,
+              color: '#666',
             }}
           >
             <Space size={12}>
@@ -627,14 +627,14 @@ export default function KnowledgeHubPage() {
         <Text strong style={{ fontSize: 15 }}>
           知识库共 {totalCount.toLocaleString()} 条
         </Text>
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           ·
         </Text>
         {FILTER_ORDER.filter((t) => t !== 'all').map((t) => {
           const n = typeCounts[t] ?? 0;
           if (n === 0 && !ENTITY_TYPE_LABEL[t]) return null;
           return (
-            <Text key={t} style={{ fontSize: 13 }}>
+            <Text key={t} style={{ fontSize: 14 }}>
               <span
                 style={{
                   display: 'inline-block',
@@ -684,8 +684,8 @@ export default function KnowledgeHubPage() {
                   <Text
                     type="secondary"
                     style={{
-                      fontSize: 12,
-                      color: active ? '#1677ff' : '#8c8c8c',
+                      fontSize: 14,
+                      color: active ? '#1677ff' : '#666',
                     }}
                   >
                     {n}
@@ -850,7 +850,7 @@ export default function KnowledgeHubPage() {
         </Title>
         <Space wrap>
           <Input
-            prefix={<SearchOutlined style={{ color: '#999' }} />}
+            prefix={<SearchOutlined style={{ color: '#666' }} />}
             placeholder="搜索中药、方剂、症状…"
             allowClear
             style={{ width: isMobile ? '100%' : 280, fontSize: 15 }}
@@ -962,7 +962,7 @@ export default function KnowledgeHubPage() {
                       {ragMeta.strategies.map((s) => (
                         <Tag key={s} color="geekblue">{s}</Tag>
                       ))}
-                      <Text type="secondary" style={{ fontSize: 12 }}>
+                      <Text type="secondary" style={{ fontSize: 14 }}>
                         意图: {ragMeta.intent}
                       </Text>
                     </>
@@ -974,7 +974,7 @@ export default function KnowledgeHubPage() {
                       {renderEntityCard(e)}
                       {ragMeta && ragMeta.scores[idx] !== undefined && (
                         <div style={{ textAlign: 'center', marginTop: -8, marginBottom: 8 }}>
-                          <Text type="secondary" style={{ fontSize: 11 }}>
+                          <Text type="secondary" style={{ fontSize: 14 }}>
                             匹配度 {(ragMeta.scores[idx] * 100).toFixed(1)}%
                           </Text>
                         </div>
@@ -1159,7 +1159,7 @@ export default function KnowledgeHubPage() {
                     style={{
                       margin: 0,
                       borderLeft: `3px solid ${b.color}`,
-                      fontSize: 12,
+                      fontSize: 14,
                     }}
                   >
                     {b.label}
@@ -1171,13 +1171,13 @@ export default function KnowledgeHubPage() {
               type="info"
               showIcon
               message="AI 会自动识别类型、生成摘要、提取关键词、发现关联"
-              style={{ marginTop: 12, fontSize: 13 }}
+              style={{ marginTop: 12, fontSize: 14 }}
             />
           </>
         ) : importMode === 'url' ? (
           <>
             <Input
-              prefix={<GlobalOutlined style={{ color: '#999' }} />}
+              prefix={<GlobalOutlined style={{ color: '#666' }} />}
               placeholder="粘贴文章或视频链接（支持 YouTube、B站）"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
@@ -1186,7 +1186,7 @@ export default function KnowledgeHubPage() {
             />
             <Paragraph
               type="secondary"
-              style={{ fontSize: 12, marginTop: 8, marginBottom: 12 }}
+              style={{ fontSize: 14, marginTop: 8, marginBottom: 12 }}
             >
               复制网页/视频地址后可直接在此处粘贴，或按 Ctrl+V 自动识别。
             </Paragraph>
@@ -1273,7 +1273,7 @@ function EntityDetailContent({
             <Text
               key={`tag-${t}-${i}`}
               style={{
-                fontSize: 13,
+                fontSize: 14,
                 color: '#1677ff',
                 marginRight: 8,
               }}
@@ -1386,7 +1386,7 @@ function EntityDetailContent({
 
       {/* 页脚元信息 */}
       <Divider style={{ margin: '16px 0 12px' }} />
-      <Text type="secondary" style={{ fontSize: 12 }}>
+      <Text type="secondary" style={{ fontSize: 14 }}>
         <EyeOutlined style={{ marginRight: 4 }} />
         浏览 {detail.viewCount} 次
         {detail.updatedAt && (

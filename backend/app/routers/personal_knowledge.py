@@ -46,7 +46,7 @@ class EdgeCreate(BaseModel):
 
 
 def _get_tenant_id(current_user: dict) -> str:
-    return current_user.get("tenant_id") or current_user.get("id", "default")
+    return current_user.get("family_id") or current_user.get("id", "default")
 
 
 @router.post("/symptoms")

@@ -7,6 +7,8 @@ import {
   DatabaseOutlined, ReloadOutlined, DeleteOutlined,
   PlusOutlined, ScanOutlined, ThunderboltOutlined,
 } from '@ant-design/icons';
+import { Navigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 import { request } from '../api/client';
 
 const { Title, Text, Paragraph } = Typography;
@@ -30,6 +32,12 @@ interface RecRow {
 }
 
 export default function AdminPage() {
+  const { user } = useAuth();
+  const role = (user as { role?: string } | null)?.role ?? 'user';
+  // 防御纵深：App.tsx 路由守卫之外再校验一次角色
+  if (role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
   const [tab, setTab] = useState('overview');
   return (
     <div>
@@ -112,12 +120,12 @@ function ModelsTab() {
             title: '操作', key: 'action', width: 120,
             render: (_, r) => (
               <Space>
-                <Button size="small" type="link" onClick={async () => {
+                <Button type="link" onClick={async () => {
                   await request(`/api/models/${r.id}`, { method: 'PUT', body: JSON.stringify({ enabled: !r.enabled }) });
                   void message.success(r.enabled ? '已禁用' : '已启用');
                   void load();
                 }}>{r.enabled ? '禁用' : '启用'}</Button>
-                <Button size="small" type="link" danger onClick={async () => {
+                <Button type="link" danger onClick={async () => {
                   await request(`/api/models/${r.id}`, { method: 'DELETE' });
                   void message.success('已删除');
                   void load();
@@ -193,12 +201,12 @@ function IndexTab() {
             title: '操作', key: 'action', width: 160,
             render: (_, r) => (
               <Space>
-                <Button size="small" danger icon={<DeleteOutlined />} onClick={async () => {
+                <Button danger icon={<DeleteOutlined />} onClick={async () => {
                   await request('/api/admin/deletion-execute', { method: 'POST', body: JSON.stringify({ chunk_ids: [r.chunk_id] }) });
                   void message.success('已删除');
                   void load();
                 }}>删除</Button>
-                <Button size="small" onClick={async () => {
+                <Button onClick={async () => {
                   await request('/api/admin/deletion-exempt', { method: 'POST', body: JSON.stringify({ target_type: 'chunk', target_id: r.chunk_id }) });
                   void message.success('已豁免');
                   void load();
@@ -269,10 +277,10 @@ function FeederTab() {
         <Button type="primary" icon={<ScanOutlined />} loading={scanning} onClick={async () => {
           setScanning(true); setResult(null);
           try {
-            const data = await request<Record<string, unknown>>('/api/admin/feeder/scan?max_feeds=5');
+            const data = await request<Record<string, unknown>>('/api/admin/feeder/scan?max_feeds=5', { method: 'POST' });
             setResult(data);
             void message.success(String(data.message ?? '巡检完成'));
-          } catch { void message.error('巡检失败'); }
+          } catch (err) { void message.error(`巡检失败：${err instanceof Error ? err.message : '未知错误'}`); }
           finally { setScanning(false); }
         }}>立即巡检</Button>
         {result ? (
@@ -376,7 +384,7 @@ function ConversationsTab() {
                 <Text type="secondary">→</Text>
                 <Tag>{msg.to_agent as string}</Tag>
                 <Tag color={msgColors[msg.message_type as string] || 'default'}>{msg.message_type as string}</Tag>
-                <Text type="secondary" style={{ fontSize: 11 }}>
+                <Text type="secondary" style={{ fontSize: 14 }}>
                   {(msg.created_at as string)?.substring(0, 16)}
                 </Text>
               </Space>
@@ -406,12 +414,12 @@ function KnowledgeScanTab() {
       });
       setResult(data);
       const filled = (data.filled_count as number) || 0;
-      const gaps = (data.total_gaps_found as number) || 0;
+      const gaps = (data.total_gaps_found as number) || (data.total_gaps as number) || 0;
       message.success(fill
         ? `巡检完成：填补 ${filled} 条，发现 ${gaps} 个缺口`
         : `扫描完成：发现 ${gaps} 个知识缺口`);
-    } catch {
-      message.error('巡检失败，请检查AI模型配置');
+    } catch (err) {
+      message.error(`巡检失败：${err instanceof Error ? err.message : '未知错误'}`);
     } finally {
       setLoading(false);
     }

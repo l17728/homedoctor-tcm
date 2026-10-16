@@ -24,6 +24,9 @@ import {
   EditOutlined,
   DeleteOutlined,
   CameraOutlined,
+  ReloadOutlined,
+  CloseOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
@@ -32,6 +35,7 @@ import {
   updateMedicine,
   deleteMedicine,
   recognizeMedicineImage,
+  lookupBarcode,
   type Medicine,
   type PaginatedMedicines,
   type OcrRecognitionResult,
@@ -53,12 +57,14 @@ interface FormValues {
   notes?: string;
   quantity?: number;
   expiry_date?: dayjs.Dayjs;
+  barcode?: string;
 }
 
 export default function MedicineList() {
   const isMobile = useIsMobile();
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(
     null,
@@ -71,6 +77,7 @@ export default function MedicineList() {
 
   const loadMedicines = async (page?: number) => {
     setLoading(true);
+    setLoadError(false);
     try {
       const data: PaginatedMedicines = await getMedicines({
         page: page ?? pagination.current,
@@ -83,7 +90,7 @@ export default function MedicineList() {
         total: data.total,
       });
     } catch {
-      // handled
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -163,6 +170,7 @@ export default function MedicineList() {
       notes: record.notes,
       quantity: record.quantity,
       expiry_date: record.expiry_date ? dayjs(record.expiry_date) : undefined,
+      barcode: record.barcode,
     });
     setDrawerOpen(true);
   };
@@ -186,10 +194,26 @@ export default function MedicineList() {
       setDrawerOpen(false);
       loadMedicines(pagination.current);
     } catch (err) {
-      // validation error or API error
+      // antd 表单校验错误为普通对象（含 errorFields），不弹提示；API 失败（Error）才提示
       if (err instanceof Error && err.message.includes('未授权')) {
         message.error('登录已过期，请重新登录');
+      } else if (err instanceof Error) {
+        message.error('保存失败，请检查网络后重试');
       }
+    }
+  };
+
+  const handleBarcodeCheck = async (barcode: string) => {
+    if (!barcode.trim()) {
+      message.warning('请先输入条形码');
+      return;
+    }
+    try {
+      const result = await lookupBarcode(barcode.trim());
+      if (result.valid) message.success(`${result.format ?? '条形码'}校验通过，保存后会关联到药品`);
+      else message.warning(result.reason ?? '条形码格式无效');
+    } catch {
+      message.error('条形码校验失败，请稍后重试');
     }
   };
 
@@ -254,7 +278,6 @@ export default function MedicineList() {
         <Space>
           <Button
             type="link"
-            size="small"
             icon={<EditOutlined />}
             onClick={() => handleEdit(record)}
           >
@@ -266,7 +289,7 @@ export default function MedicineList() {
             okText="确定"
             cancelText="取消"
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button type="link" danger icon={<DeleteOutlined />}>
               删除
             </Button>
           </Popconfirm>
@@ -310,6 +333,17 @@ export default function MedicineList() {
       </div>
       {loading ? (
         <Skeleton active />
+      ) : loadError ? (
+        <Alert
+          type="error"
+          showIcon
+          message="药品加载失败，请检查网络"
+          action={
+            <Button icon={<ReloadOutlined />} onClick={() => loadMedicines(1)}>
+              重试
+            </Button>
+          }
+        />
       ) : medicines.length === 0 ? (
         <Empty description="暂无药品，点击添加" />
       ) : isMobile ? (
@@ -418,10 +452,17 @@ export default function MedicineList() {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         destroyOnClose
+        maskClosable={false}
         extra={
           <Button type="primary" onClick={handleSubmit}>
             提交
           </Button>
+        }
+        footer={
+          <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button icon={<CloseOutlined />} onClick={() => setDrawerOpen(false)} style={{ minHeight: 48 }}>取消</Button>
+            <Button type="primary" icon={<CheckCircleOutlined />} onClick={handleSubmit} style={{ minHeight: 48 }}>保存</Button>
+          </Space>
         }
       >
         {ocrLoading && (
@@ -460,6 +501,20 @@ export default function MedicineList() {
               options={MEDICINE_TYPES.map((t) => ({ label: t, value: t }))}
               placeholder="请选择类型"
             />
+          </Form.Item>
+          <Alert
+            type="info"
+            showIcon
+            message={editingMedicine?.properties?.drugClass
+              ? `已保存的安全分类：${String(editingMedicine.properties.drugClass)}（来源：当前药品记录）`
+              : '药理分类建议：未配置，需人工确认'}
+            description={editingMedicine?.properties?.drugClass
+              ? '该值来自当前记录，不代表系统已独立验证。请按说明书或药师意见复核。'
+              : '药品名称和药箱类型不足以可靠推断 ACEI、抗凝药等药理分类。建议值：无；来源：没有经核验的成分/药理映射；置信度：无，因此不自动写入 drugClass。请依据说明书或药师核实后再维护。'}
+            style={{ marginBottom: 16 }}
+          />
+          <Form.Item label="条形码" name="barcode" extra="校验后随药品信息保存，可用于后续扫码识别">
+            <Input.Search enterButton="校验" onSearch={handleBarcodeCheck} />
           </Form.Item>
           <Form.Item label="状态" name="status">
             <Select

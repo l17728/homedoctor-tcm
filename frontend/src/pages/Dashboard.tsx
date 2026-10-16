@@ -30,7 +30,6 @@ import {
 } from '../api/reminderApi';
 import { createHealthLog } from '../api/healthLogApi';
 import { request } from '../api/client';
-import { useNotifications } from '../hooks/useNotifications';
 import OnboardingWizard, { ONBOARDING_KEY } from '../components/OnboardingWizard';
 
 const { Title, Text, Paragraph } = Typography;
@@ -181,7 +180,7 @@ function formatRelativeTime(ts: string): string {
 }
 
 export default function Dashboard() {
-  useNotifications();
+  // 通知轮询已移至 AppLayout/ElderlyLayout 挂载（全局生效，不重复轮询/蜂鸣）
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [dailyHealth, setDailyHealth] = useState<DailyHealth | null>(null);
@@ -344,7 +343,6 @@ export default function Dashboard() {
               >
                 <Button
                   type="primary"
-                  size="small"
                   icon={<PlusOutlined />}
                   onClick={() => navigate('/reminders')}
                 >
@@ -380,14 +378,14 @@ export default function Dashboard() {
                         <Text style={{ fontSize: 16 }}>{r.time}</Text>
                         <Text style={{ fontSize: 16, marginLeft: 8 }}>{name}</Text>
                         {r.dosage && (
-                          <Text type="secondary" style={{ fontSize: 13, marginLeft: 8 }}>
+                          <Text type="secondary" style={{ fontSize: 14, marginLeft: 8 }}>
                             {r.dosage}
                           </Text>
                         )}
                       </div>
                       <Button
-                        size="small"
                         type="primary"
+                        style={{ minWidth: 64, minHeight: 44 }}
                         loading={checkInBusy === slotKey(r)}
                         onClick={() => handleCheckIn(r)}
                       >
@@ -398,7 +396,7 @@ export default function Dashboard() {
                 })}
                 {takenToday.length > 0 && (
                   <div style={{ borderTop: '1px solid #f0f0f0', marginTop: 4, paddingTop: 8 }}>
-                    <Text type="secondary" style={{ fontSize: 13 }}>
+                    <Text type="secondary" style={{ fontSize: 14 }}>
                       已完成 {takenToday.length} 项：
                     </Text>
                     {takenToday.slice(0, 4).map((r) => {
@@ -434,7 +432,6 @@ export default function Dashboard() {
                 <div style={{ marginTop: 8, fontSize: 16, fontWeight: 600 }}>已记录✓</div>
                 <Button
                   type="link"
-                  size="small"
                   onClick={() => {
                     setHpRecorded(false);
                     setHpSystolic(null);
@@ -526,6 +523,12 @@ export default function Dashboard() {
                     ))}
                   </ul>
                 )}
+                {dailyHealth.recent_consultations && dailyHealth.recent_consultations.count > 0 && (
+                  <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 14 }}>
+                    结合近7天 {dailyHealth.recent_consultations.count} 次咨询：
+                    {dailyHealth.recent_consultations.topics.slice(0, 2).join('、')}
+                  </Text>
+                )}
               </>
             ) : (
               <Empty description="暂无养生建议" image={Empty.PRESENTED_IMAGE_SIMPLE} />
@@ -536,7 +539,7 @@ export default function Dashboard() {
 
       {/* 知识库统计 — 淡化展示 */}
       <div style={{ marginBottom: 24, textAlign: 'center' }}>
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           知识库：{stats?.herb_count ?? 0}味中药 · {stats?.formula_count ?? 0}首方剂 ·{' '}
           {stats?.medicine_count ?? 0}项药箱
         </Text>
@@ -852,6 +855,14 @@ export default function Dashboard() {
             onClick={() => navigate('/medicines')}
           >
             添加药品
+          </Button>
+        </Col>
+        <Col>
+          <Button
+            icon={<BellOutlined />}
+            onClick={() => navigate('/reminders')}
+          >
+            吃药提醒
           </Button>
         </Col>
         <Col>

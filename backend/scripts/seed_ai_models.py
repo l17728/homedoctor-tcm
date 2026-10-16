@@ -7,7 +7,11 @@ import asyncio, json, os, aiosqlite
 
 DB = os.environ.get("HOMEDOCTOR_DATABASE_URL", "data/homedoctor.db")
 
-API_KEY = "URpUJXRfNpfO5OHmF-zalcvvfcAxGRvCl4FYfwdIeklNawnXuCVdzhQ0q_xzQR4Huo-ZqDr8BZUXL7lhqApNyw"
+# SECURITY: never hardcode keys in the repo — read from the environment
+# (same variable the app uses). The script refuses to run without it.
+API_KEY = os.environ.get("HOMEDOCTOR_LLM_API_KEY", "")
+if not API_KEY:
+    raise SystemExit("HOMEDOCTOR_LLM_API_KEY 未设置 — 拒绝用空 key 写入 ai_models")
 ENDPOINT = "https://api.modelarts-maas.com/openai/v1/chat/completions"
 
 MODELS = [

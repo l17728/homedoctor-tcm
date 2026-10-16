@@ -204,7 +204,7 @@ cd backend && python3 cli.py --help
 ## 测试
 
 ```bash
-cd backend && python3 -m pytest tests/ -v    # 1070+ 个测试
+cd backend && python3 -m pytest tests/ -v    # 1888+ 个测试（以 pytest --collect-only 为准）
 cd frontend && npx playwright test            # E2E 测试
 ```
 

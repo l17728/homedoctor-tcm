@@ -106,6 +106,45 @@ async def test_chat_empty_message_rejected(client: AsyncClient, auth_headers: di
     assert response.status_code == 422
 
 
+@pytest.mark.asyncio
+async def test_chat_history_over_20_truncated(client: AsyncClient, auth_headers: dict):
+    """History with 25 entries → truncated to the most recent 20, request still works."""
+    long_history = [
+        {"role": "user" if i % 2 == 0 else "assistant", "content": f"消息{i}"}
+        for i in range(25)
+    ]
+    response = await client.post(
+        "/api/chat",
+        json={"message": "今天天气怎么样", "history": long_history},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["safety_warning"] is None
+    assert "今天天气" in data["reply"]
+
+
+@pytest.mark.asyncio
+async def test_chat_history_pagination_bounds(client: AsyncClient, auth_headers: dict):
+    """GET /api/chat/history 分页参数边界：page≥1、1≤pageSize≤100."""
+    # page=0 → 422
+    resp = await client.get(
+        "/api/chat/history", params={"page": 0}, headers=auth_headers,
+    )
+    assert resp.status_code == 422
+    # pageSize=101 → 422
+    resp = await client.get(
+        "/api/chat/history", params={"pageSize": 101}, headers=auth_headers,
+    )
+    assert resp.status_code == 422
+    # 合法边界值 page=1 / pageSize=100 → 200
+    resp = await client.get(
+        "/api/chat/history", params={"page": 1, "pageSize": 100},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+
+
 # ---------------------------------------------------------------------------
 # GET /api/chat/history
 # ---------------------------------------------------------------------------

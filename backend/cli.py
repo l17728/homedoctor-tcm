@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import ExitStack
 from datetime import datetime
 from typing import Optional
 
@@ -56,14 +57,36 @@ def _get_authed(client: httpx.Client, path: str, token: str, params: dict | None
         raise typer.Exit(1)
 
 
-def _post_authed(client: httpx.Client, path: str, token: str, data: dict | None = None) -> dict:
+def _post_authed(client: httpx.Client, path: str, token: str, data: dict | None = None, *, raw: bool = False) -> dict | bytes:
     """POST request with Bearer token."""
     try:
         r = client.post(f"{BASE_URL}{path}", json=data, headers={"Authorization": f"Bearer {token}"})
         r.raise_for_status()
+        if raw:
+            return r.content
         return r.json()
     except httpx.ConnectError:
         typer.echo("❌ 无法连接到服务，请确认服务已启动")
+        raise typer.Exit(1)
+
+
+def _put_authed(client: httpx.Client, path: str, token: str, data: dict | None = None) -> dict:
+    try:
+        r = client.put(f"{BASE_URL}{path}", json=data, headers={"Authorization": f"Bearer {token}"})
+        r.raise_for_status()
+        return r.json()
+    except httpx.HTTPError as e:
+        typer.echo(f"❌ 请求失败: {e}")
+        raise typer.Exit(1)
+
+
+def _delete_authed(client: httpx.Client, path: str, token: str) -> dict:
+    try:
+        r = client.delete(f"{BASE_URL}{path}", headers={"Authorization": f"Bearer {token}"})
+        r.raise_for_status()
+        return r.json()
+    except httpx.HTTPError as e:
+        typer.echo(f"❌ 请求失败: {e}")
         raise typer.Exit(1)
     except httpx.HTTPStatusError as e:
         typer.echo(f"❌ 请求失败: {e.response.status_code} {e.response.text}")
@@ -80,6 +103,34 @@ def health():
     with httpx.Client() as client:
         result = _get(client, "/api/health")
     typer.echo(f"✅ 服务状态: {result['status']} | 版本: {result['version']}")
+
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+@app.command("notifications:list")
+def notifications_list(token: str = typer.Option(..., "--token")):
+    """列出当前用户通知。"""
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/notifications", token)
+    typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+@app.command("notifications:read")
+def notifications_read(notification_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    """将通知标记为已读。"""
+    with httpx.Client() as client:
+        result = _post_authed(client, f"/api/notifications/{notification_id}/read", token)
+    typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+@app.command("auth:logout")
+def auth_logout(token: str = typer.Option(..., "--token", help="当前访问令牌")):
+    """撤销当前访问令牌。"""
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/auth/logout", token)
+    typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +331,7 @@ def backup_restore(
     with httpx.Client() as client:
         login = _post(client, "/api/auth/login", data={"username": username, "password": password})
         result = _post_authed(
-            client, "/api/restore", token=login["access_token"], data={"filename": filename}
+            client, "/api/backup/restore", token=login["access_token"], data={"filename": filename}
         )
     typer.echo(f"✅ {result['message']} (文件: {result.get('filename', filename)})")
 
@@ -354,7 +405,7 @@ def reminders_toggle(
     with httpx.Client() as client:
         login = _post(client, "/api/auth/login", data={"username": username, "password": password})
         token = login["access_token"]
-        result = _post_authed(client, f"/api/reminders/{reminder_id}/toggle", token=token, data={})
+        result = _put_authed(client, f"/api/reminders/{reminder_id}/toggle", token=token)
     state = "启用" if result["enabled"] else "暂停"
     typer.echo(f"✅ {result['title']} 已{state}")
 
@@ -854,6 +905,346 @@ def schemas_get(
     with httpx.Client() as client:
         result = _get(client, f"/api/schemas/{node_type}")
     typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+# ---------------------------------------------------------------------------
+# Additional API domains (small HTTP-only commands for agent workflows)
+# ---------------------------------------------------------------------------
+
+def _print_json(value: dict) -> None:
+    typer.echo(json.dumps(value, ensure_ascii=False, indent=2))
+
+
+@app.command("api:request")
+def api_request(
+    method: str = typer.Argument(..., help="HTTP 方法：GET/POST/PUT/PATCH/DELETE"),
+    path: str = typer.Argument(..., help="带真实资源 ID 的 API 路径，例如 /api/auth/me"),
+    token: Optional[str] = typer.Option(None, "--token", help="可选 Bearer token"),
+    query: Optional[str] = typer.Option(None, "--query", help="查询参数 JSON 对象"),
+    body: Optional[str] = typer.Option(None, "--body", help="请求体 JSON"),
+    form: Optional[str] = typer.Option(None, "--form", help="表单字段 JSON 对象（可与 --file 同用）"),
+    file_paths: list[str] = typer.Option([], "--file", help="上传文件路径；多文件接口可重复传入"),
+    file_field: str = typer.Option("file", "--file-field", help="上传文件的表单字段名"),
+    output: Optional[str] = typer.Option(None, "--output", help="将非 JSON 响应保存到文件"),
+):
+    """调用任意已公开的 API 路由，覆盖专用命令尚未封装的端点。"""
+    method = method.upper()
+    if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+        typer.echo("HTTP 方法必须为 GET、POST、PUT、PATCH 或 DELETE")
+        raise typer.Exit(2)
+    if not path.startswith("/api/") or ".." in path.split("/"):
+        typer.echo("路径必须是 /api/ 下的站内 API 路径")
+        raise typer.Exit(2)
+    try:
+        params = json.loads(query) if query else None
+        payload = json.loads(body) if body else None
+        form_data = json.loads(form) if form else None
+    except json.JSONDecodeError as exc:
+        typer.echo(f"JSON 参数无效: {exc}")
+        raise typer.Exit(2) from exc
+    if params is not None and not isinstance(params, dict):
+        typer.echo("--query 必须是 JSON 对象")
+        raise typer.Exit(2)
+    if form_data is not None and not isinstance(form_data, dict):
+        typer.echo("--form 必须是 JSON 对象")
+        raise typer.Exit(2)
+    if form_data is not None and payload is not None:
+        typer.echo("--form 与 --body 不能同时使用")
+        raise typer.Exit(2)
+
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        with httpx.Client() as client:
+            request_options = {"params": params, "headers": headers}
+            if file_paths:
+                with ExitStack() as stack:
+                    uploads = [stack.enter_context(open(file_name, "rb")) for file_name in file_paths]
+                    request_options["data"] = form_data or {}
+                    request_options["files"] = [
+                        (file_field, (upload.name, upload)) for upload in uploads
+                    ]
+                    response = client.request(method, f"{BASE_URL}{path}", **request_options)
+            elif form_data is not None:
+                request_options["data"] = form_data
+                response = client.request(method, f"{BASE_URL}{path}", **request_options)
+            else:
+                request_options["json"] = payload
+                response = client.request(method, f"{BASE_URL}{path}", **request_options)
+            response.raise_for_status()
+    except httpx.ConnectError:
+        typer.echo("无法连接到服务，请确认服务已启动 (python -m uvicorn app.main:app)")
+        raise typer.Exit(1)
+    except httpx.HTTPStatusError as exc:
+        typer.echo(f"请求失败: {exc.response.status_code} {exc.response.text}")
+        raise typer.Exit(1)
+
+    if output:
+        with open(output, "wb") as file:
+            file.write(response.content)
+        typer.echo(f"响应已保存到 {output}")
+        return
+    try:
+        typer.echo(json.dumps(response.json(), ensure_ascii=False, indent=2))
+    except ValueError:
+        typer.echo(response.text)
+
+
+@app.command("medication-plans:list")
+def medication_plans_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/medication-plans", token)
+    _print_json(result)
+
+
+@app.command("medication-plans:create")
+def medication_plans_create(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/medication-plans", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("medication-plans:detail")
+def medication_plans_detail(plan_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/medication-plans/{plan_id}", token)
+    _print_json(result)
+
+
+@app.command("health-logs:list")
+def health_logs_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/health-logs", token)
+    _print_json(result)
+
+
+@app.command("health-logs:create")
+def health_logs_create(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/health-logs", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("health-logs:latest")
+def health_logs_latest(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/health-logs/latest", token)
+    _print_json(result)
+
+
+@app.command("medical-visits:list")
+def medical_visits_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/visits", token)
+    _print_json(result)
+
+
+@app.command("medical-visits:detail")
+def medical_visits_detail(visit_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/visits/{visit_id}", token)
+    _print_json(result)
+
+
+@app.command("reports:list")
+def reports_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/reports/health-trend", token)
+    _print_json(result)
+
+
+@app.command("reports:generate")
+def reports_generate(payload: str = typer.Argument(..., help="JSON 请求体"), output: str = typer.Option("health-report.pdf", "--output"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/reports/generate-pdf", token, json.loads(payload), raw=True)
+    with open(output, "wb") as file:
+        file.write(result)
+    typer.echo(f"已保存 PDF：{output}")
+
+
+@app.command("prescriptions:generate")
+def prescriptions_generate(payload: str = typer.Argument(..., help="JSON 请求体"), output: str = typer.Option("prescription.pdf", "--output"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/prescriptions/generate", token, json.loads(payload), raw=True)
+    with open(output, "wb") as file:
+        file.write(result)
+    typer.echo(f"已保存 PDF：{output}")
+
+
+@app.command("prescriptions:health-report")
+def prescriptions_health_report(payload: str = typer.Argument(..., help="JSON 请求体"), output: str = typer.Option("health-summary.pdf", "--output"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/prescriptions/health-report", token, json.loads(payload), raw=True)
+    with open(output, "wb") as file:
+        file.write(result)
+    typer.echo(f"已保存 PDF：{output}")
+
+
+@app.command("share-cards:list")
+def share_cards_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/share-cards/list", token)
+    _print_json(result)
+
+
+@app.command("share-cards:detail")
+def share_cards_detail(card_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/share-cards/{card_id}", token)
+    _print_json(result)
+
+
+@app.command("remote-assist:invite")
+def remote_assist_invite(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/remote-assist/invite", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("remote-assist:summary")
+def remote_assist_summary(user_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/remote-assist/{user_id}/summary", token)
+    _print_json(result)
+
+
+@app.command("remote-assist:weekly-report")
+def remote_assist_weekly_report(user_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/remote-assist/{user_id}/weekly-report", token)
+    _print_json(result)
+
+
+@app.command("therapies:list")
+def therapies_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/therapies", token)
+    _print_json(result)
+
+
+@app.command("therapies:detail")
+def therapies_detail(therapy_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/therapies/{therapy_id}", token)
+    _print_json(result)
+
+
+@app.command("therapies:safety")
+def therapies_safety(therapy_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/therapies/{therapy_id}/safety", token)
+    _print_json(result)
+
+
+@app.command("classics:list")
+def classics_list():
+    with httpx.Client() as client:
+        result = _get(client, "/api/classics")
+    _print_json(result)
+
+
+@app.command("classics:detail")
+def classics_detail(classic_id: str = typer.Argument(...)):
+    with httpx.Client() as client:
+        result = _get(client, f"/api/classics/{classic_id}")
+    _print_json(result)
+
+
+@app.command("bookmarks:list")
+def bookmarks_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/bookmarks", token)
+    _print_json(result)
+
+
+@app.command("bookmarks:add")
+def bookmarks_add(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/bookmarks", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("bookmarks:detail")
+def bookmarks_detail(bookmark_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/bookmarks/{bookmark_id}", token)
+    _print_json(result)
+
+
+@app.command("formulations:recommend")
+def formulations_recommend(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/formulations/recommend", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("formulations:from-inventory")
+def formulations_from_inventory(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/formulations/from-inventory", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("favorites:list")
+def favorites_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/favorites", token)
+    _print_json(result)
+
+
+@app.command("favorites:add")
+def favorites_add(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/favorites", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("favorites:detail")
+def favorites_detail(entry_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/favorites/{entry_id}", token)
+    _print_json(result)
+
+
+@app.command("knowledge-import:recent")
+def knowledge_import_recent(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/knowledge-import/recent", token)
+    _print_json(result)
+
+
+@app.command("knowledge-import:url")
+def knowledge_import_url(url: str = typer.Argument(..., help="要导入的网页地址"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/knowledge-hub/import-url", token, {"url": url})
+    _print_json(result)
+
+
+@app.command("knowledge-import:delete")
+def knowledge_import_delete(entry_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _delete_authed(client, f"/api/knowledge-import/{entry_id}", token)
+    _print_json(result)
+
+
+@app.command("extractor:auto-extract")
+def extractor_auto_extract(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/extractor/auto-extract", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("extractor:recent")
+def extractor_recent(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/extractor/recent", token)
+    _print_json(result)
+
+
+@app.command("dashboard:get")
+def dashboard_get(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/dashboard/stats", token)
+    _print_json(result)
 
 
 if __name__ == "__main__":

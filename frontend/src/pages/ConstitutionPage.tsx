@@ -306,7 +306,7 @@ export default function ConstitutionPage() {
                     justifyContent: 'flex-end',
                     paddingRight: 8,
                     color: '#fff',
-                    fontSize: 12,
+                    fontSize: 14,
                     fontWeight: 600,
                   }}
                 >

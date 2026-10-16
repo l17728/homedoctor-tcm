@@ -9,8 +9,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.auth import decode_access_token
+from app.auth import decode_access_token, is_access_token_revoked
 from app.repository import current_tenant_id
+from app.db.adapter import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +73,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
         token = auth_header[7:]
         try:
             payload = decode_access_token(token)
-            family_id = payload.get("family_id", "default")
-            username = payload.get("username", "")
-            user_id = payload.get("sub", "")
+            if await is_access_token_revoked(get_db(), payload):
+                raise ValueError("revoked token")
+            user_id = payload.get("sub")
+            if not user_id:
+                raise ValueError("missing token subject")
+            user = await get_db().query_one(
+                "SELECT id, username, family_id FROM users WHERE id = ?", (user_id,)
+            )
+            if not user:
+                raise ValueError("account no longer exists")
+            if payload.get("family_id") != user["family_id"]:
+                raise ValueError("token family no longer matches account")
+            # The downstream FastAPI dependency revalidates the user against
+            # the database, but can reuse this request-local revocation check.
+            request.state.token_revocation_checked = True
+            family_id = user["family_id"]
+            username = user["username"]
             current_tenant_id.set(family_id)
             request.state.user = {
                 "id": user_id,

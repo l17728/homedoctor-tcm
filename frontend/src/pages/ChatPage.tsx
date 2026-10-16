@@ -37,6 +37,7 @@ import { saveKnowledgeCard } from '../api/favoriteApi';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useElderlyMode } from '../contexts/ElderlyModeContext';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -56,6 +57,7 @@ const containsTreatmentAdvice = (content: string): boolean =>
 
 export default function ChatPage() {
   const isMobile = useIsMobile();
+  const { isElderlyMode } = useElderlyMode();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -63,7 +65,7 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   /** True while the conversation history is being fetched on mount. */
   const [historyLoading, setHistoryLoading] = useState(true);
-  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(isElderlyMode);
   const [savedCards, setSavedCards] = useState<Set<number>>(new Set());
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
@@ -81,6 +83,10 @@ export default function ChatPage() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (isElderlyMode) setTtsEnabled(true);
+  }, [isElderlyMode]);
 
   // ---------------------------------------------------------------------------
   // Enhancement 1 — restore the latest conversation on mount so messages are
@@ -364,10 +370,10 @@ export default function ChatPage() {
             <Skeleton active paragraph={{ rows: 3 }} />
           </div>
         ) : messages.length === 0 ? (
-          <div style={{ textAlign: 'center', color: '#999', padding: 40 }}>
+          <div style={{ textAlign: 'center', color: '#666', padding: 40 }}>
             <RobotOutlined style={{ fontSize: 48, marginBottom: 16 }} />
             <p>欢迎使用AI健康助手，请输入、语音或拍照提问</p>
-            <p style={{ fontSize: 12, color: '#bbb' }}>
+            <p style={{ fontSize: 14, color: '#666' }}>
               支持文字、语音、图片提问（如药品说明书、化验单）
             </p>
           </div>
@@ -427,7 +433,7 @@ export default function ChatPage() {
                           {
                             key: 'reasoning',
                             label: (
-                              <Text type="secondary" style={{ fontSize: 13 }}>
+                              <Text type="secondary" style={{ fontSize: 14 }}>
                                 🧠 AI 推理过程
                               </Text>
                             ),
@@ -435,7 +441,7 @@ export default function ChatPage() {
                               <Space direction="vertical" size={6} style={{ width: '100%' }}>
                                 {msg.reasoning_trace.map((t, ti) => (
                                   <div key={ti}>
-                                    <Text type="secondary" style={{ fontSize: 12 }}>
+                                    <Text type="secondary" style={{ fontSize: 14 }}>
                                       步骤 {ti + 1}：{t.step}
                                     </Text>
                                     <div
@@ -443,7 +449,7 @@ export default function ChatPage() {
                                         background: '#f5f5f5',
                                         borderRadius: 4,
                                         padding: '4px 8px',
-                                        fontSize: 12,
+                                        fontSize: 14,
                                         color: '#666',
                                         marginTop: 2,
                                         lineHeight: 1.6,
@@ -464,7 +470,6 @@ export default function ChatPage() {
                     <div style={{ marginTop: 4, textAlign: 'right' }}>
                       <Button
                         type="text"
-                        size="small"
                         icon={<SaveOutlined />}
                         disabled={savedCards.has(idx)}
                         onClick={() => handleSaveCard(idx, msg.content)}
@@ -475,7 +480,7 @@ export default function ChatPage() {
                   )}
                   {msg.role === 'assistant' && msg.content && (
                     <div style={{ marginTop: 4 }}>
-                      <Text type="secondary" style={{ fontSize: 12 }}>
+                      <Text type="secondary" style={{ fontSize: 14 }}>
                         ⚠ 以上建议仅供参考，不能替代专业医疗诊断。用药请遵医嘱。
                       </Text>
                     </div>
@@ -487,7 +492,7 @@ export default function ChatPage() {
                         type="warning"
                         showIcon
                         message="⚠️ 以上建议涉及用药，请务必咨询专业医师后使用。"
-                        style={{ marginTop: 6, padding: '4px 12px', fontSize: 13 }}
+                        style={{ marginTop: 6, padding: '4px 12px', fontSize: 16 }}
                       />
                     )}
                   {msg.warnings && msg.warnings.length > 0 && (
@@ -544,14 +549,15 @@ export default function ChatPage() {
             alt="待发送"
             style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4 }}
           />
-          <Text style={{ flex: 1, color: '#999' }}>
+          <Text style={{ flex: 1, color: '#666' }}>
             {pendingImage?.name ?? '图片'} （{(pendingImage ? pendingImage.size / 1024 : 0).toFixed(0)}KB）
           </Text>
           <Button
             type="text"
-            size="small"
             icon={<CloseOutlined />}
             onClick={handleRemoveImage}
+            aria-label="移除图片"
+            style={{ minWidth: 44, minHeight: 44 }}
           />
         </div>
       )}
@@ -572,6 +578,7 @@ export default function ChatPage() {
             icon={<PictureOutlined />}
             onClick={() => fileInputRef.current?.click()}
             style={{ width: 48, height: 48, flexShrink: 0 }}
+            aria-label="拍照提问"
           />
         </Tooltip>
         <TextArea
@@ -593,24 +600,24 @@ export default function ChatPage() {
           }}
           style={isListening ? { borderColor: '#ff4d4f' } : undefined}
         />
-        {micSupported && (
-          <Tooltip title={isListening ? '点击停止' : '语音输入'}>
+        <Tooltip title={!micSupported ? '当前浏览器不支持语音输入，建议使用 Chrome/Edge' : isListening ? '点击停止' : '语音输入'}>
             <Button
               type={isListening ? 'primary' : 'default'}
               danger={isListening}
-              shape="circle"
               size="large"
+              disabled={!micSupported}
               icon={isListening ? <AudioMutedOutlined /> : <AudioOutlined />}
-              onClick={toggleMic}
+              onClick={micSupported ? toggleMic : undefined}
+              aria-label={isListening ? '停止语音输入' : '语音输入'}
               style={{
-                width: 48,
                 height: 48,
                 flexShrink: 0,
                 animation: isListening ? 'pulse 1.5s infinite' : undefined,
               }}
-            />
+            >
+              {micSupported ? (isListening ? '停止' : '语音') : '语音不可用'}
+            </Button>
           </Tooltip>
-        )}
         <Button
           type="primary"
           icon={<SendOutlined />}

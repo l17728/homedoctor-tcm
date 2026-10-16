@@ -1,4 +1,4 @@
-import { Layout, Card } from 'antd';
+import { Layout, Card, Typography } from 'antd';
 import {
   HomeOutlined,
   MessageOutlined,
@@ -7,9 +7,12 @@ import {
   HeartOutlined,
   SolutionOutlined,
   RightOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
+import { useNotifications } from '../hooks/useNotifications';
+import NotificationBell from '../components/NotificationBell';
 
 const { Content } = Layout;
 
@@ -32,6 +35,9 @@ export default function ElderlyLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // 通知轮询挂载在 Layout（而非 Dashboard），任何页面提醒都生效
+  useNotifications({ onOpen: (path) => navigate(path) });
+
   const tabs: TabItem[] = [
     { key: '/', label: '首页', icon: <HomeOutlined /> },
     { key: '/chat', label: '问答', icon: <MessageOutlined /> },
@@ -41,7 +47,8 @@ export default function ElderlyLayout() {
   const isMeSection =
     location.pathname.startsWith('/profile') ||
     location.pathname.startsWith('/settings') ||
-    location.pathname.startsWith('/constitution');
+    location.pathname.startsWith('/constitution') ||
+    location.pathname.startsWith('/reminders');
 
   const activeTab = (() => {
     if (location.pathname === '/' || location.pathname === '/dashboard') return '/';
@@ -51,6 +58,7 @@ export default function ElderlyLayout() {
   })();
 
   const meMenuItems: MeMenuItem[] = [
+    { path: '/reminders', icon: <ClockCircleOutlined />, label: '吃药提醒', desc: '按时服药 · 打卡' },
     { path: '/profile', icon: <SolutionOutlined />, label: '健康档案', desc: '基本信息 · 过敏史' },
     { path: '/constitution', icon: <HeartOutlined />, label: '体质自测', desc: '九种体质测评' },
     { path: '/settings', icon: <SettingOutlined />, label: '设置', desc: '显示 · 长辈模式' },
@@ -67,6 +75,10 @@ export default function ElderlyLayout() {
           width: '100%',
         }}
       >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 48, marginBottom: 8 }}>
+          <Typography.Text strong style={{ fontSize: 18 }}>家庭医生</Typography.Text>
+          <NotificationBell onOpen={navigate} />
+        </div>
         {/* "我的"分区快捷菜单 — 长辈模式下持久可见的导航 */}
         {isMeSection && (
           <Card
@@ -96,9 +108,9 @@ export default function ElderlyLayout() {
                     <div style={{ fontSize: 18, fontWeight: active ? 600 : 500 }}>
                       {item.label}
                     </div>
-                    <div style={{ fontSize: 14, color: '#999' }}>{item.desc}</div>
+                    <div style={{ fontSize: 14, color: '#666' }}>{item.desc}</div>
                   </div>
-                  <RightOutlined style={{ color: '#ccc' }} />
+                  <RightOutlined style={{ color: '#666' }} />
                 </div>
               );
             })}
@@ -134,7 +146,7 @@ export default function ElderlyLayout() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
-                color: isActive ? '#1890ff' : '#999',
+                color: isActive ? '#1890ff' : '#666',
                 transition: 'color 0.2s',
               }}
             >

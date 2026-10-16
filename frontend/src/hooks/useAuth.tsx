@@ -9,6 +9,7 @@ import {
   loginApi,
   registerApi,
   getMe,
+  logoutApi,
   type User,
   type AuthResponse,
   type RegisterConsent,
@@ -19,7 +20,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string, consent: RegisterConsent) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -41,12 +42,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    if (token && !user) {
+    if (token && (!user || !user.role)) {
       getMe()
-        .then(setUser)
+        .then((currentUser) => {
+          localStorage.setItem('user', JSON.stringify(currentUser));
+          setUser(currentUser);
+        })
         .catch(() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
+          // A temporary network failure must not log out a valid cached session.
+          // The API client already clears the session for an expired/invalid token.
+          if (!localStorage.getItem('token')) setUser(null);
         });
     }
     // Only run on mount — intentionally empty deps
@@ -75,10 +80,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [handleAuthResponse],
   );
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
+  const logout = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    try {
+      if (token) {
+        try {
+          const { removeBrowserPushSubscription } = await import('../api/pushApi');
+          await removeBrowserPushSubscription(token);
+        } catch (error) {
+          console.warn('Could not remove browser push subscription during logout', error);
+        }
+        try {
+          await logoutApi(token);
+        } catch (error) {
+          console.warn('Could not revoke server token during logout', error);
+        }
+      }
+    } finally {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('current_member_id');
+      setUser(null);
+    }
   }, []);
 
   return (

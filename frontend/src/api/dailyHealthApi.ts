@@ -6,6 +6,7 @@ export interface DailyHealth {
   season: string;
   season_advice: string;
   health_tips: string[];
+  recent_consultations?: { period_days: number; count: number; topics: string[] };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -25,6 +26,7 @@ function mapDailyHealth(raw: any): DailyHealth {
     season: raw.season ?? '',
     season_advice: seasonAdvice,
     health_tips: tips,
+    recent_consultations: raw.recent_consultations ?? { period_days: 7, count: 0, topics: [] },
   };
 }
 
@@ -62,6 +64,7 @@ export async function getDailyHealth(): Promise<DailyHealth> {
       season: '',
       season_advice: '注意饮食均衡，适当运动，保持心情舒畅。',
       health_tips: [],
+      recent_consultations: { period_days: 7, count: 0, topics: [] },
     };
   }
 }

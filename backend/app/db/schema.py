@@ -215,6 +215,10 @@ DDL_STATEMENTS = [
         hash TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )""",
+    # Token revocation checks run on every authenticated request. This index
+    # is also applied to existing databases because init_db executes all
+    # idempotent DDL statements on every startup.
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_tenant_entity_lookup ON audit_log(tenant_id, entity_type, entity_id)",
     """CREATE TABLE IF NOT EXISTS favorites (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -516,6 +520,9 @@ DDL_STATEMENTS = [
         metadata TEXT DEFAULT '{}',
         source_url TEXT,
         source_type TEXT DEFAULT 'internal',
+        hit_count INTEGER DEFAULT 0,
+        last_hit_at TEXT,
+        text_summary TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )""",
     "CREATE INDEX IF NOT EXISTS idx_kc_entity ON knowledge_chunks(entity_id)",

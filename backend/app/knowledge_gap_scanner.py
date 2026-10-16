@@ -21,6 +21,11 @@ from app.database import DbAdapter
 
 logger = logging.getLogger(__name__)
 
+# Serialize concurrent "一键巡检" runs: the fill loop is read-merge-write per
+# entity and the endpoint has no natural lock — two overlapping clicks (or a
+# UI retry) would race on the same properties JSON.
+_scan_lock = asyncio.Lock()
+
 ENTITY_COMPLETION_TEMPLATES: dict[str, dict[str, Any]] = {
     "herb": {
         "required_fields": [
@@ -218,7 +223,6 @@ async def scan_all_gaps(
     for etype, summary in type_summary.items():
         avg = summary["avg_completeness"]
         summary["avg_completeness"] = round(sum(avg) / len(avg), 1) if avg else 0
-        del summary["avg_completeness"]  # remove list, keep float
 
     gaps.sort(key=lambda g: g["completeness"])
 
@@ -390,45 +394,46 @@ async def run_comprehensive_scan(
 
     This is the main entry point for the "一键巡检" feature.
     """
-    logger.info("comprehensive_scan: starting (max_fills=%d)", max_fills)
+    async with _scan_lock:
+        logger.info("comprehensive_scan: starting (max_fills=%d)", max_fills)
 
-    scan_result = await scan_all_gaps(db, entity_types=entity_types, limit_per_type=max_fills)
-    gaps = scan_result["gaps"][:max_fills]
+        scan_result = await scan_all_gaps(db, entity_types=entity_types, limit_per_type=max_fills)
+        gaps = scan_result["gaps"][:max_fills]
 
-    filled: list[dict[str, Any]] = []
-    skipped: list[dict[str, Any]] = []
-    errors: list[str] = []
+        filled: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+        errors: list[str] = []
 
-    batch_size = 3
-    for i in range(0, len(gaps), batch_size):
-        batch = gaps[i:i + batch_size]
-        tasks = [
-            fill_entity_gap(db, gap, gap["missing_fields"], gap["entity_type"])
-            for gap in batch
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for gap, result in zip(batch, results):
-            if isinstance(result, Exception):
-                errors.append(f"{gap['title']}: {str(result)[:60]}")
-            elif result.get("skipped"):
-                skipped.append(result)
-            else:
-                filled.append(result)
+        batch_size = 3
+        for i in range(0, len(gaps), batch_size):
+            batch = gaps[i:i + batch_size]
+            tasks = [
+                fill_entity_gap(db, gap, gap["missing_fields"], gap["entity_type"])
+                for gap in batch
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for gap, result in zip(batch, results):
+                if isinstance(result, Exception):
+                    errors.append(f"{gap['title']}: {str(result)[:60]}")
+                elif result.get("skipped"):
+                    skipped.append(result)
+                else:
+                    filled.append(result)
 
-    summary = {
-        "scanned_types": list(scan_result["type_summary"].keys()),
-        "type_summary": scan_result["type_summary"],
-        "total_gaps_found": scan_result["total_gaps"],
-        "processed": len(gaps),
-        "filled_count": len(filled),
-        "skipped_count": len(skipped),
-        "error_count": len(errors),
-        "filled": filled,
-        "skipped_details": skipped[:10],
-        "errors": errors[:5],
-    }
+        summary = {
+            "scanned_types": list(scan_result["type_summary"].keys()),
+            "type_summary": scan_result["type_summary"],
+            "total_gaps_found": scan_result["total_gaps"],
+            "processed": len(gaps),
+            "filled_count": len(filled),
+            "skipped_count": len(skipped),
+            "error_count": len(errors),
+            "filled": filled,
+            "skipped_details": skipped[:10],
+            "errors": errors[:5],
+        }
 
-    logger.info("comprehensive_scan: done — %d filled, %d skipped, %d errors",
-                len(filled), len(skipped), len(errors))
+        logger.info("comprehensive_scan: done — %d filled, %d skipped, %d errors",
+                    len(filled), len(skipped), len(errors))
 
-    return summary
+        return summary

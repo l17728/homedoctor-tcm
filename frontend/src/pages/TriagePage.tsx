@@ -274,7 +274,7 @@ export default function TriagePage() {
                   <br />
                   <Text type="secondary">{rf.detail}</Text>
                   <br />
-                  <Text type="danger" style={{ fontSize: 13 }}>
+                  <Text type="danger" style={{ fontSize: 16, color: '#cf1322' }}>
                     建议：{rf.action}
                   </Text>
                 </Checkbox>

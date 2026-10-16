@@ -28,6 +28,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.auth import get_current_user
+from app.upload_utils import read_upload_limited
 from app.database import DbAdapter, get_db
 from app.routers.chat import ChatRequest, chat as chat_endpoint
 
@@ -115,16 +116,14 @@ async def _read_audio(audio: UploadFile) -> bytes:
             ),
         )
 
-    raw = await audio.read()
+    raw = await read_upload_limited(
+        audio, MAX_AUDIO_SIZE,
+        f"音频大小不能超过 {MAX_AUDIO_SIZE // (1024 * 1024)}MB。",
+    )
     if not raw:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="音频文件为空，请重新录制。",
-        )
-    if len(raw) > MAX_AUDIO_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"音频大小不能超过 {MAX_AUDIO_SIZE // (1024 * 1024)}MB。",
         )
     return raw
 

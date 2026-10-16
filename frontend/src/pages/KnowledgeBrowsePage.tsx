@@ -135,7 +135,7 @@ export default function KnowledgeBrowsePage() {
                 </Text>
               </div>
               {e.category ? (
-                <Text type="secondary" style={{ fontSize: 11, marginLeft: 14 }}>
+                <Text type="secondary" style={{ fontSize: 14, marginLeft: 14 }}>
                   {e.category}
                 </Text>
               ) : null}
@@ -176,7 +176,7 @@ export default function KnowledgeBrowsePage() {
             <EditOutlined />
             <Text strong>我的笔记</Text>
             {!noteEditing && noteContent ? (
-              <Button type="link" size="small" icon={<EditOutlined />} onClick={() => setNoteEditing(true)}>
+              <Button type="link" icon={<EditOutlined />} onClick={() => setNoteEditing(true)}>
                 编辑
               </Button>
             ) : null}
@@ -208,10 +208,10 @@ export default function KnowledgeBrowsePage() {
                 style={{ fontSize: 14, marginBottom: 8 }}
               />
               <Space>
-                <Button type="primary" size="small" icon={<SaveOutlined />} loading={noteSaving} onClick={handleSaveNote}>
+                <Button type="primary" icon={<SaveOutlined />} loading={noteSaving} onClick={handleSaveNote}>
                   保存
                 </Button>
-                <Button size="small" onClick={() => setNoteEditing(false)}>
+                <Button onClick={() => setNoteEditing(false)}>
                   取消
                 </Button>
               </Space>
@@ -258,11 +258,11 @@ export default function KnowledgeBrowsePage() {
                 </Tag>
                 <Text style={{ marginLeft: 8 }}>{(appendResult as Record<string, string>).message ?? ''}</Text>
                 {(appendResult as Record<string, unknown>).synthesized_preview ? (
-                  <Paragraph style={{ marginTop: 8, fontSize: 13, color: '#666' }}>
+                  <Paragraph style={{ marginTop: 8, fontSize: 14, color: '#666' }}>
                     {(appendResult as Record<string, string>).synthesized_preview as string}
                   </Paragraph>
                 ) : null}
-                <Button size="small" type="link" onClick={() => { setAppendResult(null); setAppendInstruction(''); }}>
+                <Button type="link" onClick={() => { setAppendResult(null); setAppendInstruction(''); }}>
                   再次追加
                 </Button>
               </div>
@@ -285,7 +285,6 @@ export default function KnowledgeBrowsePage() {
             <Button
               key={t.type}
               type={activeType === t.type ? 'primary' : 'default'}
-              size="small"
               onClick={() => { setActiveType(t.type); setActiveCategory(undefined); setSelectedId(null); }}
             >
               {t.label}({t.count})
@@ -303,7 +302,7 @@ export default function KnowledgeBrowsePage() {
           ]}
         />
         <Input
-          prefix={<SearchOutlined style={{ color: '#999' }} />}
+          prefix={<SearchOutlined style={{ color: '#666' }} />}
           placeholder="搜索..."
           allowClear
           size="small"
@@ -321,7 +320,7 @@ export default function KnowledgeBrowsePage() {
           display: 'flex',
           flexDirection: 'column',
         }}>
-          <Text type="secondary" style={{ padding: '8px 12px', fontSize: 12, borderBottom: '1px solid #f0f0f0' }}>
+          <Text type="secondary" style={{ padding: '8px 12px', fontSize: 14, borderBottom: '1px solid #f0f0f0' }}>
             {total} 条结果
           </Text>
           {renderLeftList()}

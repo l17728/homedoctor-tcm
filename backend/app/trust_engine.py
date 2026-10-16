@@ -217,9 +217,16 @@ async def update_trust_level(
         if latest:
             details = json.loads(latest.get("review_details") or "{}")
             details["level_change_reason"] = reason
+            # SQLite UPDATE has no ORDER BY/LIMIT — target the latest
+            # provenance row via subquery (same pattern as above).
             await db.execute(
-                "UPDATE knowledge_provenance SET review_details = ? WHERE entity_id = ? ORDER BY imported_at DESC LIMIT 1",
-                (json.dumps(details, ensure_ascii=False), entity_id),
+                """UPDATE knowledge_provenance
+                   SET review_details = ?
+                   WHERE entity_id = ? AND id = (
+                       SELECT id FROM knowledge_provenance WHERE entity_id = ?
+                       ORDER BY imported_at DESC LIMIT 1
+                   )""",
+                (json.dumps(details, ensure_ascii=False), entity_id, entity_id),
             )
 
 

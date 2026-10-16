@@ -193,6 +193,9 @@ def generate_prescription_pdf(
     patient_name: str = "—",
     patient_age: str | None = None,
     patient_gender: str | None = None,
+    patient_contact: str | None = None,
+    constitution: str | None = None,
+    stock_items: list[dict[str, Any]] | None = None,
     prescriber: str | None = None,
     notes: str | None = None,
     usage_instructions: str | None = None,
@@ -236,8 +239,12 @@ def generate_prescription_pdf(
         patient_line += f"    性别：{_safe_text(patient_gender)}"
     if patient_age:
         patient_line += f"    年龄：{_safe_text(patient_age)}岁"
+    if patient_contact:
+        patient_line += f"    联系方式：{_safe_text(patient_contact)}"
     patient_line += f"    日期：{_format_date()}"
     story.append(Paragraph(patient_line, styles["body"]))
+    if constitution:
+        story.append(Paragraph(f"体质：{_safe_text(constitution)}", styles["body"]))
     story.append(Spacer(1, 4))
 
     # --- Formula section ---
@@ -319,6 +326,15 @@ def generate_prescription_pdf(
     if notes:
         story.append(Paragraph("▎ 医嘱 / 注意事项", styles["section"]))
         story.append(Paragraph(notes, styles["body"]))
+        story.append(Spacer(1, 4))
+
+    if stock_items:
+        story.append(Paragraph("▎ 相关药品库存", styles["section"]))
+        for item in stock_items:
+            name = _safe_text(item.get("name"))
+            quantity = _safe_text(item.get("quantity"))
+            unit = _safe_text(item.get("unit"))
+            story.append(Paragraph(f"{name}：{quantity}{unit}", styles["body"]))
         story.append(Spacer(1, 4))
 
     # --- Disclaimer ---

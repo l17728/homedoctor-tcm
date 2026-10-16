@@ -76,7 +76,7 @@ function strField(datum: NodeData | EdgeData, key: string): string {
 }
 
 function nodeFill(datum: NodeData): string {
-  return TYPE_COLORS[strField(datum, 'nodeType')] ?? '#8c8c8c';
+  return TYPE_COLORS[strField(datum, 'nodeType')] ?? '#666';
 }
 
 function nodeLabelText(datum: NodeData): string {
@@ -85,7 +85,7 @@ function nodeLabelText(datum: NodeData): string {
 }
 
 function edgeStroke(datum: EdgeData): string {
-  return EDGE_COLORS[strField(datum, 'edgeType')] ?? '#bfbfbf';
+  return EDGE_COLORS[strField(datum, 'edgeType')] ?? '#666';
 }
 
 function toG6(snapshot: GraphData) {
@@ -381,7 +381,7 @@ export default function KnowledgeGraphPage() {
             stroke: '#fff',
             lineWidth: 1.5,
             labelText: nodeLabelText,
-            labelFontSize: 11,
+            labelfontSize: 14,
             labelFill: '#333',
             labelPlacement: 'bottom',
             labelBackground: true,
@@ -475,7 +475,7 @@ export default function KnowledgeGraphPage() {
           <Title level={4} style={{ margin: 0 }}>
             知识图谱
           </Title>
-          <Text type="secondary" style={{ fontSize: 13 }}>
+          <Text type="secondary" style={{ fontSize: 14 }}>
             中药·方剂·症状·疗法关系网络
           </Text>
         </Space>
@@ -539,7 +539,7 @@ export default function KnowledgeGraphPage() {
           gap: 8,
         }}
       >
-        <Text type="secondary" style={{ fontSize: 12 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           单击查看详情 · 双击展开/折叠关联 · 当前 {count.nodes} 节点 / {count.edges}{' '}
           关系
         </Text>
@@ -555,10 +555,10 @@ export default function KnowledgeGraphPage() {
                   width: 16,
                   height: 3,
                   borderRadius: 2,
-                  background: EDGE_COLORS[t] ?? '#bfbfbf',
+                  background: EDGE_COLORS[t] ?? '#666',
                 }}
               />
-              <Text style={{ fontSize: 12 }}>{t}</Text>
+              <Text style={{ fontSize: 14 }}>{t}</Text>
             </span>
           ))}
         </Space>
@@ -687,7 +687,6 @@ export default function KnowledgeGraphPage() {
             <Space>
               {expandedRef.current.has(detailNode.id) ? (
                 <Button
-                  size="small"
                   onClick={() => {
                     if (graphRef.current && detailNode) {
                       void collapseNode(graphRef.current, detailNode.id);
@@ -699,7 +698,6 @@ export default function KnowledgeGraphPage() {
                 </Button>
               ) : (
                 <Button
-                  size="small"
                   type="primary"
                   onClick={() => {
                     if (graphRef.current && detailNode) {

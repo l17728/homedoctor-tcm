@@ -165,7 +165,7 @@ export default function FavoritesPage() {
             ))}
           </Space>
         ) : (
-          <span style={{ color: '#999', fontSize: 14 }}>暂无标签</span>
+          <span style={{ color: '#666', fontSize: 14 }}>暂无标签</span>
         )}
       </div>
       <Input.Search
@@ -202,7 +202,6 @@ export default function FavoritesPage() {
       render: (_: unknown, r: Favorite) => (
         <Button
           type="text"
-          size="small"
           icon={r.is_starred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />}
           onClick={() => handleToggleStar(r.id, r.is_starred)}
         />
@@ -265,7 +264,7 @@ export default function FavoritesPage() {
             ))}
           </Space>
         ) : (
-          <span style={{ color: '#ccc' }}>—</span>
+          <span style={{ color: '#666' }}>—</span>
         ),
     },
     {
@@ -281,7 +280,7 @@ export default function FavoritesPage() {
             placement="left"
             content={renderTagEditor(r)}
           >
-            <Button type="link" size="small" icon={<TagOutlined />}>
+            <Button type="link" icon={<TagOutlined />}>
               标签
             </Button>
           </Popover>
@@ -291,7 +290,7 @@ export default function FavoritesPage() {
             okText="确定"
             cancelText="取消"
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button type="link" danger icon={<DeleteOutlined />}>
               删除
             </Button>
           </Popconfirm>

@@ -45,6 +45,27 @@ async def test_daily_health_card(client: AsyncClient, auth_headers: dict):
 
     # Stock alerts should be a list (empty if no medicines)
     assert isinstance(data["stock_alerts"], list)
+    assert data["recent_consultations"] == {"period_days": 7, "count": 0, "topics": []}
+
+
+@pytest.mark.asyncio
+async def test_daily_health_uses_only_current_users_recent_consultations(client, auth_headers, db):
+    user = await db.query_one("SELECT id FROM users WHERE username = 'testuser'")
+    await db.execute(
+        "INSERT INTO conversations (id, user_id, title, created_at) VALUES (?, ?, ?, datetime('now'))",
+        ("recent-own", user["id"], "睡眠咨询"),
+    )
+    await db.execute(
+        "INSERT INTO conversations (id, user_id, title, created_at) VALUES (?, ?, ?, datetime('now'))",
+        ("recent-other", "other-user", "他人私密咨询"),
+    )
+    await db.execute(
+        "INSERT INTO conversations (id, user_id, title, created_at) VALUES (?, ?, ?, datetime('now', '-8 days'))",
+        ("old-own", user["id"], "旧咨询"),
+    )
+    response = await client.get("/api/daily-health", headers=auth_headers)
+    data = response.json()["recent_consultations"]
+    assert data == {"period_days": 7, "count": 1, "topics": ["睡眠咨询"]}
 
 
 @pytest.mark.asyncio

@@ -62,8 +62,9 @@ test.describe('Classics Bookshelf — 经典读诵书柜', () => {
     // Wait for loading to finish
     await page.waitForTimeout(1000);
 
+    await expect(page.locator('.ant-skeleton')).toHaveCount(0);
     const hasBooks = await page.locator('.cls-book').first().isVisible().catch(() => false);
-    const hasEmpty = await page.getByText(/暂无|没有/.source).isVisible().catch(() => false);
+    const hasEmpty = await page.locator('.ant-empty').isVisible().catch(() => false);
 
     // At least one of the three states must be present
     expect(hasBooks || hasEmpty).toBeTruthy();

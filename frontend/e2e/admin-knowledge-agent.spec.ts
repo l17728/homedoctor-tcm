@@ -16,9 +16,8 @@ test.describe('KnowledgeBrowse', () => {
     await page.goto('/knowledge-browse');
     await page.waitForTimeout(1000);
     const content = page.locator('.ant-layout-content');
-    const hasList = await content.locator('.ant-list, .ant-table, .ant-card').count();
-    const hasEmpty = await content.getByText('暂无').count();
-    expect(hasList > 0 || hasEmpty > 0).toBeTruthy();
+    await expect(content.getByRole('textbox', { name: '搜索...' })).toBeVisible();
+    await expect(content.getByRole('button', { name: /穴位\(/ })).toBeVisible();
   });
 
   test('should handle search within knowledge browse', async ({ page }) => {

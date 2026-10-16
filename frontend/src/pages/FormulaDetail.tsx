@@ -224,7 +224,6 @@ export default function FormulaDetail() {
           }
           action={
             <Button
-              size="small"
               onClick={() => navigate(`/formulas/${formula.derived_from_id}`)}
             >
               查看源方
@@ -265,7 +264,7 @@ export default function FormulaDetail() {
                   </Tag>
                   <Text strong style={{ fontSize: 16 }}>{item.name}</Text>
                   <Text type="secondary">{item.dosage}</Text>
-                  <Text style={{ color: '#888', marginLeft: 'auto' }}>{item.rationale}</Text>
+                  <Text style={{ color: '#666', marginLeft: 'auto' }}>{item.rationale}</Text>
                 </div>
               </List.Item>
             )}
@@ -523,8 +522,8 @@ export default function FormulaDetail() {
             border-top: 1px solid #ccc;
           }
           .rx-disclaimer {
-            font-size: 12px;
-            color: #999;
+            font-size: 14px;
+            color: #666;
             line-height: 1.6;
           }
           .rx-signature {

@@ -268,7 +268,6 @@ export default function RemoteAssistPage() {
                           </div>
                           <Button
                             type={isSelected ? 'primary' : 'default'}
-                            size="small"
                             icon={<EyeOutlined />}
                           >
                             查看摘要
@@ -393,7 +392,7 @@ export default function RemoteAssistPage() {
                         </div>
                       </div>
                     )}
-                    <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+                    <Text type="secondary" style={{ fontSize: 14, display: 'block', marginTop: 8 }}>
                       生成时间：{summary.generated_at}
                     </Text>
                   </div>
@@ -438,7 +437,7 @@ export default function RemoteAssistPage() {
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <Tag color="red" style={{ fontSize: 13 }}>
+                          <Tag color="red" style={{ fontSize: 14 }}>
                             <ClockCircleOutlined /> {alert.missed_time}
                           </Tag>
                           <Text strong style={{ fontSize: 16 }}>{alert.medicine_name}</Text>
@@ -459,7 +458,7 @@ export default function RemoteAssistPage() {
                       style={{ marginTop: 12 }}
                     />
                   )}
-                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 14, display: 'block', marginTop: 8 }}>
                     检查时间：{missedAlerts.checked_at}
                   </Text>
                 </Card>
@@ -472,7 +471,7 @@ export default function RemoteAssistPage() {
                     <CalendarOutlined style={{ color: '#722ed1' }} />
                     <span>本周健康报告</span>
                     {weekly && (
-                      <Text type="secondary" style={{ fontSize: 13 }}>
+                      <Text type="secondary" style={{ fontSize: 14 }}>
                         {weekly.period.from} ~ {weekly.period.to}
                       </Text>
                     )}
@@ -628,7 +627,7 @@ export default function RemoteAssistPage() {
           </Form.Item>
         </Form>
         <Divider style={{ margin: '12px 0' }} />
-        <Paragraph type="secondary" style={{ fontSize: 13 }}>
+        <Paragraph type="secondary" style={{ fontSize: 14 }}>
           <SafetyOutlined /> 邀请后对方将以「家属查看」身份查看您的健康数据，您可随时撤销共享。
         </Paragraph>
       </Modal>

@@ -319,7 +319,7 @@ export default function MedicationPlansPage() {
                     </span>
                   </div>
 
-                  <div style={{ fontSize: 13, color: '#999' }}>
+                  <div style={{ fontSize: 14, color: '#666' }}>
                     {plan.startDate || plan.endDate ? (
                       <span>
                         {plan.startDate ?? '—'} 至 {plan.endDate ?? '长期'}
@@ -526,7 +526,7 @@ export default function MedicationPlansPage() {
                 </Button>
               </Popconfirm>
               <Tooltip title="套餐中的每个药品已自动生成吃药提醒，可在「吃药提醒」页面查看">
-                <Text type="secondary" style={{ fontSize: 13 }}>
+                <Text type="secondary" style={{ fontSize: 14 }}>
                   提醒已同步至「吃药提醒」
                 </Text>
               </Tooltip>

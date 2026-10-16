@@ -23,6 +23,8 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useNotifications } from '../hooks/useNotifications';
+import NotificationBell from '../components/NotificationBell';
 import {
   getFamilyMembers,
   switchMember,
@@ -108,6 +110,10 @@ export default function AppLayout() {
   const { toggleTheme, isDark } = useTheme();
   const { token: themeToken } = theme.useToken();
   const isMobile = useIsMobile();
+  const isAdmin = ((user as { role?: string } | null)?.role ?? 'user') === 'admin';
+
+  // 通知轮询挂载在 Layout（而非 Dashboard），离开首页后提醒仍然生效
+  useNotifications({ onOpen: (path) => navigate(path) });
 
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [currentMemberId, setCurrentMemberId] = useState<string | null>(
@@ -268,11 +274,16 @@ export default function AppLayout() {
       icon: <SettingOutlined />,
       label: '设置',
     },
-    {
-      key: '/admin',
-      icon: <DatabaseOutlined />,
-      label: '系统管理',
-    },
+    // 系统管理仅 admin 可见
+    ...(isAdmin
+      ? [
+          {
+            key: '/admin',
+            icon: <DatabaseOutlined />,
+            label: '系统管理',
+          },
+        ]
+      : []),
   ];
 
   const handleMenuClick = ({ key }: { key: string }) => {
@@ -287,8 +298,8 @@ export default function AppLayout() {
       key: 'logout',
       icon: <LogoutOutlined />,
       label: '退出登录',
-      onClick: () => {
-        logout();
+      onClick: async () => {
+        await logout();
         navigate('/login');
       },
     },
@@ -432,6 +443,7 @@ export default function AppLayout() {
             />
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 12 }}>
+            <NotificationBell onOpen={navigate} />
             {members.length > 0 && (
               <Dropdown
                 placement="bottomRight"
@@ -472,7 +484,11 @@ export default function AppLayout() {
             >
               {isMobile ? null : isDark ? '浅色' : '深色'}
             </Button>
-            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+            <Dropdown
+              menu={{ items: userMenuItems }}
+              placement="bottomRight"
+              trigger={['click']}
+            >
               <Button type="text" icon={<UserOutlined />}>
                 {isMobile ? null : user?.username ? `用户 ${user.username}` : '用户'}
               </Button>

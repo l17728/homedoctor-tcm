@@ -9,6 +9,8 @@ export interface Medicine {
   notes: string;
   quantity?: number;
   expiry_date?: string;
+  barcode?: string;
+  properties?: Record<string, unknown>;
 }
 
 export interface PaginatedMedicines {
@@ -70,6 +72,8 @@ function mapMedicine(row: any): Medicine {
     notes: row.contraindications ?? row.notes ?? '',
     quantity: row.quantity,
     expiry_date: row.expiry_date,
+    barcode: row.barcode ?? '',
+    properties: row.properties && typeof row.properties === 'object' ? row.properties : {},
   };
 }
 
@@ -119,6 +123,7 @@ export async function createMedicine(data: {
   notes?: string;
   quantity?: number;
   expiry_date?: string;
+  barcode?: string;
 }): Promise<Medicine> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -131,6 +136,7 @@ export async function createMedicine(data: {
         contraindications: data.notes,
         quantity: data.quantity,
         expiry_date: data.expiry_date,
+        barcode: data.barcode,
       }),
     });
     return mapMedicine(row);
@@ -143,6 +149,9 @@ export async function createMedicine(data: {
       status: data.status ?? '充足',
       dosage: data.dosage ?? '',
       notes: data.notes ?? '',
+      quantity: data.quantity,
+      expiry_date: data.expiry_date,
+      barcode: data.barcode,
     };
     medicines.push(newMedicine);
     saveMedicines(medicines);
@@ -165,6 +174,7 @@ export async function updateMedicine(
         contraindications: data.notes,
         quantity: data.quantity,
         expiry_date: data.expiry_date,
+        barcode: data.barcode,
       }),
     });
     return mapMedicine(row);
@@ -181,6 +191,9 @@ export async function updateMedicine(
           status: data.status ?? existing.status,
           dosage: data.dosage ?? existing.dosage,
           notes: data.notes ?? existing.notes,
+          quantity: data.quantity ?? existing.quantity,
+          expiry_date: data.expiry_date ?? existing.expiry_date,
+          barcode: data.barcode ?? existing.barcode,
         };
         medicines[index] = updated;
         saveMedicines(medicines);

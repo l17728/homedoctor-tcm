@@ -73,7 +73,7 @@ const CONSTITUTION_COLOR: Record<string, string> = {
 };
 
 function adherenceColor(rate: number | null): string {
-  if (rate === null) return '#bfbfbf';
+  if (rate === null) return '#666';
   if (rate >= 80) return '#52c41a';
   if (rate >= 60) return '#faad14';
   return '#ff4d4f';
@@ -99,12 +99,12 @@ function ShareCardVisual({ card }: { card: ShareCard }) {
           <div>
             <div style={{ fontSize: 28, marginBottom: 4 }}>{emoji}</div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>{card.card_type}</div>
-            <div style={{ fontSize: 13, opacity: 0.85, marginTop: 4 }}>
+            <div style={{ fontSize: 14, opacity: 0.85, marginTop: 4 }}>
               <CalendarOutlined style={{ marginRight: 4 }} />
               {card.date || '—'}
             </div>
           </div>
-          <Tag style={{ background: 'rgba(255,255,255,0.25)', border: 'none', color: '#fff', fontSize: 13 }}>
+          <Tag style={{ background: 'rgba(255,255,255,0.25)', border: 'none', color: '#fff', fontSize: 14 }}>
             家庭医生
           </Tag>
         </div>
@@ -112,7 +112,7 @@ function ShareCardVisual({ card }: { card: ShareCard }) {
 
       {/* 内容区 */}
       <div style={{ padding: '20px' }}>
-        <Descriptions column={1} size="small" labelStyle={{ width: 90, color: '#888' }}>
+        <Descriptions column={1} size="small" labelStyle={{ width: 90, color: '#666' }}>
           <Descriptions.Item label="家人">
             <Text strong style={{ fontSize: 16 }}>{card.member_name}</Text>
           </Descriptions.Item>
@@ -174,7 +174,7 @@ function ShareCardVisual({ card }: { card: ShareCard }) {
 
         {card.motivational_quote && (
           <div style={{ marginTop: 12, textAlign: 'center' }}>
-            <Text italic type="secondary" style={{ fontSize: 13 }}>
+            <Text italic type="secondary" style={{ fontSize: 14 }}>
               「{card.motivational_quote}」
             </Text>
           </div>
@@ -473,7 +473,7 @@ export default function ShareCardsPage() {
                         <span style={{ fontSize: 20 }}>{CARD_EMOJI[card.card_type]}</span>
                         <div>
                           <Text strong>{card.member_name}</Text>
-                          <div style={{ fontSize: 12, color: '#888' }}>
+                          <div style={{ fontSize: 14, color: '#666' }}>
                             {card.card_type} · {card.date || card.created_at.slice(0, 10)}
                           </div>
                         </div>

@@ -75,6 +75,39 @@ class TestModelRegistry:
         assert "1234567890abcdef" not in target["api_key"]
 
     @pytest.mark.asyncio
+    async def test_legacy_plaintext_model_key_is_migrated(self, agent_db, monkeypatch):
+        from app.model_registry import create_model, get_default_models, migrate_stored_api_keys
+
+        mid = await create_model(agent_db, name="旧密钥模型", provider="test", model_id="legacy")
+        await agent_db.execute("UPDATE ai_models SET api_key = ? WHERE id = ?", ("legacy-key-plain", mid))
+
+        assert await migrate_stored_api_keys(agent_db) == 1
+        stored = await agent_db.query_one("SELECT api_key FROM ai_models WHERE id = ?", (mid,))
+        assert stored["api_key"].startswith("hde1:")
+        model = next(item for item in await get_default_models(agent_db) if item["id"] == mid)
+        assert model["api_key"] == "legacy-key-plain"
+
+    @pytest.mark.asyncio
+    async def test_model_key_reencrypted_during_secret_rotation(self, agent_db, monkeypatch):
+        from app.config import settings
+        from app.model_registry import create_model, get_default_models, migrate_stored_api_keys
+
+        old_key = settings.SECRET_KEY
+        new_key = "test-new-app-secret-key-for-model-rotation"
+        monkeypatch.setattr(settings, "SECRET_KEY", "test-old-app-secret-key-for-model-rotation")
+        mid = await create_model(
+            agent_db, name="轮换密钥模型", provider="test", model_id="rotation",
+            api_key="rotation-secret",
+        )
+        monkeypatch.setattr(settings, "SECRET_KEY", new_key)
+        monkeypatch.setenv("HOMEDOCTOR_PREVIOUS_SECRET_KEY", "test-old-app-secret-key-for-model-rotation")
+
+        assert await migrate_stored_api_keys(agent_db) == 1
+        model = next(item for item in await get_default_models(agent_db) if item["id"] == mid)
+        assert model["api_key"] == "rotation-secret"
+        monkeypatch.setattr(settings, "SECRET_KEY", old_key)
+
+    @pytest.mark.asyncio
     async def test_multi_model_vote_no_models(self, agent_db):
         from app.model_registry import multi_model_vote
         result = await multi_model_vote(agent_db, [{"role": "user", "content": "test"}])

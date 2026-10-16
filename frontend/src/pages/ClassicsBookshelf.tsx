@@ -230,7 +230,7 @@ export default function ClassicsBookshelf() {
                     borderTop: `1px dashed ${token.colorBorderSecondary}`,
                   }}
                 >
-                  <Text style={{ fontSize: 13, color: token.colorTextTertiary }}>
+                  <Text style={{ fontSize: 14, color: token.colorTextTertiary }}>
                     共 {c.total_chapters} 篇
                   </Text>
                   <Text style={{ fontSize: 14, color: '#2ba471', fontWeight: 500 }}>

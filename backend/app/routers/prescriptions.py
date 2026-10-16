@@ -70,14 +70,33 @@ async def generate_prescription(
         )
 
     formula = _parse_formula_row(row)
+    mask_fields = set(body.mask_fields)
+    patient_name = body.patient_name
+    if "name" in mask_fields:
+        patient_name = f"{patient_name[:1]}**" if patient_name and patient_name != "—" else "**"
+    patient_age = "**" if "age" in mask_fields and body.patient_age else body.patient_age
+    patient_contact = None if "contact" in mask_fields else body.patient_contact
+    constitution = "未提供" if "constitution" in mask_fields else body.constitution
+    stock_items = [] if "stock" in mask_fields else body.stock_items
+    notes = body.notes
+    usage_instructions = body.usage_instructions
+    if "name" in mask_fields and body.patient_name and body.patient_name != "—":
+        notes = notes.replace(body.patient_name, patient_name) if notes else notes
+        usage_instructions = usage_instructions.replace(body.patient_name, patient_name) if usage_instructions else usage_instructions
+    if "contact" in mask_fields and body.patient_contact:
+        notes = notes.replace(body.patient_contact, "***") if notes else notes
+        usage_instructions = usage_instructions.replace(body.patient_contact, "***") if usage_instructions else usage_instructions
     pdf_bytes = generate_prescription_pdf(
         formula=formula,
-        patient_name=body.patient_name,
-        patient_age=body.patient_age,
+        patient_name=patient_name,
+        patient_age=patient_age,
         patient_gender=body.patient_gender,
+        patient_contact=patient_contact,
+        constitution=constitution,
+        stock_items=stock_items,
         prescriber=body.prescriber,
-        notes=body.notes,
-        usage_instructions=body.usage_instructions,
+        notes=notes,
+        usage_instructions=usage_instructions,
     )
 
     filename = f"处方单_{formula.get('name', 'formula')}.pdf"

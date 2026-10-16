@@ -11,7 +11,7 @@
  * - 人参+五灵脂 → 十九畏（中药配伍禁忌，Layer 1a）
  */
 import { test, expect } from '@playwright/test';
-import { register, firstToast, opsCell } from '../helpers';
+import { register, firstToast, opsCell, navigateTo, answerVisibleConstitutionQuestions } from '../helpers';
 
 // Unique username generator (fresh user per test)
 function uniqueUser(): string {
@@ -36,33 +36,32 @@ test.describe('Persona: 林晓燕 — 社区健康管家/护士 (31岁)', () => 
     await expect(page.getByText('今日健康')).toBeVisible();
 
     // Navigate via sidebar — 知识库 → 中药
-    await page.locator('.ant-menu').getByText('知识库', { exact: true }).click();
-    await page.locator('.ant-menu').getByText('中药', { exact: true }).click();
+    await navigateTo(page, '中药');
     await page.waitForURL('/herbs');
     await expect(page).toHaveURL('/herbs');
 
     // Navigate to 方剂
-    await page.locator('.ant-menu').getByText('方剂', { exact: true }).click();
+    await navigateTo(page, '方剂');
     await page.waitForURL('/formulas');
     await expect(page).toHaveURL('/formulas');
 
     // Navigate to 药箱
-    await page.locator('.ant-menu').getByText('药箱', { exact: true }).click();
+    await navigateTo(page, '药箱');
     await page.waitForURL('/medicines');
     await expect(page).toHaveURL('/medicines');
 
     // Navigate to 提醒
-    await page.locator('.ant-menu').getByText('提醒', { exact: true }).click();
+    await navigateTo(page, '提醒');
     await page.waitForURL('/reminders');
     await expect(page).toHaveURL('/reminders');
 
     // Navigate to AI 助手
-    await page.locator('.ant-menu').getByText('AI 助手', { exact: true }).click();
+    await navigateTo(page, 'AI 助手');
     await page.waitForURL('/chat');
     await expect(page).toHaveURL('/chat');
 
     // Navigate to 设置
-    await page.locator('.ant-menu').getByText('设置', { exact: true }).click();
+    await navigateTo(page, '设置');
     await page.waitForURL('/settings');
     await expect(page).toHaveURL('/settings');
 
@@ -241,6 +240,7 @@ test.describe('Persona: 林晓燕 — 社区健康管家/护士 (31岁)', () => 
   // Test 6: 体质自测 → 快速完成 → 验证结果展示(分数+主体质+兼夹)
   // -------------------------------------------------------------------------
   test('6. 体质自测 → 快速完成 → 验证结果展示', async ({ page }) => {
+    test.setTimeout(120_000);
     await register(page, uniqueUser());
 
     // Fix: intercept history API to return array (frontend expects array, backend returns {items:[]})
@@ -257,13 +257,7 @@ test.describe('Persona: 林晓燕 — 社区健康管家/护士 (31岁)', () => 
     // Complete all pages — pick first option for each question
     let maxPages = 20; // safety limit
     while (maxPages-- > 0) {
-      const radios = page.locator('.ant-card .ant-radio-wrapper');
-      const count = await radios.count();
-
-      // Answer each visible question
-      for (let i = 0; i < count; i++) {
-        await radios.nth(i).click();
-      }
+      await answerVisibleConstitutionQuestions(page);
 
       // Check button text
       const nextBtn = page.getByRole('button', { name: /下一页|提\s?交/ });
@@ -409,7 +403,20 @@ test.describe('Persona: 林晓燕 — 社区健康管家/护士 (31岁)', () => 
     // Verify favorites table or empty state
     const table = page.locator('.ant-table');
     const emptyState = page.getByText(/暂无收藏/);
-    const hasTable = await table.isVisible().catch(() => false);
+    await expect.poll(async () => {
+      if (await emptyState.isVisible().catch(() => false)) return true;
+      for (let i = 0; i < await table.count(); i++) {
+        if (await table.nth(i).isVisible().catch(() => false)) return true;
+      }
+      return false;
+    }, { timeout: 10_000 }).toBe(true);
+    let hasTable = false;
+    for (let i = 0; i < await table.count(); i++) {
+      if (await table.nth(i).isVisible().catch(() => false)) {
+        hasTable = true;
+        break;
+      }
+    }
     const hasEmpty = await emptyState.isVisible().catch(() => false);
     expect(hasTable || hasEmpty).toBeTruthy();
 

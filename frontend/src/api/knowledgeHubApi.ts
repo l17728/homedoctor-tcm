@@ -49,7 +49,7 @@ export const ENTITY_TYPE_BORDER: Record<string, string> = {
   meridian: '#fa541c',
   tea_recipe: '#13c2c2',
   health_method: '#20c997',
-  article: '#8c8c8c',
+  article: '#666',
 };
 
 export const ENTITY_TYPE_TAG_COLOR: Record<string, string> = {
@@ -89,7 +89,7 @@ export const RELATION_TYPE_COLOR: Record<string, string> = {
   中西药交互: '#faad14',
   contains: '#1890ff',
   treats: '#52c41a',
-  related: '#8c8c8c',
+  related: '#666',
 };
 
 export interface KnowledgeEntity {
@@ -211,6 +211,19 @@ function toStringArray(v: unknown): string[] {
 function mapEntity(row: EntityRow): KnowledgeEntity {
   const type = row.type ?? row.node_type ?? 'article';
   const tags = toStringArray(row.tags);
+  let properties: Record<string, unknown> = {};
+  if (typeof row.properties === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(row.properties);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        properties = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Ignore malformed optional metadata and keep the entity usable.
+    }
+  } else if (row.properties && typeof row.properties === 'object') {
+    properties = row.properties;
+  }
   const keywords =
     toStringArray(row.keywords).length > 0
       ? toStringArray(row.keywords)
@@ -221,6 +234,7 @@ function mapEntity(row: EntityRow): KnowledgeEntity {
     title: row.title ?? row.label ?? row.name ?? '',
     summary: row.summary ?? row.description ?? '',
     category: row.category ?? '',
+    properties,
     tags,
     keywords,
     viewCount: row.viewCount ?? row.view_count ?? 0,

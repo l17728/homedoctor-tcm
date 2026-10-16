@@ -44,7 +44,7 @@ def _compute_slot_status(scheduled_time: str, now: datetime) -> str:
     elif delta < -timedelta(hours=12):
         scheduled -= timedelta(days=1)
         delta = now - scheduled
-    if delta > timedelta(hours=2):
+    if delta > timedelta(minutes=30):
         return "漏服"
     return "待服"
 

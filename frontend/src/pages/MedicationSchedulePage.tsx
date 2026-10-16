@@ -175,7 +175,7 @@ const PAGE_CSS = `
   background: linear-gradient(135deg, #f6ffed 0%, #fff 100%);
 }
 .medsched-med-pick .medsched-med-name { font-size: 16px; font-weight: 600; flex: 1; }
-.medsched-med-pick .medsched-med-dosage { font-size: 13px; color: #8c8c8c; }
+.medsched-med-pick .medsched-med-dosage { font-size: 14px; color: #666; }
 
 /* 周课表网格 */
 .medsched-grid {
@@ -198,7 +198,7 @@ const PAGE_CSS = `
   z-index: 3;
   background: #f5f5f5;
   color: #595959;
-  font-size: 13px;
+  font-size: 14px;
 }
 .medsched-grid-head {
   position: sticky;
@@ -207,7 +207,7 @@ const PAGE_CSS = `
   color: #262626;
 }
 .medsched-grid-head-period { font-size: 15px; }
-.medsched-grid-head-time { font-size: 12px; color: #8c8c8c; margin-top: 2px; }
+.medsched-grid-head-time { font-size: 14px; color: #666; margin-top: 2px; }
 .medsched-grid-day {
   position: sticky;
   left: 0;
@@ -241,8 +241,8 @@ const PAGE_CSS = `
 }
 .medsched-pill:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
 .medsched-pill-name { font-weight: 600; font-size: 15px; }
-.medsched-pill-dose { font-size: 12px; color: #595959; margin-top: 2px; }
-.medsched-pill-flag { font-size: 11px; margin-top: 4px; }
+.medsched-pill-dose { font-size: 14px; color: #595959; margin-top: 2px; }
+.medsched-pill-flag { font-size: 14px; margin-top: 4px; }
 
 .medsched-reason-popover { max-width: 280px; }
 .medsched-reason-popover .medsched-reason-text { font-size: 14px; line-height: 1.6; color: #595959; }
@@ -261,7 +261,7 @@ const PAGE_CSS = `
 .medsched-safety-card .medsched-safety-icon { font-size: 20px; flex-shrink: 0; margin-top: 2px; }
 .medsched-safety-card .medsched-safety-body { flex: 1; }
 .medsched-safety-card .medsched-safety-title { font-weight: 600; font-size: 15px; }
-.medsched-safety-card .medsched-safety-detail { font-size: 13px; color: #595959; margin-top: 2px; }
+.medsched-safety-card .medsched-safety-detail { font-size: 14px; color: #595959; margin-top: 2px; }
 
 .medsched-reason-item {
   display: flex;
@@ -278,7 +278,7 @@ const PAGE_CSS = `
   background: #e6f7ff;
   color: #1890ff;
   display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 600;
+  font-size: 14px; font-weight: 600;
   flex-shrink: 0;
 }
 
@@ -806,7 +806,6 @@ export default function MedicationSchedulePage() {
                       <span className="medsched-med-dosage">{c.dosage}</span>
                       <Button
                         type="text"
-                        size="small"
                         danger
                         onClick={(e) => {
                           e.stopPropagation();
@@ -949,7 +948,7 @@ export default function MedicationSchedulePage() {
                     频率：{FREQUENCY_OPTIONS.find((f) => f.value === frequency)?.label ?? frequency}
                   </Text>
                   {notes && <Text style={{ fontSize: 14 }}>说明：{notes}</Text>}
-                  <Text type="secondary" style={{ fontSize: 13 }}>
+                  <Text type="secondary" style={{ fontSize: 14 }}>
                     {selectedMeds.map((m) => m.name).join('、')}
                   </Text>
                 </Space>
@@ -1037,7 +1036,7 @@ export default function MedicationSchedulePage() {
                 display: 'flex',
                 gap: 16,
                 flexWrap: 'wrap',
-                fontSize: 13,
+                fontSize: 14,
                 color: token.colorTextSecondary,
               }}
             >
@@ -1142,7 +1141,7 @@ export default function MedicationSchedulePage() {
               </Button>
             </Space>
             <div style={{ marginTop: 8 }}>
-              <Text type="secondary" style={{ fontSize: 13 }}>
+              <Text type="secondary" style={{ fontSize: 14 }}>
                 <CopyOutlined style={{ marginRight: 4 }} />
                 模板可在下次快速加载；套餐会自动生成提醒
               </Text>
@@ -1488,7 +1487,7 @@ function MobileSchedule({
                       {level !== 'safe' && level !== 'empty' && (
                         <Tag
                           color={level === 'conflict' ? 'red' : 'orange'}
-                          style={{ marginLeft: 'auto', fontSize: 12 }}
+                          style={{ marginLeft: 'auto', fontSize: 14 }}
                         >
                           {level === 'conflict' ? '需复核' : '注意间隔'}
                         </Tag>

@@ -236,7 +236,7 @@ async def chat_completion_with_image(
             return validated
     except httpx.HTTPStatusError as e:
         logger.error("LLM vision API HTTP error: %s — %s", e.response.status_code, e.response.text[:200])
-        ocr_text = _extract_text_from_image(image_base64)
+        ocr_text = await asyncio.to_thread(_extract_text_from_image, image_base64)
         if ocr_text:
             logger.info("Vision API failed, using OCR fallback (%d chars)", len(ocr_text))
             augmented = f"{text}\n\n[图片识别文字]\n{ocr_text}"
@@ -244,7 +244,7 @@ async def chat_completion_with_image(
         return _error_message()
     except Exception as e:
         logger.error("LLM vision API call failed: %s", e)
-        ocr_text = _extract_text_from_image(image_base64)
+        ocr_text = await asyncio.to_thread(_extract_text_from_image, image_base64)
         if ocr_text:
             logger.info("Vision exception, using OCR fallback (%d chars)", len(ocr_text))
             augmented = f"{text}\n\n[图片识别文字]\n{ocr_text}"

@@ -14,10 +14,11 @@ Categories covered:
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "homedoctor.db"
+DB_PATH = Path(os.environ.get("HOMEDOCTOR_DATABASE_URL", Path(__file__).resolve().parent.parent / "data" / "homedoctor.db"))
 
 # ---------------------------------------------------------------------------
 # Herb data — 100 entries, IDs herb-104 .. herb-203

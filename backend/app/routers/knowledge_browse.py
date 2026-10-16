@@ -32,8 +32,15 @@ from pydantic import BaseModel, Field
 
 from app.auth import get_current_user
 from app.database import DbAdapter, get_db
+from app.repository import current_tenant_id
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge-browse"])
+
+
+def _visibility() -> tuple[str, str]:
+    """Tenant visibility SQL fragment + bound param (global rows + own tenant)."""
+    tenant = current_tenant_id.get() or "default"
+    return "(tenant_id IS NULL OR tenant_id = ?)", tenant
 
 
 class AppendRequest(BaseModel):
@@ -49,21 +56,25 @@ class AppendRequest(BaseModel):
 async def list_categories(
     db: DbAdapter = Depends(get_db),
 ) -> dict[str, Any]:
-    """List all entity types and categories with counts."""
+    """List all entity types and categories with counts (tenant-visible only)."""
+    vis_sql, tenant = _visibility()
     type_rows = await db.query(
-        """SELECT entity_type, COUNT(*) AS count
+        f"""SELECT entity_type, COUNT(*) AS count
              FROM knowledge_entities
-            WHERE status = 'active'
+            WHERE status = 'active' AND {vis_sql}
             GROUP BY entity_type
-            ORDER BY count DESC"""
+            ORDER BY count DESC""",
+        (tenant,),
     )
 
     cat_rows = await db.query(
-        """SELECT category, COUNT(*) AS count, entity_type
+        f"""SELECT category, COUNT(*) AS count, entity_type
              FROM knowledge_entities
             WHERE status = 'active' AND category IS NOT NULL AND category != ''
+              AND {vis_sql}
             GROUP BY category, entity_type
-            ORDER BY count DESC"""
+            ORDER BY count DESC""",
+        (tenant,),
     )
 
     type_labels = {
@@ -103,9 +114,10 @@ async def browse(
     page_size: int = Query(20, ge=1, le=100),
     db: DbAdapter = Depends(get_db),
 ) -> dict[str, Any]:
-    """Browse knowledge entities by type and/or category."""
-    conditions = ["entity_type = ?", "status = 'active'"]
-    params: list[Any] = [type]
+    """Browse knowledge entities by type and/or category (tenant-visible only)."""
+    vis_sql, tenant = _visibility()
+    conditions = ["entity_type = ?", "status = 'active'", vis_sql]
+    params: list[Any] = [type, tenant]
 
     if category:
         conditions.append("category = ?")
@@ -183,9 +195,11 @@ async def request_append(
     6. Submit through expert panel review
     7. On approval, merge into entity properties
     """
+    vis_sql, tenant = _visibility()
     entity = await db.query_one(
-        "SELECT id, title, entity_type, summary, properties, category FROM knowledge_entities WHERE id = ?",
-        (entity_id,),
+        f"""SELECT id, title, entity_type, summary, properties, category
+              FROM knowledge_entities WHERE id = ? AND {vis_sql}""",
+        (entity_id, tenant),
     )
     if not entity:
         raise HTTPException(status_code=404, detail="知识实体不存在")
@@ -238,8 +252,10 @@ async def request_append(
 
             if len(merged_summary) > len(entity.get("summary") or ""):
                 await db.execute(
-                    "UPDATE knowledge_entities SET properties = ?, summary = ?, updated_at = datetime('now') WHERE id = ?",
-                    (json.dumps(merged_props, ensure_ascii=False), merged_summary, entity_id),
+                    f"UPDATE knowledge_entities SET properties = ?, summary = ?, "
+                    f"updated_at = datetime('now') WHERE id = ? AND {vis_sql}",
+                    (json.dumps(merged_props, ensure_ascii=False), merged_summary,
+                     entity_id, tenant),
                 )
 
             from app.agent_tools import tool_build_index, tool_record_provenance

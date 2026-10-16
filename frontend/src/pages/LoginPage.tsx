@@ -52,8 +52,13 @@ export default function LoginPage() {
       await login(values.username, values.password);
       message.success('登录成功');
       navigate('/');
-    } catch {
-      message.error('用户名或密码错误');
+    } catch (err) {
+      // fetch 网络失败抛 TypeError；服务端业务错误（ApiError）为凭据问题
+      if (err instanceof TypeError) {
+        message.error('无法连接服务器，请检查网络或联系管理员');
+      } else {
+        message.error('用户名或密码错误');
+      }
     } finally {
       setLoading(false);
     }

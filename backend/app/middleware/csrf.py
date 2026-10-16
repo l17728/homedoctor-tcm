@@ -22,6 +22,11 @@ def _build_allowed_origins() -> set[str]:
         "http://127.0.0.1:5173",
         "http://127.0.0.1:8000",
     }
+    web_port = os.environ.get("HOMEDOCTOR_WEB_PORT", "3000")
+    if web_port.isdigit() and 1 <= int(web_port) <= 65535:
+        defaults.update(
+            {f"http://localhost:{web_port}", f"http://127.0.0.1:{web_port}"}
+        )
     extra = os.environ.get("EXTRA_ALLOWED_ORIGINS", "")
     if extra:
         for origin in extra.split(","):

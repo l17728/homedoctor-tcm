@@ -16,6 +16,7 @@ import {
   Tooltip,
   Divider,
   message,
+  Popconfirm,
 } from 'antd';
 import {
   HeartOutlined,
@@ -115,7 +116,7 @@ const PAGE_CSS = `
 .hlog-mood-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
 .hlog-mood-btn.selected { border-width: 2px; background: linear-gradient(135deg, #f6ffed 0%, #fff 100%); }
 .hlog-mood-emoji { font-size: 26px; line-height: 1; }
-.hlog-mood-label { font-size: 13px; color: #595959; font-weight: 500; }
+.hlog-mood-label { font-size: 14px; color: #595959; font-weight: 500; }
 
 .hlog-history-card {
   border: 1px solid #f0f0f0;
@@ -126,7 +127,7 @@ const PAGE_CSS = `
   height: 100%;
 }
 .hlog-history-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.06); transform: translateY(-1px); }
-.hlog-history-date { font-size: 13px; color: #8c8c8c; }
+.hlog-history-date { font-size: 14px; color: #666; }
 .hlog-history-metric {
   display: flex;
   align-items: center;
@@ -136,7 +137,7 @@ const PAGE_CSS = `
   font-size: 14px;
 }
 .hlog-history-metric:last-child { border-bottom: none; }
-.hlog-history-metric-label { color: #8c8c8c; }
+.hlog-history-metric-label { color: #666; }
 .hlog-history-metric-value { font-weight: 600; color: #262626; }
 
 .elderly-mode .hlog-form-section-title { font-size: 19px; }
@@ -377,7 +378,7 @@ export default function HealthLogPage() {
                 value={selectedDate}
                 onChange={handleDateChange}
                 allowClear={false}
-                disabledDate={(d) => d.isAfter(dayjs(), 'day')}
+                disabledDate={(d: Dayjs) => d.isAfter(dayjs(), 'day')}
                 size="large"
                 style={{ minWidth: 180 }}
               />
@@ -467,7 +468,7 @@ export default function HealthLogPage() {
                     (() => {
                       const cat = sugarCategory(form.blood_sugar);
                       return (
-                        <Tag color="default" style={{ marginTop: 6, fontSize: 13, color: cat.color, borderColor: cat.color }}>
+                        <Tag color="default" style={{ marginTop: 6, fontSize: 14, color: cat.color, borderColor: cat.color }}>
                           {cat.label}
                         </Tag>
                       );
@@ -633,7 +634,7 @@ export default function HealthLogPage() {
 
           {!loading && recentLogs.length > 0 && (
             <div style={{ marginTop: 12, textAlign: 'center' }}>
-              <Text type="secondary" style={{ fontSize: 13 }}>
+              <Text type="secondary" style={{ fontSize: 14 }}>
                 共 {recentLogs.length} 条记录（最近 30 天）
               </Text>
             </div>
@@ -668,22 +669,30 @@ function HistoryCard({ date, log, onEdit, onDelete, isToday }: HistoryCardProps)
           <Space size={2}>
             <Button
               type="text"
-              size="small"
               icon={<EditOutlined />}
               onClick={onEdit}
+              aria-label="编辑健康记录"
             />
-            <Button
-              type="text"
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={onDelete}
-            />
+            <Popconfirm
+              title="删除这条健康记录？"
+              description="删除后无法恢复，确定删除吗？"
+              okText="删除"
+              okButtonProps={{ danger: true }}
+              cancelText="取消"
+              onConfirm={onDelete}
+            >
+              <Button
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                aria-label="删除健康记录"
+              />
+            </Popconfirm>
           </Space>
         )}
       </div>
       {!log ? (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           未打卡
         </Text>
       ) : (
@@ -723,7 +732,7 @@ function HistoryCard({ date, log, onEdit, onDelete, isToday }: HistoryCardProps)
             </div>
           )}
           {log.notes && (
-            <div style={{ marginTop: 4, fontSize: 13, color: '#595959', lineHeight: 1.5 }}>
+            <div style={{ marginTop: 4, fontSize: 14, color: '#595959', lineHeight: 1.5 }}>
               {log.notes.length > 50 ? `${log.notes.slice(0, 50)}…` : log.notes}
             </div>
           )}

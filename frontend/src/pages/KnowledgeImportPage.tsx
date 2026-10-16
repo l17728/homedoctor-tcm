@@ -127,7 +127,7 @@ export default function KnowledgeImportPage() {
       render: (filename: string | null, r: KnowledgeImportEntry) => (
         <Space>
           <FileTextOutlined />
-          <Button type="link" size="small" onClick={() => openPreview(r)} style={{ padding: 0 }}>
+          <Button type="link" onClick={() => openPreview(r)} style={{ padding: 0 }}>
             {filename || r.title}
           </Button>
         </Space>
@@ -189,7 +189,6 @@ export default function KnowledgeImportPage() {
         <Space size={0}>
           <Button
             type="link"
-            size="small"
             icon={<EyeOutlined />}
             onClick={() => openPreview(r)}
           >
@@ -201,7 +200,7 @@ export default function KnowledgeImportPage() {
             okText="确定"
             cancelText="取消"
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button type="link" danger icon={<DeleteOutlined />}>
               删除
             </Button>
           </Popconfirm>
@@ -259,7 +258,7 @@ export default function KnowledgeImportPage() {
           size="small"
           style={{ marginBottom: 16 }}
           extra={
-            <Button type="link" size="small" onClick={() => setLastUpload(null)}>
+            <Button type="link" onClick={() => setLastUpload(null)}>
               收起
             </Button>
           }
@@ -340,7 +339,7 @@ function PreviewContent({ entry }: { entry: KnowledgeImportEntry }) {
           <Tag color="cyan">{summary.metadata.sections} 段落</Tag>
         ) : null}
         {entry.source_url && (
-          <Text type="secondary" style={{ fontSize: 12 }}>
+          <Text type="secondary" style={{ fontSize: 14 }}>
             {entry.source_url}
           </Text>
         )}

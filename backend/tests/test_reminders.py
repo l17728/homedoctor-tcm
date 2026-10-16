@@ -210,6 +210,45 @@ async def test_today_status_missed_and_pending(client: AsyncClient, auth_headers
     assert by_time[future_time] == "待服"
 
 
+# ---------------------------------------------------------------------------
+# 漏服窗口边界：spec §20.1 — 超过 30 分钟未服即漏服（原为 2 小时）
+# ---------------------------------------------------------------------------
+
+def _slot_status(minutes_ago: int) -> str:
+    from app.routers.reminders import _compute_slot_status
+    now = datetime.now(CST).replace(second=0, microsecond=0)
+    scheduled = (now - timedelta(minutes=minutes_ago)).strftime("%H:%M")
+    return _compute_slot_status(scheduled, now)
+
+
+def test_slot_status_29_minutes_still_pending():
+    """29 分钟未服：仍在窗口内 → 待服。"""
+    assert _slot_status(29) == "待服"
+
+
+def test_slot_status_31_minutes_missed():
+    """31 分钟未服：超过 30 分钟窗口 → 漏服。"""
+    assert _slot_status(31) == "漏服"
+
+
+@pytest.mark.asyncio
+async def test_today_status_30min_window(client: AsyncClient, auth_headers: dict):
+    """API 层验证 30 分钟窗口：10 分钟前待服，45 分钟前漏服。"""
+    now = datetime.now(CST)
+    recent_time = (now - timedelta(minutes=10)).strftime("%H:%M")
+    missed_time = (now - timedelta(minutes=45)).strftime("%H:%M")
+    await client.post("/api/reminders", headers=auth_headers, json={
+        "title": "半小时窗口",
+        "times": [recent_time, missed_time],
+        "start_date": _today_str(),
+    })
+    response = await client.get("/api/reminders/today", headers=auth_headers)
+    data = response.json()
+    by_time = {s["time"]: s["status"] for s in data["items"]}
+    assert by_time[recent_time] == "待服"
+    assert by_time[missed_time] == "漏服"
+
+
 @pytest.mark.asyncio
 async def test_filter_enabled_only(client: AsyncClient, auth_headers: dict):
     create_resp = await client.post("/api/reminders", headers=auth_headers, json={

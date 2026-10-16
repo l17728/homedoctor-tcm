@@ -12,13 +12,129 @@ The knowledge agent uses multi_model_vote() for quality decisions.
 from __future__ import annotations
 
 import asyncio
+import base64
+import difflib
 import json
 import logging
+import os
 from typing import Any
 
 from app.database import DbAdapter
+from app.config import settings
+from app.crypto_utils import DecryptionError, decrypt_bytes, encrypt_bytes, has_cryptography
 
 logger = logging.getLogger(__name__)
+_ENCRYPTED_KEY_PREFIX = "hde1:"
+
+
+def _encrypt_api_key(value: str) -> str:
+    if not value or value.startswith(_ENCRYPTED_KEY_PREFIX):
+        return value
+    if not has_cryptography():
+        raise RuntimeError("AI 模型密钥加密需要 cryptography/AES-GCM，拒绝明文或弱加密存储")
+    encrypted = encrypt_bytes(value.encode("utf-8"), settings.SECRET_KEY)
+    return _ENCRYPTED_KEY_PREFIX + base64.urlsafe_b64encode(encrypted).decode("ascii")
+
+
+def _decrypt_api_key(value: str) -> str:
+    if not value.startswith(_ENCRYPTED_KEY_PREFIX):
+        logger.warning("legacy plaintext AI model key found; re-save the model to encrypt it")
+        return value
+    try:
+        blob = base64.urlsafe_b64decode(value[len(_ENCRYPTED_KEY_PREFIX):].encode("ascii"))
+        try:
+            return decrypt_bytes(blob, settings.SECRET_KEY).decode("utf-8")
+        except DecryptionError:
+            previous_key = os.environ.get("HOMEDOCTOR_PREVIOUS_SECRET_KEY", "")
+            if previous_key:
+                return decrypt_bytes(blob, previous_key).decode("utf-8")
+            raise
+    except (ValueError, UnicodeDecodeError, DecryptionError) as exc:
+        logger.error("could not decrypt stored AI model key: %s", exc)
+        return ""
+
+
+async def migrate_stored_api_keys(db: DbAdapter) -> int:
+    """Encrypt plaintext credentials and re-encrypt keys from a previous SECRET_KEY."""
+    rows = await db.query(
+        "SELECT id, api_key FROM ai_models WHERE api_key IS NOT NULL AND api_key != ''"
+    )
+    migrated = 0
+    previous_key = os.environ.get("HOMEDOCTOR_PREVIOUS_SECRET_KEY", "")
+    for row in rows:
+        stored = row.get("api_key") or ""
+        clear: str | None = None
+        if not stored.startswith(_ENCRYPTED_KEY_PREFIX):
+            clear = stored
+        else:
+            try:
+                blob = base64.urlsafe_b64decode(
+                    stored[len(_ENCRYPTED_KEY_PREFIX):].encode("ascii")
+                )
+                try:
+                    decrypt_bytes(blob, settings.SECRET_KEY)
+                    continue
+                except DecryptionError:
+                    if not previous_key:
+                        logger.error(
+                            "stored AI model key needs previous SECRET_KEY (model_id=%s)",
+                            row["id"],
+                        )
+                        continue
+                    clear = decrypt_bytes(blob, previous_key).decode("utf-8")
+            except (ValueError, UnicodeDecodeError, DecryptionError) as exc:
+                logger.error(
+                    "stored AI model key migration failed (model_id=%s): %s",
+                    row["id"], exc,
+                )
+                continue
+        if clear:
+            try:
+                ciphertext = _encrypt_api_key(clear)
+                await db.execute(
+                    "UPDATE ai_models SET api_key = ?, updated_at = datetime('now') WHERE id = ? AND api_key = ?",
+                    (ciphertext, row["id"], stored),
+                )
+                migrated += 1
+            except RuntimeError as exc:
+                logger.error("could not migrate AI model key (model_id=%s): %s", row["id"], exc)
+    if migrated:
+        logger.info("migrated %d legacy or previous-key AI model credentials", migrated)
+    return migrated
+
+
+def _select_consensus(texts: list[str], total: int) -> tuple[str, float]:
+    """Choose a representative from the largest text-similarity cluster."""
+    if not texts or total <= 0:
+        return "", 0.0
+    threshold = 0.60
+    adjacency = [set() for _ in texts]
+    for i in range(len(texts)):
+        for j in range(i + 1, len(texts)):
+            if difflib.SequenceMatcher(None, texts[i], texts[j], autojunk=False).ratio() >= threshold:
+                adjacency[i].add(j)
+                adjacency[j].add(i)
+    clusters: list[list[int]] = []
+    unseen = set(range(len(texts)))
+    while unseen:
+        stack = [unseen.pop()]
+        cluster: list[int] = []
+        while stack:
+            current = stack.pop()
+            cluster.append(current)
+            neighbors = adjacency[current] & unseen
+            unseen.difference_update(neighbors)
+            stack.extend(neighbors)
+        clusters.append(cluster)
+    largest = max(clusters, key=lambda cluster: (len(cluster), -min(cluster)))
+    representative = max(
+        largest,
+        key=lambda i: sum(
+            difflib.SequenceMatcher(None, texts[i], texts[j], autojunk=False).ratio()
+            for j in largest
+        ) / len(largest),
+    )
+    return texts[representative], min(1.0, len(largest) / total)
 
 
 async def list_models(db: DbAdapter, enabled_only: bool = False) -> list[dict[str, Any]]:
@@ -54,7 +170,7 @@ async def create_model(db: DbAdapter, **kwargs: Any) -> str:
             kwargs.get("provider", ""),
             kwargs.get("model_id", ""),
             kwargs.get("api_endpoint", ""),
-            kwargs.get("api_key", ""),
+            _encrypt_api_key(kwargs.get("api_key", "")),
             kwargs.get("access_type", "api"),
             json.dumps(kwargs.get("capabilities", ["text"]), ensure_ascii=False),
             kwargs.get("max_tokens", 4096),
@@ -74,7 +190,9 @@ async def update_model(db: DbAdapter, model_id: str, **kwargs: Any) -> bool:
     for k in ("name", "provider", "model_id", "api_endpoint", "api_key",
               "access_type", "max_tokens", "temperature"):
         if k in kwargs:
-            updates[k] = kwargs[k]
+            if k == "api_key" and kwargs[k] in {"sk-***", "********", "***"}:
+                continue
+            updates[k] = _encrypt_api_key(kwargs[k]) if k == "api_key" else kwargs[k]
     if "capabilities" in kwargs:
         updates["capabilities"] = json.dumps(kwargs["capabilities"], ensure_ascii=False)
     if "enabled" in kwargs:
@@ -159,28 +277,20 @@ async def multi_model_vote(
         if text:
             valid_texts.append(text)
 
-    consensus = _aggregate_consensus(valid_texts) if valid_texts else ""
-    agreement = len(valid_texts) / len(selected) if selected else 0.0
+    consensus, agreement = _select_consensus(valid_texts, len(selected))
 
     return {
         "consensus": consensus,
         "responses": responses,
         "models_used": len(selected),
         "agreement": round(agreement, 2),
+        "consensus_method": "similarity_cluster",
     }
 
 
 def _aggregate_consensus(texts: list[str]) -> str:
-    """Simple consensus: return the longest response (most detailed).
-
-    For medical content, the most complete answer is preferred over
-    shortest. A more sophisticated approach would use semantic similarity.
-    """
-    if not texts:
-        return ""
-    if len(texts) == 1:
-        return texts[0]
-    return max(texts, key=len)
+    """Compatibility wrapper using similarity clustering, not answer length."""
+    return _select_consensus(texts, len(texts))[0]
 
 
 def _format(row: dict[str, Any]) -> dict[str, Any]:
@@ -190,7 +300,7 @@ def _format(row: dict[str, Any]) -> dict[str, Any]:
         "provider": row.get("provider", ""),
         "model_id": row.get("model_id", ""),
         "api_endpoint": row.get("api_endpoint") or "",
-        "api_key": (row.get("api_key") or "")[:8] + "***" if row.get("api_key") else "",
+        "api_key": "sk-***" if row.get("api_key") else "",
         "access_type": row.get("access_type", "api"),
         "capabilities": _parse_json_list(row.get("capabilities")),
         "max_tokens": row.get("max_tokens", 4096),
@@ -208,7 +318,7 @@ def _format_raw(row: dict[str, Any]) -> dict[str, Any]:
         "provider": row.get("provider", ""),
         "model_id": row.get("model_id", ""),
         "api_endpoint": row.get("api_endpoint", ""),
-        "api_key": row.get("api_key", ""),
+        "api_key": _decrypt_api_key(row.get("api_key", "")),
         "access_type": row.get("access_type", "api"),
         "capabilities": _parse_json_list(row.get("capabilities")),
         "max_tokens": row.get("max_tokens", 4096),

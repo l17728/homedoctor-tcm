@@ -23,12 +23,16 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "data/homedoctor.db"
     SECRET_KEY: str = "change-me-in-production-use-a-long-random-string"
+    ADMIN_BOOTSTRAP_TOKEN: str = ""
+    PUSH_VAPID_PUBLIC_KEY: str = ""
+    PUSH_VAPID_PRIVATE_KEY: str = ""
+    PUSH_VAPID_SUBJECT: str = "mailto:admin@localhost"
 
     @property
     def SECRET_KEY_IS_DEFAULT(self) -> bool:
         return self.SECRET_KEY == "change-me-in-production-use-a-long-random-string"
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    JWT_EXPIRE_MINUTES: int = 60 * 24  # 24h default; override with HOMEDOCTOR_JWT_EXPIRE_MINUTES
     APP_VERSION: str = "0.1.0"
     APP_NAME: str = "家庭医生"
     CONFIG_DIR: str = "config/schemas"
@@ -42,6 +46,7 @@ class Settings(BaseSettings):
     LLM_FALLBACK_MODELS: str = "GLM-5,qwen3-235b-a22b,DeepSeek-V3"  # comma-separated
     LLM_VISION_BASE_URL: str = "https://api.modelarts-maas.com/v1"
     LLM_VISION_MODEL: str = "qwen2.5-vl-72b"
+    ENABLE_OPENCODE_REVIEW: bool = False
 
     # Database encryption (SQLCipher) — empty = no encryption
     DB_ENCRYPTION_KEY: str = ""

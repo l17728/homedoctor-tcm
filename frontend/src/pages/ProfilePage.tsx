@@ -89,8 +89,11 @@ export default function ProfilePage() {
       });
       setProfile(updated);
       message.success('保存成功');
-    } catch {
-      // validation error
+    } catch (err) {
+      // antd 表单校验错误为普通对象（含 errorFields），不弹提示；API 失败（Error）才提示
+      if (err instanceof Error) {
+        message.error('保存失败，请检查网络后重试');
+      }
     } finally {
       setSaving(false);
     }

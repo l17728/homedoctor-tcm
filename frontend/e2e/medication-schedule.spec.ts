@@ -24,9 +24,10 @@ test.describe('Medication Schedule — Navigation & Layout', () => {
     // Page title
     await expect(page.getByRole('heading', { name: /我的服药计划/ })).toBeVisible();
 
-    // Generate plan button (生成计划 or 重新生成)
+    // With no selected medicine, only the step button is available; the
+    // final generation action appears after medication selection.
     await expect(
-      page.getByRole('button', { name: /生成计划|重新生成/ }),
+      page.getByRole('button', { name: /下一步.*设置频率/ }),
     ).toBeVisible();
 
     // Load last plan button
@@ -75,9 +76,8 @@ test.describe('Medication Schedule — Empty State', () => {
   }) => {
     await page.goto('/medication-schedule');
 
-    const generateBtn = page.getByRole('button', { name: /生成计划/ });
-    // The generate button is disabled until at least one medicine is selected
-    await expect(generateBtn).toBeDisabled();
+    const nextStepBtn = page.getByRole('button', { name: /下一步.*设置频率/ });
+    await expect(nextStepBtn).toBeDisabled();
   });
 });
 

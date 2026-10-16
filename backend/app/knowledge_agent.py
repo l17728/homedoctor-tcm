@@ -146,11 +146,10 @@ async def process_input(
                 resolution = c.get("resolution", {})
                 if isinstance(resolution, dict) and "keep" in resolution:
                     properties[c["field"]] = resolution["keep"]
-        try:
-            await db.execute("BEGIN")
-        except Exception:
-            pass
-        try:
+        # Explicit transaction: the entity write and its provenance record
+        # commit together or not at all — a failure in either leaves no
+        # half-finished knowledge behind.
+        async with db.transaction():
             create_result = await tool_create_or_update_entity(
                 db,
                 entity_type=entity_type,
@@ -165,30 +164,18 @@ async def process_input(
             entity_id = create_result.get("entity_id", "")
             decision = create_result.get("decision", "unknown")
 
-            # Step 6b: Record provenance (blood lineage)
+            # Step 6b: Record provenance (blood lineage) — inside the same
+            # transaction; a failure rolls the entity write back too.
             if entity_id:
                 from app.agent_tools import tool_record_provenance
-                try:
-                    await tool_record_provenance(
-                        db, entity_id, source_type, url, title,
-                        trust_level=review_result.get("level", "B"),
-                        trust_score=review_result.get("score", 50),
-                        review_details={"reviews": review_result.get("reviews", []),
-                                       "conflicts": len(conflicts)},
-                        content_date="",
-                    )
-                except Exception as exc:
-                    logger.warning("knowledge_agent: provenance recording failed: %s", exc)
-            try:
-                await db.execute("COMMIT")
-            except Exception:
-                pass
-        except Exception as exc:
-            try:
-                await db.execute("ROLLBACK")
-            except Exception:
-                pass
-            raise exc
+                await tool_record_provenance(
+                    db, entity_id, source_type, url, title,
+                    trust_level=review_result.get("level", "B"),
+                    trust_score=review_result.get("score", 50),
+                    review_details={"reviews": review_result.get("reviews", []),
+                                   "conflicts": len(conflicts)},
+                    content_date="",
+                )
 
         # Step 7: Incremental index (internal entity + external content)
         if entity_id:
