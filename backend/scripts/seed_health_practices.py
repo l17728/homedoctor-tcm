@@ -1213,6 +1213,7 @@ async def seed_relationships(db: aiosqlite.Connection) -> int:
 async def _count(db: aiosqlite.Connection, sql: str) -> int:
     cur = await db.execute(sql)
     row = await cur.fetchone()
+    await cur.close()
     return row[0] if row else 0
 
 

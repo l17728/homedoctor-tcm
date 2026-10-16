@@ -56,11 +56,13 @@ async def main():
                 (herb_name,),
             )
             herb_row = await herb_rows.fetchone()
+            await herb_rows.close()
             formula_rows = await db.execute(
                 "SELECT id FROM knowledge_entities WHERE title=? AND entity_type='formula' LIMIT 1",
                 (formula_name,),
             )
             formula_row = await formula_rows.fetchone()
+            await formula_rows.close()
 
             if not herb_row or not formula_row:
                 not_found += 1
