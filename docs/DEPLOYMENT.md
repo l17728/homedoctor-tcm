@@ -119,7 +119,7 @@ server {
 
 ### 性能
 
-- [ ] **前端 chunk 分割**：`vite.config.ts` 已启用 `manualChunks` 函数化 vendor 分块（react/antd/g6 等独立 chunk，G6 懒加载，首屏 455KB gzip）
+- [ ] **前端 chunk 分割**：`vite.config.ts` 已启用 `manualChunks` 函数化 vendor 分块（react/antd 独立 chunk；知识图谱页按需加载 G6 使用的扩展，首屏 455KB gzip）
 - [ ] **gzip 压缩**：nginx 启用 `gzip on`
 - [ ] **缓存头**：静态资源配置 `Cache-Control`
 - [ ] **数据库索引**：确认 FTS5 索引正常
