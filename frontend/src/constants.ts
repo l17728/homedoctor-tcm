@@ -27,6 +27,11 @@ export const TOXICITY_COLOR: Record<string, string> = {
 
 export const PAGE_SIZE = 20;
 
+export const fontSizeSecondary = 14;
+export const fontSizeBody = 16;
+export const colorTextSecondary = '#595959';
+export const colorTextTertiary = '#666666';
+
 export const DATE_FORMAT = 'YYYY-MM-DD HH:mm';
 
 export const APP_VERSION = '0.4.0';

@@ -114,10 +114,10 @@ export default function HealthPracticePage() {
               {difficulty && <Tag color={difficulty === '入门' ? 'green' : difficulty === '进阶' ? 'orange' : 'red'}>{difficulty}</Tag>}
             </div>
             {pType && <Tag color={color === '#52c41a' ? 'green' : color === '#1890ff' ? 'blue' : 'purple'}>{pType}</Tag>}
-            <Paragraph type="secondary" style={{ margin: 0, fontSize: 13 }} ellipsis={{ rows: 2 }}>
+            <Paragraph type="secondary" style={{ margin: 0, fontSize: 14 }} ellipsis={{ rows: 2 }}>
               {(props.core_essence as string) || p.summary || ''}
             </Paragraph>
-            {duration && <Text type="secondary" style={{ fontSize: 12 }}>⏱ {duration}</Text>}
+            {duration && <Text type="secondary" style={{ fontSize: 14 }}>⏱ {duration}</Text>}
           </Space>
         </Card>
       </Col>
@@ -131,8 +131,8 @@ export default function HealthPracticePage() {
         <Card hoverable onClick={() => openDetail(s.id)} style={{ borderLeft: '4px solid #fa541c' }}>
           <Space direction="vertical" size={4} style={{ width: '100%' }}>
             <Text strong style={{ fontSize: 17 }}>{s.title}</Text>
-            {props.founder ? <Text type="secondary" style={{ fontSize: 13 }}>创始人：{props.founder as string}</Text> : null}
-            <Paragraph type="secondary" style={{ margin: 0, fontSize: 13 }} ellipsis={{ rows: 2 }}>
+            {props.founder ? <Text type="secondary" style={{ fontSize: 14 }}>创始人：{props.founder as string}</Text> : null}
+            <Paragraph type="secondary" style={{ margin: 0, fontSize: 14 }} ellipsis={{ rows: 2 }}>
               {(props.characteristics as string) || s.summary || ''}
             </Paragraph>
           </Space>
@@ -278,7 +278,7 @@ export default function HealthPracticePage() {
         </Title>
         <Space wrap>
           <Input
-            prefix={<SearchOutlined style={{ color: '#999' }} />}
+            prefix={<SearchOutlined style={{ color: '#666' }} />}
             placeholder="搜索功法…"
             allowClear
             style={{ width: isMobile ? '100%' : 220, fontSize: 15 }}

@@ -300,7 +300,10 @@ async def test_parse_video_url_unknown_host_uses_parse_url():
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.get = AsyncMock(return_value=_MockResponse(SAMPLE_HTML))
 
-    with patch("app.knowledge_parser.httpx.AsyncClient", return_value=mock_client):
+    with (
+        patch("app.knowledge_parser.httpx.AsyncClient", return_value=mock_client),
+        patch("app.url_validator.socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 0))]),
+    ):
         result = await parse_video_url("https://random-blog.com/post/123")
 
     assert result.type == "url"

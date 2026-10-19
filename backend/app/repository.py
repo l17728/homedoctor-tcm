@@ -80,13 +80,17 @@ class HerbRepository(BaseRepository):
         return await self.db.query_one("SELECT * FROM herbs WHERE id = ?", (herb_id,))
 
     async def search_herbs(self, query: str) -> list[dict[str, Any]]:
-        """FTS5 full-text search across herbs."""
+        """FTS5 phrase search across herbs with user syntax safely quoted."""
+        normalized = " ".join(query.split())
+        if not normalized:
+            return []
+        fts_query = '"' + normalized.replace('"', '""') + '"'
         rows = await self.db.query(
             """SELECT h.* FROM herbs h
                JOIN herbs_fts fts ON h.rowid = fts.rowid
                WHERE herbs_fts MATCH ?
                ORDER BY rank""",
-            (query,),
+            (fts_query,),
         )
         return rows
 
@@ -191,6 +195,17 @@ class MedicineRepository(BaseRepository):
         )
         return medicine_id
 
+    # Whitelist of columns that may appear in an UPDATE ... SET clause.
+    # SECURITY: keys come from the request body — never interpolate unvalidated
+    # key names into SQL (f-string injection vector). id/tenant_id/created_at
+    # are intentionally excluded.
+    _UPDATABLE_FIELDS = frozenset({
+        "name", "brand", "type", "specification", "unit", "quantity",
+        "production_date", "expiry_date", "opened_date", "shelf_life_after_open",
+        "dosage_instructions", "contraindications", "barcode", "drug_class",
+        "active_ingredients", "herbal_fields", "properties", "family_member_id",
+    })
+
     async def update_medicine(self, medicine_id: str, data: dict[str, Any]) -> bool:
         import json
 
@@ -199,13 +214,15 @@ class MedicineRepository(BaseRepository):
         if not existing:
             return False
 
-        # Build dynamic UPDATE
+        # Build dynamic UPDATE — whitelist keys, drop anything else
         set_parts: list[str] = []
         values: list[Any] = []
         json_fields = {"active_ingredients", "herbal_fields", "properties"}
 
         for key, value in data.items():
             if value is None:
+                continue
+            if key not in self._UPDATABLE_FIELDS:
                 continue
             if key in json_fields:
                 set_parts.append(f"{key} = ?")

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.auth import get_current_user, require_admin
@@ -32,9 +32,18 @@ async def feeder_scan(
     db: DbAdapter = Depends(get_db),
     _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
-    """Trigger knowledge feeder scan — discovers gaps and feeds URLs."""
+    """Trigger knowledge feeder scan — discovers gaps and feeds URLs.
+
+    Shares the scheduler's lock so a manual click cannot overlap the 24h
+    automatic scan (double LLM cost / duplicate feeds).
+    """
+    from app.scheduler import _feeder_lock
     from app.knowledge_feeder import run_feeder_scan
-    return await run_feeder_scan(db, max_feeds=max_feeds)
+
+    if _feeder_lock.locked():
+        return {"status": "busy", "message": "扫描进行中，请稍后再试"}
+    async with _feeder_lock:
+        return await run_feeder_scan(db, max_feeds=max_feeds)
 
 
 @router.get("/user/interests")
@@ -131,6 +140,7 @@ async def url_health_check(
     )
 
     import httpx
+    from app.knowledge_parser import UnsafeUrlError, safe_fetch
     checked = 0
     stale = 0
     for row in rows:
@@ -140,15 +150,19 @@ async def url_health_check(
             stale += 1
             continue
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.head(url, follow_redirects=True)
+            await safe_fetch(url, timeout=10.0, method="HEAD")
             checked += 1
-            if resp.status_code == 404:
+        except UnsafeUrlError:
+            stale += 1
+        except httpx.HTTPStatusError as exc:
+            checked += 1
+            resp = getattr(exc, "response", None)
+            if resp is not None and resp.status_code == 404:
                 await db.execute(
                     "UPDATE knowledge_chunks SET chunk_type = 'external_stale' WHERE source_url = ?",
                     (url,),
                 )
-                stale += 1
+            stale += 1
         except Exception:
             stale += 1
 
@@ -205,7 +219,7 @@ async def list_agent_memories(
     agent_name: str | None = None,
     memory_type: str | None = None,
     q: str | None = None,
-    limit: int = 20,
+    limit: int = Query(20, ge=1, le=100),
     db: DbAdapter = Depends(get_db),
     _: dict = Depends(require_admin),
 ) -> dict[str, Any]:
@@ -244,7 +258,7 @@ async def delete_agent_memory(
 @router.get("/admin/agent/conversations")
 async def list_agent_conversations(
     agent_name: str | None = None,
-    limit: int = 30,
+    limit: int = Query(30, ge=1, le=100),
     db: DbAdapter = Depends(get_db),
     _: dict = Depends(require_admin),
 ) -> dict[str, Any]:

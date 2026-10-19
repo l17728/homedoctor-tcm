@@ -1,11 +1,12 @@
 import React, { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ThemeProvider, useTheme } from './hooks/useTheme';
 import { ElderlyModeProvider, useElderlyMode } from './contexts/ElderlyModeContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { lightTheme, darkTheme } from './theme';
+import { isSystemPath, ELDERLY_ALLOWED_PATHS } from './system-paths';
 import AppLayout from './layouts/AppLayout';
 import ElderlyLayout from './layouts/ElderlyLayout';
 import LoginPage from './pages/LoginPage';
@@ -60,20 +61,40 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** 路由守卫：管理员专属路径仅 admin 可入；长辈模式下仅允许白名单路径 */
+function RouteGuard({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  const { user } = useAuth();
+  const { isElderlyMode } = useElderlyMode();
+  const role = (user as { role?: string } | null)?.role ?? 'user';
+
+  if (isSystemPath(location.pathname) && role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
+  if (isElderlyMode && !ELDERLY_ALLOWED_PATHS.includes(location.pathname)) {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+}
+
 function LayoutSwitch() {
   const { isElderlyMode } = useElderlyMode();
 
   if (isElderlyMode) {
     return (
       <AuthGuard>
-        <ElderlyLayout />
+        <RouteGuard>
+          <ElderlyLayout />
+        </RouteGuard>
       </AuthGuard>
     );
   }
 
   return (
     <AuthGuard>
-      <AppLayout />
+      <RouteGuard>
+        <AppLayout />
+      </RouteGuard>
     </AuthGuard>
   );
 }

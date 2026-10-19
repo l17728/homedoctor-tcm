@@ -21,6 +21,7 @@ import {
   WarningOutlined,
   ExperimentOutlined,
   ExclamationCircleOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import { checkSafetyV2, type SafetyCheckResult } from '../api/safetyApi';
 
@@ -46,6 +47,7 @@ export default function SafetyCheckPage() {
   const [profile, setProfile] = useState<string>('default');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SafetyCheckResult | null>(null);
+  const [checkError, setCheckError] = useState(false);
   const [criticalAcknowledged, setCriticalAcknowledged] = useState(false);
 
   const hasCritical =
@@ -80,6 +82,7 @@ export default function SafetyCheckPage() {
     if (selectedHerbs.length === 0 && selectedMedicines.length === 0) return;
     setLoading(true);
     setResult(null);
+    setCheckError(false);
     setCriticalAcknowledged(false);
     try {
       const userProfile: Record<string, unknown> = {};
@@ -98,12 +101,8 @@ export default function SafetyCheckPage() {
       });
       setResult(res);
     } catch {
-      setResult({
-        safe: true,
-        warnings: ['安全检查服务暂时不可用，请稍后再试。'],
-        interactions: [],
-        disclaimer: '⚠ 本工具仅供参考，不能替代专业医疗建议。',
-      });
+      // 检查失败绝不伪装成"安全"结论
+      setCheckError(true);
     } finally {
       setLoading(false);
     }
@@ -212,7 +211,7 @@ export default function SafetyCheckPage() {
       {loading && (
         <Card style={{ textAlign: 'center', padding: 48 }}>
           <Spin size="large" />
-          <Paragraph style={{ marginTop: 16, color: '#888' }}>正在进行五层安全检查...</Paragraph>
+          <Paragraph style={{ marginTop: 16, color: '#666' }}>正在进行五层安全检查...</Paragraph>
         </Card>
       )}
 
@@ -285,7 +284,22 @@ export default function SafetyCheckPage() {
         </Card>
       )}
 
-      {!result && !loading && (
+      {checkError && !loading && (
+        <Card>
+          <Alert
+            type="error"
+            showIcon
+            message="安全检查失败，请稍后重试。结果出来之前，请勿自行合用药物。"
+            action={
+              <Button danger icon={<ReloadOutlined />} onClick={runCheck}>
+                重试
+              </Button>
+            }
+          />
+        </Card>
+      )}
+
+      {!result && !loading && !checkError && (
         <Card>
           <Empty
             description="添加药材和药品后，点击「开始安全检查」"

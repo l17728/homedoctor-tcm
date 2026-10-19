@@ -41,6 +41,33 @@ async def test_generate_prescription_returns_pdf(client: AsyncClient, auth_heade
 
 
 @pytest.mark.asyncio
+async def test_generate_prescription_masks_patient_identity(client: AsyncClient, auth_headers: dict):
+    response = await client.post(
+        "/api/prescriptions/generate",
+        json={
+            "formula_id": "formula-001",
+            "patient_name": "张三",
+            "patient_age": "45",
+            "patient_contact": "13800138000",
+            "constitution": "气虚质",
+            "stock_items": [{"name": "降压药甲", "quantity": 10, "unit": "片"}],
+            "mask_fields": ["name", "age", "contact", "constitution", "stock"],
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    text = _extract_pdf_text(response.content)
+    assert "张三" not in text
+    assert "45岁" not in text
+    assert "姓名：张**" in text
+    assert "年龄：**岁" in text
+    assert "13800138000" not in text
+    assert "气虚质" not in text
+    assert "体质：未提供" in text
+    assert "降压药甲" not in text
+
+
+@pytest.mark.asyncio
 async def test_generate_prescription_content_disposition(client: AsyncClient, auth_headers: dict):
     """Response includes Content-Disposition with formula name."""
     response = await client.post(

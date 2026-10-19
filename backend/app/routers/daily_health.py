@@ -168,6 +168,13 @@ async def get_daily_health_card(
     if constitution_row and constitution_row.get("constitution_type"):
         constitution_type = constitution_row["constitution_type"]
 
+    recent_consultations = await db.query(
+        """SELECT title FROM conversations
+           WHERE user_id = ? AND datetime(created_at) >= datetime('now', '-7 days')
+           ORDER BY datetime(created_at) DESC LIMIT 5""",
+        (current_user["id"],),
+    )
+
     return {
         "date": today.isoformat(),
         "solar_term": solar_term,
@@ -178,4 +185,12 @@ async def get_daily_health_card(
         "constitution_tips": CONSTITUTION_TIPS.get(constitution_type, CONSTITUTION_TIPS["平和质"]),
         "stock_alerts": stock_alerts,
         "seasonal_herbs": TERM_SEASONAL_HERBS.get(season, []),
+        "recent_consultations": {
+            "period_days": 7,
+            "count": len(recent_consultations),
+            "topics": [
+                str(row.get("title") or "未命名咨询")[:120]
+                for row in recent_consultations
+            ],
+        },
     }

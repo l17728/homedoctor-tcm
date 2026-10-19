@@ -191,7 +191,7 @@ export default function HerbDetail() {
                   <span
                     style={{
                       fontSize: 14,
-                      color: '#8c8c8c',
+                      color: '#666',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',

@@ -42,9 +42,9 @@ test.describe('Persona: 王秀英 — 银发独居长辈', () => {
     await expect(page).toHaveURL('/');
     await expect(page.getByText('今日健康')).toBeVisible();
 
-    // 验证统计区域可见（中药数/方剂数/药箱数/今日提醒）
-    await expect(page.getByText('中药数')).toBeVisible();
-    await expect(page.getByText('今日提醒')).toBeVisible();
+    // Verify the current task based dashboard and knowledge summary.
+    await expect(page.getByText(/知识库：\d+味中药/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: '今日健康任务' })).toBeVisible();
 
     // PRODUCT GAP: 首页没有显示"今日该服用的药品列表"。
     //   王秀英需要一眼看到今天该吃什么药，而不是只看到提醒数量。
@@ -238,7 +238,7 @@ test.describe('Persona: 王秀英 — 银发独居长辈', () => {
 
     // 导航到提醒页
     await page.goto('/reminders');
-    await expect(page.getByText('吃药提醒')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '吃药提醒' })).toBeVisible();
 
     // 点击添加提醒
     await page.getByRole('button', { name: /添加提醒/ }).click();
@@ -358,11 +358,10 @@ test.describe('Persona: 王秀英 — 银发独居长辈', () => {
     await register(page, username);
 
     // 点击知识库菜单展开
-    await page.getByText('知识库').first().click();
-    await page.locator('.ant-menu').getByText('中药', { exact: true }).click();
+    await navigateTo(page, '中药');
     await page.waitForURL('/herbs');
     await expect(page).toHaveURL('/herbs');
-    await expect(page.getByText('中药知识库')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '中药知识库' })).toBeVisible();
 
     // 验证搜索框和分类筛选可见
     await expect(page.getByPlaceholder('搜索').first()).toBeVisible();

@@ -109,7 +109,7 @@ export default function MeridianAcupointPage() {
                     <Text type="secondary">{pointCount}穴</Text>
                   </Space>
                   {indications && (
-                    <Paragraph type="secondary" style={{ margin: 0, fontSize: 13 }} ellipsis={{ rows: 2 }}>
+                    <Paragraph type="secondary" style={{ margin: 0, fontSize: 14 }} ellipsis={{ rows: 2 }}>
                       {indications}
                     </Paragraph>
                   )}
@@ -152,7 +152,7 @@ export default function MeridianAcupointPage() {
       key: 'location',
       ellipsis: true,
       render: (_: unknown, record: KnowledgeEntity) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           {(record.properties as Record<string, unknown>)?.location as string || ''}
         </Text>
       ),
@@ -175,7 +175,7 @@ export default function MeridianAcupointPage() {
       width: 80,
       fixed: 'right' as const,
       render: (_: unknown, record: KnowledgeEntity) => (
-        <Button type="link" size="small" onClick={() => openDetail(record.id)}>
+        <Button type="link" onClick={() => openDetail(record.id)}>
           详情
         </Button>
       ),
@@ -192,7 +192,7 @@ export default function MeridianAcupointPage() {
             <Space>
               <Text type="secondary">当前经络：</Text>
               <Tag color="red">{selectedMeridian}</Tag>
-              <Button type="link" size="small" onClick={() => setSelectedMeridian(undefined)}>
+              <Button type="link" onClick={() => setSelectedMeridian(undefined)}>
                 清除筛选
               </Button>
             </Space>
@@ -320,7 +320,7 @@ export default function MeridianAcupointPage() {
         </Title>
         <Space wrap>
           <Input
-            prefix={<SearchOutlined style={{ color: '#999' }} />}
+            prefix={<SearchOutlined style={{ color: '#666' }} />}
             placeholder="搜索穴位名或功效…"
             allowClear
             style={{ width: isMobile ? '100%' : 240, fontSize: 15 }}

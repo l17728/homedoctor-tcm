@@ -172,8 +172,14 @@ async def test_different_ips_have_separate_counters(rl_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_x_forwarded_for_first_hop_used(rl_client: AsyncClient):
-    """The first hop of X-Forwarded-For is treated as the originating IP."""
+async def test_x_forwarded_for_uses_first_untrusted_hop(rl_client: AsyncClient, monkeypatch):
+    """Walk a trusted proxy chain from right to left to find the client."""
+    import ipaddress
+    import app.middleware.rate_limit as rate_limit
+    monkeypatch.setattr(rate_limit, "_TRUSTED_PROXY_NETWORKS", (
+        ipaddress.ip_network("127.0.0.1/32"), ipaddress.ip_network("::1/128"),
+        ipaddress.ip_network("10.0.0.0/8"),
+    ))
     ip = "203.0.113.55"
     # A multi-hop forwarded chain must still identify the originator.
     headers = {"X-Forwarded-For": f"{ip}, 10.0.0.1, 10.0.0.2"}
@@ -184,6 +190,21 @@ async def test_x_forwarded_for_first_hop_used(rl_client: AsyncClient):
 
     over = await rl_client.get("/api/herbs", headers=headers)
     assert over.status_code == 429
+
+
+def test_untrusted_peer_cannot_choose_rate_limit_ip(monkeypatch):
+    import ipaddress
+    from starlette.requests import Request
+    import app.middleware.rate_limit as rate_limit
+
+    monkeypatch.setattr(rate_limit, "_TRUSTED_PROXY_NETWORKS", (ipaddress.ip_network("127.0.0.1/32"),))
+    scope = {
+        "type": "http", "method": "GET", "path": "/api/herbs",
+        "headers": [(b"x-forwarded-for", b"203.0.113.9")],
+        "query_string": b"", "client": ("198.51.100.8", 54321),
+        "server": ("testserver", 80),
+    }
+    assert rate_limit.RateLimitMiddleware._get_client_ip(Request(scope)) == "198.51.100.8"
 
 
 # --------------------------------------------------------------------------- #

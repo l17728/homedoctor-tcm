@@ -13,11 +13,13 @@ unavailable, the pipeline falls back to BM25-only and never raises.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
 
 from app.database import DbAdapter
+from app.repository import current_tenant_id
 from app.embedding import get_embedding_model
 from app.query_router import COMPLEX, classify_query, strategies_for_intent
 from app.vector_store import vector_search
@@ -25,6 +27,10 @@ from app.vector_store import vector_search
 logger = logging.getLogger(__name__)
 
 RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
+
+# Cap on external chunks scanned per BM25 search (newest first) to bound
+# latency when the external chunk table grows large.
+EXTERNAL_CHUNK_SCAN_LIMIT = 500
 
 
 # ---------------------------------------------------------------------------
@@ -141,12 +147,16 @@ async def bm25_search(db: DbAdapter, query: str, top_k: int = 20) -> list[dict[s
     scored = [s for s in scored if s["bm25_score"] > 0.001]
 
     ext_chunks = await db.query(
-        """SELECT kc.id AS chunk_id, kc.entity_id, kc.chunk_text, kc.source_url,
+        f"""SELECT kc.id AS chunk_id, kc.entity_id, kc.chunk_text, kc.source_url,
                   ke.title, ke.entity_type, ke.summary, ke.category,
                   ke.source_table, ke.source_id
              FROM knowledge_chunks kc
              LEFT JOIN knowledge_entities ke ON ke.id = kc.entity_id
-            WHERE kc.source_type = 'external'"""
+            WHERE kc.source_type = 'external'
+              AND (ke.tenant_id = ? OR ke.tenant_id IS NULL)
+            ORDER BY kc.created_at DESC
+            LIMIT {EXTERNAL_CHUNK_SCAN_LIMIT}"""
+        , (current_tenant_id.get() or "default",)
     )
     for ec in ext_chunks:
         chunk_text = ec.get("chunk_text") or ""
@@ -231,9 +241,9 @@ async def semantic_search(
 ) -> list[dict[str, Any]] | None:
     """Embed the query and run vector search. Returns ``None`` if unavailable."""
     model = get_embedding_model()
-    if not model.available:
+    if not await asyncio.to_thread(lambda: model.available):
         return None
-    q_vec = model.embed_one(query)
+    q_vec = await asyncio.to_thread(model.embed_one, query)
     if q_vec is None:
         return None
     hits = await vector_search(db, q_vec, top_k=top_k)
@@ -352,7 +362,7 @@ async def rerank(
     """Re-score ``candidates`` with a cross-encoder. Graceful no-op if unavailable."""
     if not candidates:
         return []
-    model = _get_reranker()
+    model = await asyncio.to_thread(_get_reranker)
     if model is None:
         return candidates[:top_k]
     try:
@@ -360,7 +370,7 @@ async def rerank(
         for c in candidates:
             text = c.get("summary") or c.get("title") or c.get("chunk_text") or ""
             pairs.append((query, text))
-        scores = model.predict(pairs)
+        scores = await asyncio.to_thread(model.predict, pairs)
         scored = list(zip(candidates, [float(s) for s in scores]))
         scored.sort(key=lambda x: x[1], reverse=True)
         result = []
@@ -404,13 +414,16 @@ async def search(
         sem_res = await semantic_search(db, query, top_k=max(top_k * 2, 20))
         if sem_res is None:
             degraded = True
-            if not lists:  # semantic was the only strategy → fall back to bm25
-                bm25_res = await bm25_search(db, query, top_k=max(top_k * 2, 20))
-                lists.append(bm25_res)
-                ran = ["bm25"]
         elif sem_res:
             lists.append(sem_res)
             ran.append("semantic")
+        if not sem_res and "bm25" not in ran:
+            # Semantic unavailable (None) OR zero vector hits ([]) — e.g. numpy
+            # missing / empty index on a CONCEPT query — fall back to BM25 so
+            # "怎么/为什么" questions still return results.
+            bm25_res = await bm25_search(db, query, top_k=max(top_k * 2, 20))
+            lists.append(bm25_res)
+            ran.append("bm25")
 
     bm25_count = len(lists[0]) if (ran and ran[0] == "bm25") else 0
 

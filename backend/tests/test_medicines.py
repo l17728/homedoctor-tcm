@@ -13,6 +13,7 @@ async def test_create_medicine(client: AsyncClient, auth_headers: dict):
         "specification": "0.2g×20粒/盒",
         "unit": "粒",
         "quantity": 20,
+        "barcode": "4006381333931",
         "dosage_instructions": "每次1-2粒，每日3次",
     })
     assert response.status_code == 201
@@ -20,6 +21,7 @@ async def test_create_medicine(client: AsyncClient, auth_headers: dict):
     assert data["name"] == "布洛芬"
     assert data["type"] == "western"
     assert data["quantity"] == 20
+    assert data["barcode"] == "4006381333931"
     assert "id" in data
 
 

@@ -3,6 +3,9 @@ import { request } from './client';
 export interface User {
   id: string;
   username: string;
+  role?: 'admin' | 'user';
+  display_name?: string;
+  family_id?: string;
 }
 
 export interface AuthResponse {
@@ -58,6 +61,16 @@ export async function registerApi(
 
 export async function getMe(): Promise<User> {
   return request<User>('/api/auth/me');
+}
+
+/** Best-effort server-side token revocation; intentionally avoids request()'s 401 redirect side effect. */
+export async function logoutApi(token: string): Promise<void> {
+  const response = await fetch('/api/auth/logout', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(2000),
+  });
+  if (!response.ok) throw new Error(`Logout revocation failed (${response.status})`);
 }
 
 export async function getConsentStatus(): Promise<ConsentStatus> {

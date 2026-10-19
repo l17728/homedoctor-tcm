@@ -95,6 +95,28 @@ class DbAdapter(ABC):
     async def transaction(self):
         """Context manager for a transaction — commit on success, rollback on error."""
 
+    async def begin(self) -> None:
+        """Start an explicit transaction on the shared connection.
+
+        While the transaction is open, every other database call on this
+        adapter (execute/query/query_one, and begin() from other tasks)
+        queues until commit()/rollback() ends the transaction.
+        """
+        raise NotImplementedError
+
+    async def commit(self) -> None:
+        """Commit the explicit transaction. Failures propagate."""
+        raise NotImplementedError
+
+    async def rollback(self) -> None:
+        """Roll back the explicit transaction. Idempotent no-op if none is open."""
+        raise NotImplementedError
+
+    @property
+    def in_transaction(self) -> bool:
+        """True while an explicit begin()/commit()/rollback() transaction is open."""
+        return False
+
 
 # ---------------------------------------------------------------------------
 # SqliteAdapter
@@ -129,6 +151,39 @@ def _try_enable_sqlcipher() -> bool:
 _SQLCIPHER_ACTIVE = _try_enable_sqlcipher()
 
 
+class _SqlcipherRow(dict[str, Any]):
+    """Mapping row that also preserves sqlite.Row's positional indexing."""
+
+    def __getitem__(self, key: Any) -> Any:
+        if isinstance(key, int):
+            return tuple(self.values())[key]
+        return super().__getitem__(key)
+
+
+def _sqlcipher_dict_row(cursor: Any, row: tuple[Any, ...]) -> dict[str, Any]:
+    """Build mapping rows without sqlite3.Row's stdlib cursor type check.
+
+    ``aiosqlite.Row`` is backed by stdlib ``sqlite3.Row`` and rejects cursor
+    objects from pysqlcipher3. The adapter API exposes dictionaries anyway.
+    """
+    return _SqlcipherRow(
+        (column[0], value) for column, value in zip(cursor.description or (), row)
+    )
+
+
+def _pragma_key_sql(key: str) -> str:
+    """Build a safe ``PRAGMA key = '...'`` statement for SQLCipher.
+
+    SQLite does not accept bound parameters in PRAGMA statements
+    (``PRAGMA key = ?`` is a syntax error), so the key must be inlined as a
+    string literal. Doubling embedded single quotes (standard SQL escaping)
+    keeps the value inside the literal — a crafted key containing
+    ``'; DROP ...`` cannot break out and inject statements.
+    """
+    escaped = key.replace("'", "''")
+    return f"PRAGMA key = '{escaped}'"
+
+
 class SqliteAdapter(DbAdapter):
     """aiosqlite implementation of DbAdapter."""
 
@@ -140,21 +195,58 @@ class SqliteAdapter(DbAdapter):
         self.db_path = db_path
         self._conn: aiosqlite.Connection | None = None
         self._encryption_key: str | None = os.environ.get("HOMEDOCTOR_DB_ENCRYPTION_KEY", "") or None
+        if self._encryption_key and not _SQLCIPHER_ACTIVE:
+            raise RuntimeError(
+                "HOMEDOCTOR_DB_ENCRYPTION_KEY is configured, but SQLCipher is unavailable; "
+                "refusing to open or create an unencrypted database"
+            )
+        # Explicit-transaction state: while a transaction is open, the bus
+        # lock below is held by the owning task and every other database
+        # call queues until the transaction ends.
+        self._tx_lock = asyncio.Lock()
+        self._in_transaction = False
+        self._tx_owner: asyncio.Task | None = None
+
+    @property
+    def in_transaction(self) -> bool:
+        return self._in_transaction
 
     async def connect(self) -> None:
         self._conn = await aiosqlite.connect(self.db_path)
-        self._conn.row_factory = aiosqlite.Row
+        self._conn.row_factory = _sqlcipher_dict_row if _SQLCIPHER_ACTIVE else aiosqlite.Row
 
-        if self._encryption_key and _SQLCIPHER_ACTIVE:
-            await self._conn.execute(f"PRAGMA key = '{self._encryption_key}'")
+        if (
+            self._encryption_key
+            and _SQLCIPHER_ACTIVE
+            and not os.environ.get("HOMEDOCTOR_SQLCIPHER_KEY_APPLIED_BY_CONNECT")
+        ):
+            await self._conn.execute(_pragma_key_sql(self._encryption_key))
             await self._conn.execute("PRAGMA cipher_compatibility = 4")
 
-        if not self._encryption_key:
-            await self._conn.execute("PRAGMA journal_mode=WAL")
-            await self._conn.execute("PRAGMA synchronous=NORMAL")
+        # WAL regardless of encryption: crash safety + concurrent readers.
+        # (SQLCipher builds also support WAL — the old "plaintext only" gate
+        # silently downgraded encrypted deployments to DELETE journal mode.)
+        await self._conn.execute("PRAGMA journal_mode=WAL")
+        await self._conn.execute("PRAGMA synchronous=NORMAL")
+        # NOTE: foreign_keys stays OFF for now — legacy DBs were built without
+        # FK enforcement and may contain orphan rows; enabling it blindly would
+        # fail runtime writes. Requires an orphan-audit migration first (TODO).
+        # Stop hiding "database is locked" spikes behind a hard 5s error.
+        await self._conn.execute("PRAGMA busy_timeout=10000")
 
     async def close(self) -> None:
         if self._conn:
+            if self._in_transaction:
+                # Closing with an open transaction: abort it so no partial
+                # write survives and tasks queued on the bus are released.
+                self._in_transaction = False
+                self._tx_owner = None
+                try:
+                    await self._conn.execute("ROLLBACK")
+                except sqlite3.Error:
+                    logger.warning("rollback during close failed", exc_info=True)
+                if self._tx_lock.locked():
+                    self._tx_lock.release()
             await self._conn.close()
             self._conn = None
 
@@ -163,44 +255,166 @@ class SqliteAdapter(DbAdapter):
             raise RuntimeError("Database not connected. Call connect() first.")
         return self._conn
 
-    async def query(self, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
+    # ------------------------------------------------------------------
+    # Explicit transaction API (begin/commit/rollback)
+    # ------------------------------------------------------------------
+
+    async def begin(self) -> None:
+        """Start an explicit transaction and take exclusive ownership of the bus.
+
+        Every execute/query/query_one call from other tasks queues on the bus
+        lock until commit()/rollback() ends the transaction; the owning
+        task's own statements pass through without auto-commit so they only
+        persist at commit time.
+        """
+        task = asyncio.current_task()
+        if task is not None and self._tx_owner is task:
+            raise RuntimeError("a transaction is already active on this adapter")
+        await self._tx_lock.acquire()
+        try:
+            # The lock is held for the full lifetime of an explicit transaction.
+            # A different task therefore waits here and observes a clean state
+            # after its predecessor commits or rolls back.
+            if self._in_transaction:
+                raise RuntimeError("transaction state is inconsistent with the bus lock")
+            conn = self._ensure_conn()
+            # Mark ownership before enqueueing BEGIN. If the caller is cancelled
+            # while aiosqlite's worker thread is executing it, cleanup must know
+            # that a transaction may have started and queue ROLLBACK behind it.
+            self._in_transaction = True
+            self._tx_owner = task
+            await conn.execute("BEGIN")
+        except BaseException:
+            if self._in_transaction and self._tx_owner is task:
+                await self._rollback_transaction()
+            elif self._tx_lock.locked():
+                self._tx_lock.release()
+            raise
+
+    async def commit(self) -> None:
+        """Commit the explicit transaction.
+
+        A failed COMMIT (disk full / SQLITE_BUSY) means the write did NOT
+        persist — the error propagates. The transaction is aborted
+        best-effort first so the bus is always returned to a clean state.
+        """
+        if not self._in_transaction:
+            raise RuntimeError("commit() called outside of an explicit transaction")
         conn = self._ensure_conn()
-        cursor = await conn.execute(sql, params)
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+        try:
+            await conn.execute("COMMIT")
+        except BaseException:
+            # Cancelled awaits do not stop aiosqlite's worker operation. Queue
+            # rollback behind it and wait for that operation before releasing
+            # the transaction bus, so later requests cannot race the worker.
+            await self._rollback_transaction()
+            raise
+        self._end_transaction()
+
+    async def rollback(self) -> None:
+        """Roll back the explicit transaction (idempotent no-op if none is open)."""
+        if not self._in_transaction:
+            return
+        await self._rollback_transaction()
+
+    async def _rollback_transaction(self) -> None:
+        """Finish rollback even if the caller is cancelled while SQLite runs it.
+
+        aiosqlite executes SQL in a worker thread. Cancelling the awaiter does
+        not cancel a statement already queued there; shielding and draining the
+        rollback task preserves statement order before releasing the bus lock.
+        """
+        conn = self._ensure_conn()
+        rollback_task = asyncio.create_task(conn.execute("ROLLBACK"))
+        interrupted = False
+        try:
+            while not rollback_task.done():
+                try:
+                    await asyncio.shield(rollback_task)
+                except asyncio.CancelledError:
+                    interrupted = True
+            try:
+                rollback_task.result()
+            except sqlite3.Error:
+                # BEGIN may have failed before opening a transaction. Cleanup
+                # still must clear ownership and release the serialization bus.
+                logger.debug("rollback found no active SQLite transaction", exc_info=True)
+        finally:
+            self._end_transaction()
+        if interrupted:
+            raise asyncio.CancelledError
+
+    def _end_transaction(self) -> None:
+        self._in_transaction = False
+        self._tx_owner = None
+        if self._tx_lock.locked():
+            self._tx_lock.release()
+
+    @asynccontextmanager
+    async def _bus(self):
+        """Serialize database access.
+
+        During an explicit transaction the lock is held by the transaction
+        owner: its own statements pass through, everything else (including
+        statements from other tasks) queues until the transaction ends.
+        """
+        if self._in_transaction and self._tx_owner is asyncio.current_task():
+            yield
+            return
+        async with self._tx_lock:
+            yield
+
+    async def query(self, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
+        async with self._bus():
+            conn = self._ensure_conn()
+            cursor = await conn.execute(sql, params)
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
 
     async def query_one(self, sql: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
-        conn = self._ensure_conn()
-        cursor = await conn.execute(sql, params)
-        row = await cursor.fetchone()
-        return dict(row) if row else None
+        async with self._bus():
+            conn = self._ensure_conn()
+            cursor = await conn.execute(sql, params)
+            row = await cursor.fetchone()
+            return dict(row) if row else None
 
     async def execute(self, sql: str, params: tuple[Any, ...] = ()) -> sqlite3.Cursor:
-        conn = self._ensure_conn()
-        stripped = sql.strip().upper()
+        async with self._bus():
+            conn = self._ensure_conn()
+            stripped = sql.strip().upper()
 
-        if stripped in ("COMMIT", "ROLLBACK"):
-            try:
-                return await conn.execute(sql, params)
-            except sqlite3.OperationalError:
-                return None  # type: ignore[return-value]
+            if stripped in ("COMMIT", "ROLLBACK"):
+                try:
+                    return await conn.execute(sql, params)
+                except sqlite3.OperationalError:
+                    return None  # type: ignore[return-value]
 
-        cursor = await conn.execute(sql, params)
-        if stripped.startswith(("INSERT", "UPDATE", "DELETE", "REPLACE")):
-            try:
-                await conn.commit()
-            except sqlite3.OperationalError:
-                pass
-        return cursor
+            cursor = await conn.execute(sql, params)
+            if (
+                stripped.startswith(("INSERT", "UPDATE", "DELETE", "REPLACE"))
+                and not self._in_transaction
+            ):
+                # Skip auto-commit inside an explicit transaction: writes
+                # only persist at commit() so a failure anywhere in the
+                # transaction rolls back everything.
+                # A failed COMMIT (disk full / SQLITE_BUSY) means the write did
+                # NOT persist — surfacing it is the only honest option. Swallowing
+                # it here made callers believe lost writes had succeeded.
+                try:
+                    await conn.commit()
+                except sqlite3.OperationalError:
+                    logger.exception("commit failed (sql starts: %s)", stripped[:40])
+                    raise
+            return cursor
 
     @asynccontextmanager
     async def transaction(self):
-        conn = self._ensure_conn()
+        await self.begin()
         try:
-            yield conn
-            await conn.commit()
-        except Exception:
-            await conn.rollback()
+            yield self._ensure_conn()
+            await self.commit()
+        except BaseException:
+            await self.rollback()
             raise
 
 

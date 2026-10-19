@@ -812,7 +812,7 @@ export default function ClassicReader() {
                       background:
                         c.id === activeChapterId ? '#2ba471' : token.colorFillTertiary,
                       color: c.id === activeChapterId ? '#fff' : token.colorTextSecondary,
-                      fontSize: 12,
+                      fontSize: 14,
                       fontWeight: 600,
                       display: 'flex',
                       alignItems: 'center',
@@ -972,7 +972,7 @@ export default function ClassicReader() {
                           {seg.text}
                           {seg.annotations.length > 1 ? (
                             <sup
-                              style={{ color: '#b94a3d', fontWeight: 700, fontSize: 12 }}
+                              style={{ color: '#b94a3d', fontWeight: 700, fontSize: 14 }}
                             >
                               {seg.annotations.length}
                             </sup>
@@ -995,7 +995,7 @@ export default function ClassicReader() {
                     paddingTop: 16,
                     borderTop: `1px dashed ${inkBorder}`,
                     textAlign: 'center',
-                    fontSize: 13,
+                    fontSize: 14,
                     color: '#9a8c78',
                   }}
                 >
@@ -1115,12 +1115,12 @@ export default function ClassicReader() {
                 </Text>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {notesSaving ? (
-                    <Text type="secondary" style={{ fontSize: 13 }}>
+                    <Text type="secondary" style={{ fontSize: 14 }}>
                       <Spin size="small" style={{ marginRight: 6 }} />
                       保存中…
                     </Text>
                   ) : (
-                    <Text type="secondary" style={{ fontSize: 13 }}>
+                    <Text type="secondary" style={{ fontSize: 14 }}>
                       自动保存
                     </Text>
                   )}
@@ -1152,7 +1152,7 @@ export default function ClassicReader() {
                     overflow: 'auto',
                   }}
                 >
-                  <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 10 }}>
+                  <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 10 }}>
                     <BulbOutlined /> 实时预览
                   </Text>
                   {notesContent.trim() ? (
@@ -1208,7 +1208,6 @@ export default function ClassicReader() {
               </div>
               <Button
                 type="text"
-                size="small"
                 icon={<CloseOutlined style={{ color: '#fff' }} />}
                 onClick={() => setAiOpen(false)}
               />
@@ -1234,7 +1233,7 @@ export default function ClassicReader() {
                     padding: '10px 12px',
                   }}
                 >
-                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                  <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>
                     选中文字
                   </Text>
                   <Text style={{ fontSize: 15, color: token.colorText }}>"{aiContext.text}"</Text>
@@ -1255,7 +1254,7 @@ export default function ClassicReader() {
 
               {/* 问题输入 */}
               <div>
-                <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 6 }}>
+                <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 6 }}>
                   问题
                 </Text>
                 <TextArea
@@ -1331,7 +1330,7 @@ export default function ClassicReader() {
                       marginTop: 4,
                     }}
                   >
-                    <Text type="secondary" style={{ fontSize: 13 }}>
+                    <Text type="secondary" style={{ fontSize: 14 }}>
                       本次问答记录（{qaHistory.length}）
                     </Text>
                   </div>
@@ -1343,7 +1342,7 @@ export default function ClassicReader() {
                           background: token.colorFillQuaternary,
                           borderRadius: 6,
                           padding: '8px 10px',
-                          fontSize: 13,
+                          fontSize: 14,
                           cursor: 'pointer',
                         }}
                         onClick={() => {
@@ -1500,10 +1499,10 @@ export default function ClassicReader() {
             style={{ fontSize: 15 }}
           />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
-            <Button size="small" onClick={() => setCreateAnno(null)}>
+            <Button onClick={() => setCreateAnno(null)}>
               取消
             </Button>
-            <Button type="primary" size="small" icon={<SaveOutlined />} onClick={submitCreateAnnotation}>
+            <Button type="primary" icon={<SaveOutlined />} onClick={submitCreateAnnotation}>
               保存批注
             </Button>
           </div>
@@ -1534,7 +1533,7 @@ export default function ClassicReader() {
             </Tag>
             <Text
               type="secondary"
-              style={{ fontSize: 12, marginLeft: 'auto' }}
+              style={{ fontSize: 14, marginLeft: 'auto' }}
             >
               {annoPopup.annotation.created_at
                 ? new Date(annoPopup.annotation.created_at).toLocaleString('zh-CN', {
@@ -1552,7 +1551,7 @@ export default function ClassicReader() {
               borderRadius: 4,
               padding: '5px 10px',
               marginBottom: 10,
-              fontSize: 13,
+              fontSize: 14,
               color: token.colorTextSecondary,
               borderLeft: '3px solid #b08d57',
             }}
@@ -1569,10 +1568,10 @@ export default function ClassicReader() {
                 style={{ fontSize: 15 }}
               />
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
-                <Button size="small" onClick={() => setEditingAnnoId(null)}>
+                <Button onClick={() => setEditingAnnoId(null)}>
                   取消
                 </Button>
-                <Button type="primary" size="small" icon={<SaveOutlined />} onClick={saveEditAnnotation}>
+                <Button type="primary" icon={<SaveOutlined />} onClick={saveEditAnnotation}>
                   保存
                 </Button>
               </div>
@@ -1597,14 +1596,12 @@ export default function ClassicReader() {
                 }}
               >
                 <Button
-                  size="small"
                   icon={<EditOutlined />}
                   onClick={() => startEditAnnotation(annoPopup.annotation)}
                 >
                   编辑
                 </Button>
                 <Button
-                  size="small"
                   danger
                   icon={<DeleteOutlined />}
                   onClick={() => removeAnnotation(annoPopup.annotation)}
@@ -1642,7 +1639,7 @@ export default function ClassicReader() {
                     borderRadius: '50%',
                     background: c.id === activeChapterId ? '#2ba471' : token.colorFillTertiary,
                     color: c.id === activeChapterId ? '#fff' : token.colorTextSecondary,
-                    fontSize: 12,
+                    fontSize: 14,
                     fontWeight: 600,
                     display: 'flex',
                     alignItems: 'center',
@@ -1681,7 +1678,7 @@ export default function ClassicReader() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, height: '100%', overflow: 'auto' }}>
             {aiContext ? (
               <div style={{ background: token.colorFillQuaternary, borderLeft: '3px solid #b08d57', borderRadius: 4, padding: '10px 12px' }}>
-                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>选中文字</Text>
+                <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 4 }}>选中文字</Text>
                 <Text style={{ fontSize: 14 }}>{aiContext.text}</Text>
               </div>
             ) : null}
@@ -1699,7 +1696,7 @@ export default function ClassicReader() {
             )}
             {qaHistory.length > 0 && (
               <div>
-                <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>历史问答</Text>
+                <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 8 }}>历史问答</Text>
                 {qaHistory.slice(-5).reverse().map((qa, i) => (
                   <div key={i} style={{ marginBottom: 10, padding: 8, background: token.colorFillQuaternary, borderRadius: 6 }}>
                     <Text strong style={{ fontSize: 14 }}>Q: {qa.question}</Text>

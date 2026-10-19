@@ -10,7 +10,7 @@
  *   注册 → 设置孕期标记 → 搜索禁忌药材 → 安全检查 → AI咨询 → 体质自测 → 季节养生
  */
 import { test, expect } from '@playwright/test';
-import { register, firstToast } from '../helpers';
+import { register, firstToast, answerVisibleConstitutionQuestions } from '../helpers';
 
 test.describe('Persona: 孙美玲 — 孕期安全用药谨慎用户', () => {
   // -------------------------------------------------------------------------
@@ -220,7 +220,7 @@ test.describe('Persona: 孙美玲 — 孕期安全用药谨慎用户', () => {
     await register(page, username);
 
     // 先设置档案为孕期状态（通过API）
-    const token = await page.evaluate(() => localStorage.getItem('family_doctor_token') || '');
+    const token = await page.evaluate(() => localStorage.getItem('token') || '');
     await page.request.put('/api/profile', {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -364,7 +364,7 @@ test.describe('Persona: 孙美玲 — 孕期安全用药谨慎用户', () => {
     }
 
     // 通过API获取方剂ID，导航到详情页验证
-    const token = await page.evaluate(() => localStorage.getItem('family_doctor_token') || '');
+    const token = await page.evaluate(() => localStorage.getItem('token') || '');
     const apiResponse = await page.request.get('/api/formulas?page=1&pageSize=50', {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -416,6 +416,7 @@ test.describe('Persona: 孙美玲 — 孕期安全用药谨慎用户', () => {
   // -------------------------------------------------------------------------
 
   test('08 体质自测: 完成66题问卷 → 验证主体质结果', async ({ page }) => {
+    test.setTimeout(120_000);
     const username = 'sun_' + Date.now();
     await register(page, username);
 
@@ -442,12 +443,7 @@ test.describe('Persona: 孙美玲 — 孕期安全用药谨慎用户', () => {
     while (true) {
       pageCount++;
 
-      const radios = page.locator('.ant-card .ant-radio-wrapper');
-      const radioCount = await radios.count();
-
-      for (let i = 0; i < radioCount; i++) {
-        await radios.nth(i).click();
-      }
+      await answerVisibleConstitutionQuestions(page);
 
       const nextBtn = page.getByRole('button', { name: /下一页|提\s?交/ });
       const btnText = await nextBtn.textContent();

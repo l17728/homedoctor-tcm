@@ -20,6 +20,7 @@ import uuid
 from typing import Any
 
 from app.database import DbAdapter
+from app.repository import current_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +78,10 @@ async def vector_search(
                   kc.hierarchy_path, kc.chunk_index, kc.source_url, kc.source_type
              FROM chunk_embeddings ce
              LEFT JOIN knowledge_chunks kc ON kc.id = ce.chunk_id
-          ORDER BY ce.chunk_id"""
+             LEFT JOIN knowledge_entities ke ON ke.id = kc.entity_id
+            WHERE ke.tenant_id = ? OR ke.tenant_id IS NULL
+          ORDER BY ce.chunk_id""",
+        (current_tenant_id.get() or "default",),
     )
     if not rows:
         return []

@@ -384,7 +384,7 @@ export default function OnboardingWizard({ open, onComplete }: Props) {
       )}
 
       <div style={{ textAlign: 'center', marginTop: 8 }}>
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text type="secondary" style={{ fontSize: 14 }}>
           第 {Math.min(current + 1, 4)} / 4 步
         </Text>
       </div>

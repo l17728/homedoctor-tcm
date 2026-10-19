@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -417,8 +418,8 @@ async def tool_index_external_content(
             ),
         )
 
-    if model.available and chunk_texts:
-        vectors = model.embed(chunk_texts)
+    if await asyncio.to_thread(lambda: model.available) and chunk_texts:
+        vectors = await asyncio.to_thread(model.embed, chunk_texts)
         if vectors:
             for cid, vec in zip(chunk_ids, vectors):
                 await store_embedding(db, cid, vec)

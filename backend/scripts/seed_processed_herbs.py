@@ -179,6 +179,7 @@ async def main():
                 (raw_herb,),
             )
             raw_row = await raw_rows.fetchone()
+            await raw_rows.close()
             if raw_row:
                 raw_id = raw_row[0]
                 rel_id = f"rel-{pid}-processing"

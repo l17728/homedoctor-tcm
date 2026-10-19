@@ -64,6 +64,8 @@ from app.knowledge_parser import (
     parse_video_file,
     parse_video_url,
 )
+from app.url_validator import validate_external_url
+from app.upload_utils import read_upload_limited
 
 router = APIRouter(prefix="/api/knowledge-hub", tags=["knowledge-hub"])
 
@@ -72,6 +74,29 @@ MAX_IMPORT_BYTES = 20 * 1024 * 1024
 
 def _ext(filename: str) -> str:
     return os.path.splitext(filename.lower())[1]
+
+
+def _tenant_of(current_user: dict) -> str | None:
+    return current_user.get("family_id") or None
+
+
+def _ensure_can_modify(entity: dict, current_user: dict) -> None:
+    """Write guard: global entities are admin-only; tenant entities owner-only.
+
+    Invisible (other-tenant) entities never reach this check — the scoped
+    ``get_entity`` lookup in the endpoint already turned them into 404s.
+    """
+    if entity.get("tenant_id") is None:
+        if current_user.get("role") != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="需要管理员权限",
+            )
+    elif entity.get("tenant_id") != current_user.get("family_id"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="实体不存在",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +205,13 @@ async def create_relationship_endpoint(
     db: DbAdapter = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """为实体创建一条关系。``source_entity_id`` 或 ``target_entity_id`` 必须等于 ``entity_id``。"""
+    """为实体创建一条关系。``source_entity_id`` 或 ``target_entity_id`` 必须等于 ``entity_id``。
+
+    Both endpoints must be visible to the current tenant (global or
+    own-family) — relationships to another family's private entities are
+    rejected with 404. Edges between two global entities are global when
+    created by an admin, tenant-scoped otherwise.
+    """
     if body.source_entity_id != entity_id and body.target_entity_id != entity_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -193,9 +224,16 @@ async def create_relationship_endpoint(
     if not tgt:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="目标实体不存在")
 
+    rel_tenant: str | None = None
+    if src.get("tenant_id") is not None or tgt.get("tenant_id") is not None:
+        rel_tenant = _tenant_of(current_user)
+    elif current_user.get("role") != "admin":
+        rel_tenant = _tenant_of(current_user)
+
     rel_id = await create_relationship(
         db, body.source_entity_id, body.target_entity_id,
         body.relationship_type, body.properties, body.weight,
+        tenant_id=rel_tenant,
     )
     return {"relationship_id": rel_id, "detail": "关系已创建"}
 
@@ -207,7 +245,16 @@ async def update_entity_endpoint(
     db: DbAdapter = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """更新实体可编辑字段（summary / tags / keywords / category / status）。"""
+    """更新实体可编辑字段（summary / tags / keywords / category / status）。
+
+    全局实体（tenant_id IS NULL）仅管理员可改；租户实体仅本家庭成员可改；
+    其他家庭的实体返回 404（不泄露存在性）。
+    """
+    entity = await get_entity(db, entity_id)
+    if not entity:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="实体不存在")
+    _ensure_can_modify(entity, current_user)
+
     updated = await update_entity(
         db, entity_id,
         summary=body.summary, tags=body.tags, keywords=body.keywords,
@@ -247,6 +294,7 @@ async def import_endpoint(
     """
     result = await process_imported_content(
         db, title=body.title, content=body.content, source_type=body.source_type,
+        tenant_id=_tenant_of(current_user),
     )
     return result
 
@@ -270,12 +318,7 @@ async def import_file_endpoint(
             detail=f"不支持的文件格式：{ext or '(无扩展名)'}",
         )
 
-    raw = await file.read()
-    if len(raw) > MAX_IMPORT_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"文件过大：{len(raw)} 字节，上限 20MB",
-        )
+    raw = await read_upload_limited(file, MAX_IMPORT_BYTES, "文件过大，上限 20MB")
     if not raw:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -308,6 +351,7 @@ async def import_file_endpoint(
 
     processed = await process_imported_content(
         db, title=derived_title, content=full_text, source_type="import_file",
+        tenant_id=_tenant_of(current_user),
     )
     processed["parse_metadata"] = result.metadata
     processed["filename"] = filename
@@ -326,6 +370,11 @@ async def import_url_endpoint(
     则提取主要文本。抓取或解析失败时返回 422。
     """
     url = body.url.strip()
+    if not validate_external_url(url):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="URL不安全或指向内部网络",
+        )
     if is_video_url(url):
         result = await parse_video_url(url)
     else:
@@ -343,6 +392,7 @@ async def import_url_endpoint(
     derived_title = body.title or result.metadata.get("title") or url
     processed = await process_imported_content(
         db, title=derived_title, content=full_text, source_type="import_url",
+        tenant_id=_tenant_of(current_user),
     )
     processed["parse_metadata"] = result.metadata
     processed["source_url"] = url
@@ -361,6 +411,11 @@ async def import_video_url_endpoint(
     回退到网页文本提取。字幕不可用时返回 422。
     """
     url = body.url.strip()
+    if not validate_external_url(url):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="URL不安全或指向内部网络",
+        )
     result = await parse_video_url(url)
     if result.error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=result.error)
@@ -375,6 +430,7 @@ async def import_video_url_endpoint(
     derived_title = body.title or result.metadata.get("title") or url
     processed = await process_imported_content(
         db, title=derived_title, content=full_text, source_type="import_video",
+        tenant_id=_tenant_of(current_user),
     )
     processed["parse_metadata"] = result.metadata
     processed["source_url"] = url

@@ -102,8 +102,152 @@ def _find_base_herb_for_processing(name: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# 儿童西药禁用清单 (spec §15.2.4) — Layer 3 硬规则，先于任何 AI 判断
+# max_age: 该年龄以下禁用；keywords: 药品名称包含任一关键词即命中
+# ---------------------------------------------------------------------------
+
+PEDIATRIC_MEDICINE_PROHIBITIONS: list[dict] = [
+    {
+        "label": "氟喹诺酮类",
+        "keywords": ["沙星", "左氧氟沙星", "环丙沙星", "莫西沙星", "诺氟沙星", "加替沙星"],
+        "max_age": 14,
+        "reason": "可能影响儿童软骨发育",
+    },
+    {
+        "label": "四环素类",
+        "keywords": ["四环素", "多西环素", "米诺环素", "土霉素"],
+        "max_age": 8,
+        "reason": "导致牙齿黄染及牙釉质发育不良（牙齿着色）",
+    },
+    {
+        "label": "氨基糖苷类",
+        "keywords": ["庆大霉素", "阿米卡星", "链霉素", "妥布霉素"],
+        "max_age": 14,
+        "reason": "具有耳毒性和肾毒性，可能造成不可逆听力损伤",
+    },
+    {
+        "label": "含可待因制剂",
+        "keywords": ["可待因"],
+        "max_age": 12,
+        "reason": "儿童使用可能引起危及生命的呼吸抑制",
+    },
+    {
+        "label": "阿司匹林",
+        "keywords": ["阿司匹林", "巴米尔"],
+        "max_age": 16,
+        "reason": "病毒感染期间使用可能诱发瑞氏综合征（急性脑病伴肝功能损害）",
+    },
+]
+
+
+# ---------------------------------------------------------------------------
+# 保健品/成药每日剂量上限 (spec §15.2.5) — 名称命中即输出上限提示
+# check-v2 输入只有名称无剂量，因此以"提示核对说明书"的形式归入 Layer 2
+# ---------------------------------------------------------------------------
+
+DOSAGE_UPPER_LIMITS: list[dict] = [
+    {"name": "鱼油（EPA+DHA）", "limit": "3g", "risk": "出血风险",
+     "keywords": ["鱼油", "Omega-3", "欧米伽3", "深海鱼油"]},
+    {"name": "辅酶Q10", "limit": "200mg", "risk": "失眠、胃肠不适",
+     "keywords": ["辅酶Q10", "Q10辅酶", "CoQ10", "泛醌"]},
+    {"name": "人参皂苷制品", "limit": "总皂苷200mg（按说明书）", "risk": "失眠、血压波动",
+     "keywords": ["人参皂苷"]},
+    {"name": "维生素A", "limit": "3000μg（约10000IU）", "risk": "肝毒性、致畸",
+     "keywords": ["维生素A"]},
+    {"name": "维生素D", "limit": "4000IU", "risk": "高钙血症",
+     "keywords": ["维生素D"]},
+    {"name": "维生素C", "limit": "2000mg", "risk": "腹泻、肾结石",
+     "keywords": ["维生素C"]},
+    {"name": "枸杞", "limit": "20g", "risk": "上火、腹泻",
+     "keywords": ["枸杞"]},
+    {"name": "黄芪", "limit": "30g", "risk": "高血压、失眠",
+     "keywords": ["黄芪"]},
+    {"name": "陈皮", "limit": "10g", "risk": "燥热伤津",
+     "keywords": ["陈皮"]},
+    {"name": "菊花", "limit": "15g", "risk": "脾胃虚寒者腹泻",
+     "keywords": ["菊花"]},
+]
+
+
+def _match_medicine_keyword(medicine_name: str, keywords: list[str]) -> bool:
+    """药品名称包含任一关键词即命中（如'左氧氟沙星片'含'沙星'）。"""
+    return any(kw in medicine_name for kw in keywords)
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
+
+NSAID_NAME_KEYWORDS = (
+    "布洛芬", "阿司匹林", "双氯芬酸", "萘普生", "吲哚美辛", "美洛昔康",
+    "洛索洛芬", "塞来昔布", "依托考昔", "酮洛芬", "尼美舒利",
+)
+
+
+def _medicine_ingredients(row: dict) -> list[str]:
+    raw = row.get("active_ingredients") or "[]"
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else raw
+    except (json.JSONDecodeError, TypeError):
+        parsed = []
+    props = row.get("properties") or {}
+    if isinstance(props, str):
+        try:
+            props = json.loads(props or "{}")
+        except (json.JSONDecodeError, TypeError):
+            props = {}
+    if not parsed and isinstance(props, dict):
+        parsed = props.get("active_ingredients") or props.get("有效成分") or []
+    if isinstance(parsed, str):
+        parsed = [part.strip() for part in parsed.replace("，", ",").split(",") if part.strip()]
+    ingredients: list[str] = []
+    for item in parsed if isinstance(parsed, list) else []:
+        if isinstance(item, dict):
+            item = item.get("name") or item.get("成分") or item.get("ingredient")
+        if isinstance(item, str) and item.strip():
+            ingredients.append(item.strip())
+    return ingredients
+
+
+def _check_medication_overlap(medicines: list[dict]) -> list[SafetyWarning]:
+    """Flag repeated active ingredients and duplicate NSAID use in the cabinet.
+
+    Reference: NHS advises against taking ibuprofen with other NSAIDs; FDA OTC
+    labeling highlights NSAIDs and duplicate active ingredients such as
+    acetaminophen. The app warns conservatively when dose details are missing.
+    """
+    warnings: list[SafetyWarning] = []
+    by_ingredient: dict[str, tuple[str, set[str]]] = {}
+    nsaids: list[str] = []
+    for medicine in medicines:
+        name = str(medicine.get("name") or "")
+        drug_class = str(medicine.get("drug_class") or "").casefold()
+        if "nsaid" in drug_class or "非甾体抗炎" in drug_class or any(k in name for k in NSAID_NAME_KEYWORDS):
+            nsaids.append(name)
+        for ingredient in _medicine_ingredients(medicine):
+            key = ingredient.casefold().replace(" ", "")
+            display, names = by_ingredient.setdefault(key, (ingredient, set()))
+            names.add(name)
+
+    for ingredient, names in by_ingredient.values():
+        if len(names) < 2:
+            continue
+        joined_names = "、".join(sorted(names))
+        warnings.append(SafetyWarning(
+            layer=2, severity="medium", title=f"有效成分重复用药（{ingredient}）",
+            detail=(f"{joined_names}均含有效成分“{ingredient}”。请核对每种药品的含量及累计日剂量；"
+                    "系统未获得可靠的每次剂量，不能判定是否超量。"),
+            herbs=[], action="告知医生", source="成分重叠检查",
+        ))
+    if len(set(nsaids)) >= 2:
+        joined_names = "、".join(sorted(set(nsaids)))
+        warnings.append(SafetyWarning(
+            layer=1, severity="high", title="重复使用非甾体抗炎药",
+            detail=(f"药箱中同时选择了 {joined_names}。两种 NSAID 不应自行同时使用，"
+                    "除非医生明确指示；请先向医生或药师确认。"),
+            herbs=[], action="告知医生", source="重复药理机制检查（NSAID）",
+        ))
+    return warnings
 
 async def run_safety_check(
     db: DbAdapter,
@@ -201,41 +345,115 @@ async def run_safety_check(
     if medicine_names:
         med_placeholders = ",".join("?" * len(medicine_names))
         med_rows = await db.query(
-            f"SELECT name FROM medicines WHERE name IN ({med_placeholders}) AND tenant_id = ?",
+            f"SELECT name, drug_class, active_ingredients, properties FROM medicines "
+            f"WHERE name IN ({med_placeholders}) AND tenant_id = ?",
             (*medicine_names, tenant),
         )
         known_meds = {r["name"] for r in med_rows}
         unknown_medicines = [m for m in medicine_names if m not in known_meds]
+        for warning in _check_medication_overlap(med_rows):
+            _add(warning)
 
-    # --- Layer 1a: 中药×中药配伍禁忌 (十八反十九畏) ---
-    layer1a_warnings = await _check_herb_herb_contraindications(db, herb_names)
+    # --- P0 炮制品归一化：炮制品名按基原名参与全部规则匹配 ---
+    # 展示层保留"原始名(基原名)"（如 制附子(附子)），匹配层使用基原名（附子），
+    # 使 Layer1a/1b、妊娠禁忌、儿童毒性、累积毒性全部按生品标准执行。
+    effective_herbs: list[str] = []
+    display_of: dict[str, str] = {}
+    for name in herb_names:
+        base = _find_base_herb_for_processing(name)
+        effective = base if base else name
+        if effective in display_of:
+            continue  # 炮制品与基原同时出现时按基原去重
+        display_of[effective] = f"{name}({base})" if base else name
+        effective_herbs.append(effective)
+
+    def _to_display(w: SafetyWarning) -> SafetyWarning:
+        w.herbs = [display_of.get(h, h) for h in w.herbs]
+        return w
+
+    # 基原药材信息补全：炮制品的剂量/禁忌说明按基原名从库中解析
+    missing_bases = sorted({b for b in processed_variants_found.values() if b not in herb_info})
+    if missing_bases:
+        base_rows = await db.query(
+            f"SELECT * FROM herbs WHERE name IN ({','.join('?' * len(missing_bases))})",
+            tuple(missing_bases),
+        )
+        for r in base_rows:
+            herb_info.setdefault(r["name"], r)
+
+    # --- Layer 1a: 中药×中药配伍禁忌 (十八反十九畏) — 炮制品按基原名匹配 ---
+    layer1a_warnings = await _check_herb_herb_contraindications(db, effective_herbs)
     for w in layer1a_warnings:
-        _add(w)
+        _add(_to_display(w))
 
     # --- Layer 1b: 中西药交互检查 ---
-    layer1b_warnings = await _check_herb_drug_interactions(db, herb_names, medicine_names)
+    layer1b_warnings = await _check_herb_drug_interactions(db, effective_herbs, medicine_names)
     for w in layer1b_warnings:
-        _add(w)
+        _add(_to_display(w))
 
     # --- Layer 1c: 食物禁忌检查 (food-drug / food-herb interactions) ---
-    layer1c_warnings = await _check_food_interactions(db, herb_names, medicine_names)
+    layer1c_warnings = await _check_food_interactions(db, effective_herbs, medicine_names)
     for w in layer1c_warnings:
-        _add(w)
+        _add(_to_display(w))
 
-    # --- Layer 2: 剂量范围检查 ---
+    # --- Layer 2: 剂量范围检查（按用户提供的原始名 + 剂量） ---
     layer2_warnings = await _check_dosage(herb_names, herb_info, dosages)
     for w in layer2_warnings:
         _add(w)
 
-    # --- Cumulative toxicity (after dosage check, before special populations) ---
-    cumulative_warnings = await _check_cumulative_toxicity(herb_names, herb_info, dosages)
-    for w in cumulative_warnings:
+    # --- Layer 2: 保健品/成药每日剂量上限提示 (spec §15.2.5) ---
+    for w in _check_medicine_dosage_limits(medicine_names):
         _add(w)
 
-    # --- Layer 3: 特殊人群检查 ---
-    layer3_warnings = _check_special_populations(herb_names, herb_info, user_profile)
+    # --- Cumulative toxicity (after dosage check, before special populations) ---
+    cumulative_warnings = await _check_cumulative_toxicity(effective_herbs, herb_info, dosages)
+    for w in cumulative_warnings:
+        _add(_to_display(w))
+
+    # --- Layer 3: 特殊人群检查（含儿童西药禁用清单 §15.2.4） ---
+    layer3_warnings = _check_special_populations(
+        effective_herbs, herb_info, user_profile, medicine_names,
+    )
     for w in layer3_warnings:
-        _add(w)
+        _add(_to_display(w))
+
+    # Pediatric dosing follows spec §15.2.6. This is an upper-bound reference
+    # only; absence of child-specific data always requires clinician review.
+    if user_profile:
+        try:
+            child_age = float(user_profile.get("age"))
+            child_weight = float(user_profile.get("weight_kg")) if user_profile.get("weight_kg") else None
+        except (TypeError, ValueError):
+            child_age, child_weight = 0, None
+        if 0 < child_age < 18:
+            for herb in effective_herbs:
+                info = herb_info.get(herb, {})
+                props = info.get("properties", {})
+                if isinstance(props, str):
+                    try:
+                        props = json.loads(props or "{}")
+                    except (json.JSONDecodeError, TypeError):
+                        props = {}
+                if isinstance(props, dict) and props.get("儿童剂量"):
+                    continue
+                adult_max = info.get("dosage_max_g")
+                if child_weight and adult_max is not None:
+                    try:
+                        reference_max = float(adult_max) * (child_weight / 50) * 0.8
+                        dose_detail = (
+                            f"按规格中的 Young's 体重折算，成人上限 {adult_max}g 对应参考上限 "
+                            f"约 {reference_max:.2f}g；该值不构成儿童用药建议，须由医生/药师确认。"
+                        )
+                    except (TypeError, ValueError):
+                        dose_detail = "缺少可用的成人剂量数据，无法折算；请咨询医生/药师。"
+                else:
+                    dose_detail = "缺少体重或可用的成人剂量数据，无法折算；请咨询医生/药师。"
+                _add(SafetyWarning(
+                    layer=3, severity="medium", title="儿童剂量需专业确认",
+                    detail=f"{herb}未配置儿童专用剂量。{dose_detail}",
+                    herbs=[display_of.get(herb, herb)], action="告知医生",
+                    source="特殊人群检查-儿童剂量（spec §15.2.6）",
+                ))
 
     # --- Layer 4: AI 辅助分析 (placeholder) ---
     # No-op for MVP. Future: send structured prompt to AI, parse response.
@@ -320,10 +538,9 @@ async def _get_medicine_drug_class(db: DbAdapter, medicine_name: str) -> str:
         "SELECT properties FROM medicines WHERE name = ? AND tenant_id = ? LIMIT 1",
         (medicine_name, tenant),
     )
-    if not row:
-        row = await db.query_one(
-            "SELECT properties FROM medicines WHERE name = ? LIMIT 1", (medicine_name,)
-        )
+    # SECURITY (F3): no cross-tenant fallback — a same-named medicine from
+    # another family's cabinet must never influence this family's safety
+    # verdict. Fall through to the conservative default instead.
     if row:
         props = row["properties"]
         if isinstance(props, str):
@@ -459,7 +676,12 @@ async def _check_dosage(
     warnings: list[SafetyWarning] = []
 
     for name in herb_names:
+        # 炮制品按基原的剂量范围校验（如 制附子 按 附子 3-15g）
         info = herb_info.get(name)
+        if not info:
+            base = _find_base_herb_for_processing(name)
+            if base:
+                info = herb_info.get(base)
         if not info:
             continue
 
@@ -492,6 +714,30 @@ async def _check_dosage(
                 ))
         # If no dosage specified, no warning needed — just informational
 
+    return warnings
+
+
+def _check_medicine_dosage_limits(medicine_names: list[str]) -> list[SafetyWarning]:
+    """保健品/成药每日剂量上限提示 (spec §15.2.5).
+
+    check-v2 输入只有药品名称没有剂量，因此名称命中（含别名/关键词）时
+    输出 high 级提示，提醒用户核对说明书、不要超过每日上限。
+    """
+    warnings: list[SafetyWarning] = []
+    for med in medicine_names:
+        for rule in DOSAGE_UPPER_LIMITS:
+            if _match_medicine_keyword(med, rule["keywords"]):
+                warnings.append(SafetyWarning(
+                    layer=2,
+                    severity="high",
+                    title="剂量上限提示",
+                    detail=(f"服用{rule['name']}请勿超过每日上限{rule['limit']}，"
+                            f"超量风险：{rule['risk']}，请核对说明书"),
+                    herbs=[med],
+                    action="告知医生",
+                    source="剂量上限（spec §15.2.5）",
+                ))
+                break  # 每个药品只命中第一条规则，避免重复提示
     return warnings
 
 
@@ -530,9 +776,13 @@ def _check_special_populations(
     herb_names: list[str],
     herb_info: dict[str, dict],
     user_profile: dict | None,
+    medicine_names: list[str] | None = None,
 ) -> list[SafetyWarning]:
     """Check contraindications for special populations."""
     warnings: list[SafetyWarning] = []
+
+    if medicine_names is None:
+        medicine_names = []
 
     if not user_profile:
         return warnings
@@ -571,18 +821,13 @@ def _check_special_populations(
     # --- Pregnancy check ---
     if is_pregnant:
         pregnancy_keywords = ["孕妇", "妊娠", "怀孕", "慎用", "禁用"]
+        # 硬编码绝对禁忌清单（spec §15.2.4）— 不依赖 DB 是否有该药材记录
+        pregnancy_dangerous = [
+            "桃仁", "红花", "三棱", "莪术", "水蛭", "虻虫", "斑蝥",
+            "麝香", "巴豆", "甘遂", "大戟", "芫花", "牵牛子", "商陆",
+            "麝香", "蜈蚣", "全蝎", "附子", "川乌", "草乌",
+        ]
         for name in herb_names:
-            info = herb_info.get(name)
-            if not info:
-                continue
-            contraindications = info.get("contraindications") or ""
-            # Check if any pregnancy keyword appears in contraindications
-            # But we want to flag herbs that are specifically dangerous for pregnant women
-            pregnancy_dangerous = [
-                "桃仁", "红花", "三棱", "莪术", "水蛭", "虻虫", "斑蝥",
-                "麝香", "巴豆", "甘遂", "大戟", "芫花", "牵牛子", "商陆",
-                "麝香", "蜈蚣", "全蝎", "附子", "川乌", "草乌",
-            ]
             if name in pregnancy_dangerous:
                 warnings.append(SafetyWarning(
                     layer=3,
@@ -593,7 +838,13 @@ def _check_special_populations(
                     action="禁止",
                     source="特殊人群检查-孕妇",
                 ))
-            elif any(kw in contraindications for kw in pregnancy_keywords):
+                continue
+            info = herb_info.get(name)
+            if not info:
+                continue
+            contraindications = info.get("contraindications") or ""
+            # Check if any pregnancy keyword appears in contraindications
+            if any(kw in contraindications for kw in pregnancy_keywords):
                 warnings.append(SafetyWarning(
                     layer=3,
                     severity="high",
@@ -607,6 +858,21 @@ def _check_special_populations(
     # --- Children check ---
     if age is not None:
         if isinstance(age, (int, float)):
+            # --- 儿童西药禁用清单 (spec §15.2.4) — 硬规则，先于 AI 判断 ---
+            for med in medicine_names:
+                for rule in PEDIATRIC_MEDICINE_PROHIBITIONS:
+                    if age < rule["max_age"] and _match_medicine_keyword(med, rule["keywords"]):
+                        warnings.append(SafetyWarning(
+                            layer=3,
+                            severity="high",
+                            title=f"儿童禁用（{rule['label']}）",
+                            detail=(f"{med}属{rule['label']}，{rule['max_age']}岁以下儿童禁用："
+                                    f"{rule['reason']}，请咨询儿科医生"),
+                            herbs=[med],
+                            action="禁止",
+                            source="特殊人群检查-儿童",
+                        ))
+
             if age < 3:
                 warnings.append(SafetyWarning(
                     layer=3,

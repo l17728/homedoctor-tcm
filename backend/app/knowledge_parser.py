@@ -28,6 +28,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urljoin
 
 import httpx
 
@@ -530,6 +531,67 @@ URL_TEXT_CHAR_LIMIT = 10000
 #: Request timeout (seconds) for HTTP fetches.
 URL_FETCH_TIMEOUT = 30.0
 
+#: Maximum redirect hops followed by :func:`safe_fetch`.
+SAFE_FETCH_MAX_REDIRECTS = 3
+
+#: Maximum response body bytes kept by :func:`safe_fetch`.
+SAFE_FETCH_MAX_BYTES = 5 * 1024 * 1024
+
+_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+
+
+class UnsafeUrlError(ValueError):
+    """Raised when a URL or any redirect hop targets a disallowed host."""
+
+
+async def safe_fetch(
+    url: str,
+    max_redirects: int = SAFE_FETCH_MAX_REDIRECTS,
+    max_bytes: int = SAFE_FETCH_MAX_BYTES,
+    timeout: float = URL_FETCH_TIMEOUT,
+    method: str = "GET",
+) -> str:
+    """SSRF-hardened HTTP fetch — validate every hop, follow redirects manually.
+
+    - httpx auto-redirects are disabled; each hop (initial URL + every
+      ``Location`` target) must pass :func:`app.url_validator.validate_external_url`
+      (rejects loopback/private/link-local IPs and non-80/443 ports).
+    - Response bodies are capped at ``max_bytes``.
+    - Raises :class:`UnsafeUrlError` for disallowed targets or redirect loops;
+      other fetch errors propagate as normal httpx exceptions.
+    """
+    from app.url_validator import validate_external_url
+
+    current = (url or "").strip()
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        response = None
+        for _ in range(max_redirects + 1):
+            if not validate_external_url(current):
+                raise UnsafeUrlError(f"URL不安全或指向内部网络：{current}")
+            if method == "HEAD":
+                response = await client.head(current, headers={"User-Agent": "Mozilla/5.0"})
+            else:
+                response = await client.get(current, headers={"User-Agent": "Mozilla/5.0"})
+            response.raise_for_status()
+            if response.status_code not in _REDIRECT_STATUSES:
+                break
+            location = ""
+            headers = getattr(response, "headers", None)
+            if headers is not None:
+                location = (headers.get("location") or "").strip()
+            if not location:
+                break
+            current = urljoin(current, location)
+        else:
+            raise UnsafeUrlError(f"重定向次数超过上限（{max_redirects}）")
+
+        content = getattr(response, "content", None)
+        if not isinstance(content, (bytes, bytearray)):
+            content = (response.text or "").encode("utf-8", errors="ignore")
+        if len(content) > max_bytes:
+            content = content[:max_bytes]
+        return content.decode("utf-8", errors="ignore")
+
 #: Regex extracting an 11-char YouTube video id from common URL shapes.
 _YOUTUBE_ID_RE = re.compile(r"(?:v=|youtu\.be/|embed/|shorts/)([\w-]{11})")
 
@@ -546,17 +608,16 @@ def is_video_url(url: str) -> bool:
 async def parse_url(url: str) -> ParseResult:
     """Fetch a web page and extract its main article text.
 
-    Returns a :class:`ParseResult` whose ``metadata`` carries ``source_url``
-    and ``title``. On fetch failure, returns a result with ``error`` set
+    Uses :func:`safe_fetch` — every request and redirect hop is validated
+    against internal networks (SSRF protection). Returns a
+    :class:`ParseResult` whose ``metadata`` carries ``source_url`` and
+    ``title``. On fetch failure, returns a result with ``error`` set
     (no exception) so callers can degrade gracefully.
     """
     try:
-        async with httpx.AsyncClient(
-            timeout=URL_FETCH_TIMEOUT, follow_redirects=True
-        ) as client:
-            resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
-            resp.raise_for_status()
-            html = resp.text
+        html = await safe_fetch(url)
+    except UnsafeUrlError as exc:
+        return ParseResult(type="url", error=str(exc))
     except Exception as exc:
         return ParseResult(type="url", error=f"网页抓取失败：{exc}")
 

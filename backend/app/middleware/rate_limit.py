@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+import ipaddress
 from typing import Dict, List
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -18,6 +19,11 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
+_TRUSTED_PROXY_NETWORKS = tuple(
+    ipaddress.ip_network(item.strip(), strict=False)
+    for item in os.environ.get("HOMEDOCTOR_TRUSTED_PROXY_IPS", "127.0.0.1,::1").split(",")
+    if item.strip()
+)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -67,16 +73,29 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def _get_client_ip(request: Request) -> str:
         """Extract client IP.
 
-        Prefer the first hop of ``X-Forwarded-For`` (set by trusted proxies)
-        and fall back to ``request.client.host``.
+        Trust X-Forwarded-For only when the immediate peer is a configured
+        reverse proxy. Walk the chain from the proxy side to avoid accepting a
+        spoofed client-supplied leftmost address.
         """
+        peer = request.client.host if request.client is not None else "unknown"
         forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            # Comma-separated client chain; the first entry is the originator.
-            return forwarded.split(",", 1)[0].strip()
-        if request.client is not None:
-            return request.client.host
-        return "unknown"
+        try:
+            peer_ip = ipaddress.ip_address(peer)
+            trusted_peer = any(peer_ip in network for network in _TRUSTED_PROXY_NETWORKS)
+        except ValueError:
+            trusted_peer = False
+        if forwarded and trusted_peer:
+            chain = [value.strip() for value in forwarded.split(",") if value.strip()]
+            for candidate in reversed(chain):
+                try:
+                    address = ipaddress.ip_address(candidate)
+                except ValueError:
+                    continue
+                if not any(address in network for network in _TRUSTED_PROXY_NETWORKS):
+                    return str(address)
+            if chain:
+                return chain[0]
+        return peer
 
     @staticmethod
     def _prune_ip(store: Dict[str, List[float]], ip: str, now: float, window: int) -> None:

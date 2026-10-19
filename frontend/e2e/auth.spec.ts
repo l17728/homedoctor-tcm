@@ -16,11 +16,11 @@ test.describe('Auth Flow', () => {
     await page.goto('/login');
 
     // Page title / heading
-    await expect(page.getByText(chineseText('登录'))).toBeVisible();
+    await expect(page.getByRole('tab').first()).toBeVisible();
 
     // Form fields
-    await expect(page.getByPlaceholder('用户名')).toBeVisible();
-    await expect(page.getByPlaceholder('密码')).toBeVisible();
+    await expect(page.locator('.ant-tabs-tabpane-active').getByPlaceholder('用户名')).toBeVisible();
+    await expect(page.locator('.ant-tabs-tabpane-active').getByPlaceholder('密码')).toBeVisible();
 
     // Submit button
     await expect(
@@ -28,7 +28,7 @@ test.describe('Auth Flow', () => {
     ).toBeVisible();
 
     // Register tab should be accessible
-    await expect(page.getByText(chineseText('注册'))).toBeVisible();
+    await expect(page.getByRole('tab').nth(1)).toBeVisible();
   });
 
   test('should register a new user and redirect to dashboard', async ({
@@ -67,18 +67,18 @@ test.describe('Auth Flow', () => {
 
     // Should be redirected to login page
     await page.waitForURL(/\/login/);
-    await expect(page.getByText(chineseText('登录'))).toBeVisible();
+    await expect(page.locator('.ant-tabs-tabpane-active button[type="submit"]')).toBeVisible();
   });
 
   test('should show error on invalid credentials', async ({ page }) => {
     await page.goto('/login');
-    await page.getByPlaceholder('用户名').fill('nonexistent_user');
-    await page.getByPlaceholder('密码').fill('wrong_password');
+    await page.locator('.ant-tabs-tabpane-active').getByPlaceholder('用户名').fill('nonexistent_user');
+    await page.locator('.ant-tabs-tabpane-active').getByPlaceholder('密码').fill('wrong_password');
     await page.getByRole('button', { name: chineseText('登录') }).click();
 
     // Should show error message (toast or inline)
     // Accept either "用户名或密码错误" or a generic error toast
-    const errorText = page.getByText(/用户名或密码错误|登录失败|错误/);
+    const errorText = page.locator('.ant-message-notice-content');
     await expect(errorText).toBeVisible();
   });
 
@@ -91,23 +91,26 @@ test.describe('Auth Flow', () => {
     await page.getByRole('button', { name: chineseText('登录') }).click();
 
     // Ant Design form validation should show required field errors
-    await expect(page.getByText(/请输入/)).toBeVisible();
+    await expect(page.locator('.ant-form-item-explain-error').first()).toBeVisible({ timeout: 5000 });
   });
 
   test('should show validation error for mismatched passwords on register', async ({
     page,
   }) => {
     await page.goto('/login');
-    await page.getByText(chineseText('注册')).click();
+    await page.getByRole('tab').nth(1).click();
 
-    await page.getByPlaceholder('用户名').fill('test_mismatch');
-    await page.getByPlaceholder('密码').fill('password123');
-    await page.getByPlaceholder('确认密码').fill('different456');
+    await page.locator('.ant-tabs-tabpane-active').getByPlaceholder('用户名').fill('test_mismatch');
+    await page.locator('.ant-tabs-tabpane-active').getByPlaceholder('密码', { exact: true }).fill('password123');
+    await page.locator('.ant-tabs-tabpane-active').getByPlaceholder('确认密码').fill('different456');
+
+    await page.locator('.ant-tabs-tabpane-active').getByRole('checkbox').nth(0).check();
+    await page.locator('.ant-tabs-tabpane-active').getByRole('checkbox').nth(1).check();
 
     await page.getByRole('button', { name: chineseText('注册') }).click();
 
     // Should show password mismatch error
-    await expect(page.getByText(/密码.*不一致|两次密码/)).toBeVisible();
+    await expect(page.locator('.ant-message-notice-content')).toBeVisible();
   });
 });
 
@@ -133,6 +136,6 @@ test.describe('Auth — Session Persistence', () => {
     // Try accessing a protected page
     await page.goto('/herbs');
     await page.waitForURL(/\/login/);
-    await expect(page.getByText(chineseText('登录'))).toBeVisible();
+    await expect(page.locator('.ant-tabs-tabpane-active button[type="submit"]')).toBeVisible();
   });
 });

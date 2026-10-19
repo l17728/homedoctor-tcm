@@ -1,5 +1,6 @@
 # Web framework
 fastapi>=0.111.0
+tzdata>=2025.1
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
 
@@ -27,6 +28,7 @@ pydantic-settings>=2.3.0
 # CLI
 typer>=0.12.0
 httpx>=0.27.0
+pywebpush>=2.0.3
 
 # OCR (image text extraction fallback for multimodal)
 pytesseract>=0.3.10
@@ -56,3 +58,4 @@ youtube-transcript-api>=0.6.2
 pytest>=8.2.0
 pytest-asyncio>=0.23.0
 sentence-transformers>=2.7.0
+tzdata>=2026.5

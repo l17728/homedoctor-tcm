@@ -1,7 +1,11 @@
 """PIPL consent tests — spec §12.2 隐私同意 / 健康数据单独同意 / 未成年人保护."""
 
+import uuid
+
 import pytest
 from httpx import AsyncClient
+
+from app.database import SqliteAdapter
 
 
 @pytest.mark.asyncio
@@ -163,3 +167,92 @@ async def test_health_features_blocked_without_consent(client: AsyncClient):
     assert profile_resp.status_code in (200, 403, 422), (
         f"unexpected status {profile_resp.status_code}"
     )
+
+
+# ---------------------------------------------------------------------------
+# PIPL §47 删除权 (right to erasure) — spec §12.2.
+# 注销后敏感健康/共享数据必须全部清零：health_logs、medical_visits、
+# medication_plans、share_cards、family_shares、bookmarks（/api/bookmarks
+# 落库于 favorites 表）。
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_pipl_erasure_removes_health_and_share_data(
+    client: AsyncClient, auth_headers: dict, db: SqliteAdapter
+):
+    """DELETE /api/account 注销后，健康/就诊/方案/分享类数据行数必须为 0."""
+    user_row = await db.query_one(
+        "SELECT id, family_id FROM users WHERE username = 'testuser'"
+    )
+    assert user_row is not None
+    user_id, family_id = user_row["id"], user_row["family_id"]
+
+    plan_id = str(uuid.uuid4())
+    await db.execute(
+        "INSERT INTO health_logs (id, user_id, log_date, systolic) VALUES (?, ?, ?, ?)",
+        (str(uuid.uuid4()), user_id, "2026-01-15", 125),
+    )
+    await db.execute(
+        "INSERT INTO medical_visits (id, user_id, visit_date, hospital) VALUES (?, ?, ?, ?)",
+        (str(uuid.uuid4()), user_id, "2026-01-12", "市医院"),
+    )
+    await db.execute(
+        "INSERT INTO medication_plans (id, user_id, name) VALUES (?, ?, ?)",
+        (plan_id, user_id, "调理方案"),
+    )
+    await db.execute(
+        "INSERT INTO share_cards (id, user_id, family_id, card_type, card_data) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), user_id, family_id, "health_summary", "{}"),
+    )
+    await db.execute(
+        "INSERT INTO family_shares (id, sharer_id, viewer_id) VALUES (?, ?, ?)",
+        (str(uuid.uuid4()), user_id, str(uuid.uuid4())),
+    )
+    await db.execute(  # bookmarks API 落库于 favorites
+        "INSERT INTO favorites (id, user_id, entry_type, title) VALUES (?, ?, ?, ?)",
+        (str(uuid.uuid4()), user_id, "herb", "当归"),
+    )
+
+    resp = await client.delete("/api/account", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] is True
+
+    checks = [
+        ("health_logs", "user_id"),
+        ("medical_visits", "user_id"),
+        ("medication_plans", "user_id"),
+        ("share_cards", "user_id"),
+        ("favorites", "user_id"),
+    ]
+    for table, col in checks:
+        row = await db.query_one(
+            f"SELECT COUNT(*) AS cnt FROM {table} WHERE {col} = ?",
+            (user_id,),
+        )
+        assert row["cnt"] == 0, f"{table} 注销后必须为空"
+
+    row = await db.query_one(
+        "SELECT COUNT(*) AS cnt FROM family_shares WHERE sharer_id = ? OR viewer_id = ?",
+        (user_id, user_id),
+    )
+    assert row["cnt"] == 0, "family_shares 注销后必须为空"
+
+    row = await db.query_one(
+        "SELECT COUNT(*) AS cnt FROM plan_items WHERE plan_id = ?",
+        (plan_id,),
+    )
+    assert row["cnt"] == 0, "plan_items（方案子项）注销后必须为空"
+
+
+@pytest.mark.asyncio
+async def test_pipl_erasure_response_discloses_backup_retention(
+    client: AsyncClient, auth_headers: dict
+):
+    """注销响应必须如实告知加密备份中的历史数据将于30天内随备份轮换删除."""
+    resp = await client.delete("/api/account", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["note"] == "加密备份文件含历史数据，将于30天内随备份轮换删除"
+    assert "deleted_counts" in body
+    assert body["deleted_counts"]["users"] == 1

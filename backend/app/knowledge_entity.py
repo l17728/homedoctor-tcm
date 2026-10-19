@@ -28,6 +28,7 @@ import httpx
 
 from app.config import settings
 from app.database import DbAdapter
+from app.repository import current_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,17 @@ def _safe_json(raw: Any, default: Any) -> Any:
     return default
 
 
+def _ctx_tenant() -> str:
+    """Current tenant from the request context (set by middleware from JWT)."""
+    return current_tenant_id.get() or "default"
+
+
+def _visibility_sql(alias: str = "") -> str:
+    """SQL fragment matching global rows (tenant_id IS NULL) + current tenant."""
+    prefix = f"{alias}." if alias else ""
+    return f"({prefix}tenant_id IS NULL OR {prefix}tenant_id = ?)"
+
+
 def _parse_entity_row(row: dict[str, Any]) -> dict[str, Any]:
     """Normalize a knowledge_entities row — parse JSON columns to objects."""
     result = dict(row)
@@ -114,13 +126,16 @@ async def register_entity(
     properties: dict[str, Any] | None = None,
     source_type: str = "system",
     status: str = "active",
+    tenant_id: str | None = None,
 ) -> str:
     """Register or update an entity in the unified registry. Returns entity_id.
 
-    If an entity with the same ``(source_table, source_id)`` already exists,
-    its mutable fields are updated in place (upsert semantics). Entities with
-    ``source_id IS NULL`` are always treated as new (used by AI imports where
-    each import is unique).
+    If an entity with the same ``(source_table, source_id, tenant_id)`` already
+    exists, its mutable fields are updated in place (upsert semantics). The
+    dedup scope matches the tenant exactly — a tenant-scoped registration
+    never upserts a global (``tenant_id IS NULL``) row or another tenant's
+    row. Entities with ``source_id IS NULL`` are always treated as new (used
+    by AI imports where each import is unique).
     """
     keywords = keywords or []
     tags = tags or []
@@ -131,8 +146,8 @@ async def register_entity(
     if source_id:
         existing = await db.query_one(
             """SELECT id FROM knowledge_entities
-               WHERE source_table = ? AND source_id = ?""",
-            (source_table, source_id),
+               WHERE source_table = ? AND source_id = ? AND tenant_id IS ?""",
+            (source_table, source_id, tenant_id),
         )
 
     if existing:
@@ -159,15 +174,15 @@ async def register_entity(
         """INSERT INTO knowledge_entities
                (id, entity_type, source_table, source_id, title, summary,
                 keywords, tags, category, content_preview, properties,
-                source_type, status, view_count, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)""",
+                source_type, status, tenant_id, view_count, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)""",
         (
             entity_id, entity_type, source_table, source_id, title, summary,
             json.dumps(keywords, ensure_ascii=False),
             json.dumps(tags, ensure_ascii=False),
             category, content_preview,
             json.dumps(properties, ensure_ascii=False),
-            source_type, status, now, now,
+            source_type, status, tenant_id, now, now,
         ),
     )
     return entity_id
@@ -179,30 +194,36 @@ async def get_or_create_entity(
     source_table: str,
     source_id: str,
     title: str,
+    tenant_id: str | None = None,
 ) -> str:
-    """Find existing entity by ``(source_table, source_id)`` or create new one.
+    """Find existing entity by ``(source_table, source_id, tenant_id)`` or create.
 
     Lighter-weight variant of :func:`register_entity` for callers that only
     need the id (e.g. linking extracted entities by name during AI import).
     """
     existing = await db.query_one(
         """SELECT id FROM knowledge_entities
-           WHERE source_table = ? AND source_id = ?""",
-        (source_table, source_id),
+           WHERE source_table = ? AND source_id = ? AND tenant_id IS ?""",
+        (source_table, source_id, tenant_id),
     )
     if existing:
         return existing["id"]
     return await register_entity(
         db, entity_type=entity_type, source_table=source_table,
-        source_id=source_id, title=title,
+        source_id=source_id, title=title, tenant_id=tenant_id,
     )
 
 
 async def get_entity(db: DbAdapter, entity_id: str) -> dict[str, Any] | None:
-    """Get entity with all fields + parsed JSON fields. Returns ``None`` if missing."""
+    """Get entity visible to the current tenant, with parsed JSON fields.
+
+    Global entities (``tenant_id IS NULL``) are visible to everyone; private
+    entities only to their owning tenant. Returns ``None`` if missing or not
+    visible.
+    """
     row = await db.query_one(
-        "SELECT * FROM knowledge_entities WHERE id = ?",
-        (entity_id,),
+        f"SELECT * FROM knowledge_entities WHERE id = ? AND {_visibility_sql()}",
+        (entity_id, _ctx_tenant()),
     )
     return _parse_entity_row(row) if row else None
 
@@ -218,7 +239,12 @@ async def update_entity(
     properties: dict[str, Any] | None = None,
     status: str | None = None,
 ) -> dict[str, Any] | None:
-    """Update mutable fields on an entity. Returns updated entity or ``None``."""
+    """Update mutable fields on a tenant-visible entity. Returns updated entity.
+
+    Only entities visible to the current tenant (global or own-tenant) can be
+    updated; anything else returns ``None``. Write access to *global* entities
+    is admin-only and enforced at the router layer.
+    """
     existing = await get_entity(db, entity_id)
     if not existing:
         return None
@@ -231,10 +257,10 @@ async def update_entity(
     new_props = properties if properties is not None else existing.get("properties", {})
 
     await db.execute(
-        """UPDATE knowledge_entities SET
+        f"""UPDATE knowledge_entities SET
                summary = ?, tags = ?, keywords = ?, category = ?,
                properties = ?, status = ?, updated_at = ?
-           WHERE id = ?""",
+            WHERE id = ? AND {_visibility_sql()}""",
         (
             new_summary,
             json.dumps(new_tags, ensure_ascii=False),
@@ -244,16 +270,18 @@ async def update_entity(
             new_status,
             _now(),
             entity_id,
+            _ctx_tenant(),
         ),
     )
     return await get_entity(db, entity_id)
 
 
 async def increment_view_count(db: DbAdapter, entity_id: str) -> None:
-    """Atomically bump ``view_count`` for an entity."""
+    """Atomically bump ``view_count`` for a tenant-visible entity."""
     await db.execute(
-        "UPDATE knowledge_entities SET view_count = view_count + 1 WHERE id = ?",
-        (entity_id,),
+        f"UPDATE knowledge_entities SET view_count = view_count + 1 "
+        f"WHERE id = ? AND {_visibility_sql()}",
+        (entity_id, _ctx_tenant()),
     )
 
 
@@ -277,8 +305,8 @@ async def search_entities(
     page_size = max(1, min(100, page_size))
     offset = (page - 1) * page_size
 
-    where_parts: list[str] = ["status = 'active'"]
-    params: list[Any] = []
+    where_parts: list[str] = [_visibility_sql(), "status = 'active'"]
+    params: list[Any] = [_ctx_tenant()]
 
     if q:
         like = f"%{q}%"
@@ -301,9 +329,8 @@ async def search_entities(
     # Facets: counts per entity_type over the full match set (ignoring
     # entity_type filter, but keeping q/category/tag filters) so the UI can
     # show "全部 / 中药(N) / 方剂(M) / ..." tabs.
-    facet_filters = [p for i, p in enumerate(params)]
-    facet_where = "status = 'active'"
-    facet_params: list[Any] = []
+    facet_where = f"status = 'active' AND {_visibility_sql()}"
+    facet_params: list[Any] = [_ctx_tenant()]
     if q:
         like = f"%{q}%"
         facet_where += " AND (title LIKE ? OR summary LIKE ? OR keywords LIKE ? OR tags LIKE ?)"
@@ -362,37 +389,38 @@ async def list_by_type(
 
 
 async def get_type_facets(db: DbAdapter) -> dict[str, int]:
-    """Return ``{entity_type: count}`` over all active entities."""
+    """Return ``{entity_type: count}`` over active entities visible to this tenant."""
     rows = await db.query(
-        """SELECT entity_type, COUNT(*) AS cnt
-           FROM knowledge_entities
-           WHERE status = 'active'
-           GROUP BY entity_type
-           ORDER BY cnt DESC"""
+        f"""SELECT entity_type, COUNT(*) AS cnt
+            FROM knowledge_entities
+            WHERE status = 'active' AND {_visibility_sql()}
+            GROUP BY entity_type
+            ORDER BY cnt DESC""",
+        (_ctx_tenant(),),
     )
     return {r["entity_type"]: r["cnt"] for r in rows}
 
 
 async def list_popular(db: DbAdapter, limit: int = 10) -> list[dict[str, Any]]:
-    """Most viewed entities (``view_count DESC``)."""
+    """Most viewed entities (``view_count DESC``) visible to this tenant."""
     limit = max(1, min(100, limit))
     rows = await db.query(
-        """SELECT * FROM knowledge_entities
-           WHERE status = 'active' AND view_count > 0
-           ORDER BY view_count DESC, created_at DESC LIMIT ?""",
-        (limit,),
+        f"""SELECT * FROM knowledge_entities
+            WHERE status = 'active' AND view_count > 0 AND {_visibility_sql()}
+            ORDER BY view_count DESC, created_at DESC LIMIT ?""",
+        (_ctx_tenant(), limit),
     )
     return [_parse_entity_row(r) for r in rows]
 
 
 async def list_recent(db: DbAdapter, limit: int = 10) -> list[dict[str, Any]]:
-    """Recently added entities (``created_at DESC``)."""
+    """Recently added entities (``created_at DESC``) visible to this tenant."""
     limit = max(1, min(100, limit))
     rows = await db.query(
-        """SELECT * FROM knowledge_entities
-           WHERE status = 'active'
-           ORDER BY created_at DESC LIMIT ?""",
-        (limit,),
+        f"""SELECT * FROM knowledge_entities
+            WHERE status = 'active' AND {_visibility_sql()}
+            ORDER BY created_at DESC LIMIT ?""",
+        (_ctx_tenant(), limit),
     )
     return [_parse_entity_row(r) for r in rows]
 
@@ -408,11 +436,15 @@ async def create_relationship(
     rel_type: str,
     properties: dict[str, Any] | None = None,
     weight: float = 1.0,
+    tenant_id: str | None = None,
 ) -> str:
-    """Create an entity_relationship row. Idempotent on ``(source, target, type)``.
+    """Create an entity_relationship row. Idempotent on ``(source, target, type, tenant)``.
 
     ``rel_type`` may be either the code (``"contains"``) or the Chinese label
     (``"组成"``) — both are normalized via :data:`RELATIONSHIP_TYPES`.
+    ``tenant_id IS NULL`` creates a global relationship; callers should pass
+    the current tenant for user-curated edges (visibility of both endpoints
+    is enforced at the router layer).
     """
     normalized = RELATIONSHIP_TYPES.get(rel_type, rel_type)
     props_json = json.dumps(properties or {}, ensure_ascii=False)
@@ -420,8 +452,9 @@ async def create_relationship(
 
     existing = await db.query_one(
         """SELECT id FROM entity_relationships
-           WHERE source_entity_id = ? AND target_entity_id = ? AND relationship_type = ?""",
-        (source_id, target_id, normalized),
+           WHERE source_entity_id = ? AND target_entity_id = ?
+             AND relationship_type = ? AND tenant_id IS ?""",
+        (source_id, target_id, normalized, tenant_id),
     )
     if existing:
         await db.execute(
@@ -435,9 +468,9 @@ async def create_relationship(
     await db.execute(
         """INSERT INTO entity_relationships
                (id, source_entity_id, target_entity_id, relationship_type,
-                properties, weight, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (rel_id, source_id, target_id, normalized, props_json, weight, _now()),
+                properties, weight, tenant_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (rel_id, source_id, target_id, normalized, props_json, weight, tenant_id, _now()),
     )
     return rel_id
 
@@ -447,22 +480,26 @@ async def get_relationships(
     entity_id: str,
     direction: str = "both",
 ) -> list[dict[str, Any]]:
-    """Get all relationships for an entity.
+    """Get all relationships for an entity, tenant-scoped.
 
-    ``direction`` is one of ``"outgoing"``, ``"incoming"``, or ``"both"``.
-    Each row is enriched with the partner entity's id/title/type via JOIN.
+    Both the relationship row and the joined partner entity must be visible
+    to the current tenant (global or own-tenant). ``direction`` is one of
+    ``"outgoing"``, ``"incoming"``, or ``"both"``.
     """
     results: list[dict[str, Any]] = []
+    tenant = _ctx_tenant()
 
     if direction in ("outgoing", "both"):
         rows = await db.query(
-            """SELECT er.*, ke.title AS target_title, ke.entity_type AS target_type,
+            f"""SELECT er.*, ke.title AS target_title, ke.entity_type AS target_type,
                       ke.category AS target_category
                FROM entity_relationships er
                LEFT JOIN knowledge_entities ke ON ke.id = er.target_entity_id
                WHERE er.source_entity_id = ?
+                 AND {_visibility_sql('er')}
+                 AND (ke.tenant_id IS NULL OR ke.tenant_id = ?)
                ORDER BY er.relationship_type, er.weight DESC""",
-            (entity_id,),
+            (entity_id, tenant, tenant),
         )
         for r in rows:
             parsed = _parse_relationship_row(r)
@@ -471,13 +508,15 @@ async def get_relationships(
 
     if direction in ("incoming", "both"):
         rows = await db.query(
-            """SELECT er.*, ke.title AS source_title, ke.entity_type AS source_type,
+            f"""SELECT er.*, ke.title AS source_title, ke.entity_type AS source_type,
                       ke.category AS source_category
                FROM entity_relationships er
                LEFT JOIN knowledge_entities ke ON ke.id = er.source_entity_id
                WHERE er.target_entity_id = ?
+                 AND {_visibility_sql('er')}
+                 AND (ke.tenant_id IS NULL OR ke.tenant_id = ?)
                ORDER BY er.relationship_type, er.weight DESC""",
-            (entity_id,),
+            (entity_id, tenant, tenant),
         )
         for r in rows:
             parsed = _parse_relationship_row(r)
@@ -496,28 +535,33 @@ async def get_related_entities(
     entity_id: str,
     rel_type: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Get entities related to ``entity_id`` (either direction), optionally filtered by type."""
+    """Get entities related to ``entity_id`` visible to this tenant (either direction)."""
     normalized = RELATIONSHIP_TYPES.get(rel_type, rel_type) if rel_type else None
+    tenant = _ctx_tenant()
 
     outgoing_sql = (
-        """SELECT ke.* FROM entity_relationships er
+        f"""SELECT ke.* FROM entity_relationships er
            JOIN knowledge_entities ke ON ke.id = er.target_entity_id
-           WHERE er.source_entity_id = ?"""
+           WHERE er.source_entity_id = ?
+             AND {_visibility_sql('er')}
+             AND {_visibility_sql('ke')}"""
     )
     incoming_sql = (
-        """SELECT ke.* FROM entity_relationships er
+        f"""SELECT ke.* FROM entity_relationships er
            JOIN knowledge_entities ke ON ke.id = er.source_entity_id
-           WHERE er.target_entity_id = ?"""
+           WHERE er.target_entity_id = ?
+             AND {_visibility_sql('er')}
+             AND {_visibility_sql('ke')}"""
     )
 
     if normalized:
         outgoing_sql += " AND er.relationship_type = ?"
         incoming_sql += " AND er.relationship_type = ?"
-        out_rows = await db.query(outgoing_sql, (entity_id, normalized))
-        in_rows = await db.query(incoming_sql, (entity_id, normalized))
+        out_rows = await db.query(outgoing_sql, (entity_id, tenant, tenant, normalized))
+        in_rows = await db.query(incoming_sql, (entity_id, tenant, tenant, normalized))
     else:
-        out_rows = await db.query(outgoing_sql, (entity_id,))
-        in_rows = await db.query(incoming_sql, (entity_id,))
+        out_rows = await db.query(outgoing_sql, (entity_id, tenant, tenant))
+        in_rows = await db.query(incoming_sql, (entity_id, tenant, tenant))
 
     seen: set[str] = set()
     merged: list[dict[str, Any]] = []
@@ -529,12 +573,14 @@ async def get_related_entities(
 
 
 async def count_relationships(db: DbAdapter) -> dict[str, int]:
-    """Return ``{relationship_type: count}`` over all relationships."""
+    """Return ``{relationship_type: count}`` over relationships visible to this tenant."""
     rows = await db.query(
-        """SELECT relationship_type, COUNT(*) AS cnt
-           FROM entity_relationships
-           GROUP BY relationship_type
-           ORDER BY cnt DESC"""
+        f"""SELECT relationship_type, COUNT(*) AS cnt
+            FROM entity_relationships
+            WHERE {_visibility_sql()}
+            GROUP BY relationship_type
+            ORDER BY cnt DESC""",
+        (_ctx_tenant(),),
     )
     return {r["relationship_type"]: r["cnt"] for r in rows}
 
@@ -657,19 +703,25 @@ async def _find_or_create_entity_by_name(
     name: str,
     entity_type: str,
     context: str = "",
+    tenant_id: str | None = None,
 ) -> str | None:
-    """Find an existing knowledge_entity by title (any type) or create a stub.
+    """Find a tenant-visible knowledge_entity by title (any type) or create a stub.
 
     Used during AI import to link extracted entities (herbs / symptoms) by
-    name. Returns ``None`` if the name is empty.
+    name. Lookup prefers global + own-tenant entities so another family's
+    private stub is never linked or leaked. Returns ``None`` if the name is
+    empty.
     """
     if not name or not name.strip():
         return None
     name = name.strip()
+    tenant = tenant_id if tenant_id is not None else _ctx_tenant()
 
     existing = await db.query_one(
-        "SELECT id FROM knowledge_entities WHERE title = ? AND status = 'active' LIMIT 1",
-        (name,),
+        f"""SELECT id FROM knowledge_entities
+            WHERE title = ? AND status = 'active' AND {_visibility_sql()}
+            LIMIT 1""",
+        (name, tenant),
     )
     if existing:
         return existing["id"]
@@ -686,6 +738,7 @@ async def _find_or_create_entity_by_name(
         title=name,
         summary=context[:200] if context else "",
         source_type="ai_extracted",
+        tenant_id=tenant_id,
     )
 
 
@@ -694,14 +747,17 @@ async def process_imported_content(
     title: str,
     content: str,
     source_type: str = "import",
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
     """Full AI pipeline for processing imported knowledge.
 
     Steps (spec §9 — 统一知识实体系统):
     1. Send content to the LLM for structured analysis (graceful skip if no key).
     2. Parse the LLM JSON response.
-    3. Create the primary ``knowledge_entity`` row.
-    4. Link each extracted entity (create-or-find by name).
+    3. Create the primary ``knowledge_entity`` row (tenant-scoped when
+       ``tenant_id`` is passed — HTTP import endpoints pass the caller's
+       family so imported knowledge stays private to that family).
+    4. Link each extracted entity (create-or-find by name, tenant-visible).
     5. Create relationships between the primary entity and the extracted ones.
     6. Return the processed entity + AI metadata.
 
@@ -747,6 +803,7 @@ async def process_imported_content(
         content_preview=content[:500],
         properties={"ai_analyzed": bool(analysis), "raw_analysis": analysis},
         source_type=source_type,
+        tenant_id=tenant_id,
     )
 
     linked_entities: list[dict[str, Any]] = []
@@ -758,7 +815,9 @@ async def process_imported_content(
         ext_context = str(ext.get("context") or "").strip()
         if not ext_name:
             continue
-        linked_id = await _find_or_create_entity_by_name(db, ext_name, ext_type, ext_context)
+        linked_id = await _find_or_create_entity_by_name(
+            db, ext_name, ext_type, ext_context, tenant_id=tenant_id,
+        )
         if linked_id and linked_id != primary_id:
             linked_entities.append({
                 "entity_id": linked_id,
@@ -778,11 +837,15 @@ async def process_imported_content(
             continue
         # Resolve names to entity ids — prefer the primary entity when the LLM
         # named it as the source/target.
-        src_id = primary_id if src_name == title else await _find_or_create_entity_by_name(db, src_name, "article")
-        tgt_id = primary_id if tgt_name == title else await _find_or_create_entity_by_name(db, tgt_name, "article")
+        src_id = primary_id if src_name == title else await _find_or_create_entity_by_name(
+            db, src_name, "article", tenant_id=tenant_id,
+        )
+        tgt_id = primary_id if tgt_name == title else await _find_or_create_entity_by_name(
+            db, tgt_name, "article", tenant_id=tenant_id,
+        )
         if not src_id or not tgt_id:
             continue
-        rel_id = await create_relationship(db, src_id, tgt_id, rel_type)
+        rel_id = await create_relationship(db, src_id, tgt_id, rel_type, tenant_id=tenant_id)
         created_relationships.append({
             "relationship_id": rel_id,
             "source": src_name,

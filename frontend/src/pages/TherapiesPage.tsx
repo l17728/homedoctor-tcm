@@ -145,7 +145,7 @@ export default function TherapiesPage() {
           </Space>
         </Title>
         <Input
-          prefix={<SearchOutlined style={{ color: '#999' }} />}
+          prefix={<SearchOutlined style={{ color: '#666' }} />}
           placeholder="搜索疗法名称、适应症"
           allowClear
           style={{ width: 300, fontSize: 16 }}
@@ -229,7 +229,7 @@ export default function TherapiesPage() {
                     <div>
                       <Text
                         type="secondary"
-                        style={{ fontSize: 13 }}
+                        style={{ fontSize: 14 }}
                       >
                         适应症
                       </Text>
@@ -261,7 +261,7 @@ export default function TherapiesPage() {
                         {RISK_LABEL[t.riskLevel] ?? t.riskLevel}
                       </Tag>
                       {t.displayOnly && (
-                        <Text type="warning" style={{ fontSize: 12 }}>
+                        <Text type="warning" style={{ fontSize: 14 }}>
                           仅供了解
                         </Text>
                       )}
@@ -422,7 +422,7 @@ export default function TherapiesPage() {
             )}
 
             <Divider />
-            <Paragraph type="secondary" style={{ fontSize: 13 }}>
+            <Paragraph type="secondary" style={{ fontSize: 14 }}>
               以上信息仅供参考，具体操作请咨询执业中医师。
             </Paragraph>
           </div>

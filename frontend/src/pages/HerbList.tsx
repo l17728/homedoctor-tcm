@@ -9,12 +9,15 @@ import {
   Empty,
   Skeleton,
   Typography,
+  Alert,
+  message,
 } from 'antd';
-import { EyeOutlined } from '@ant-design/icons';
+import { EyeOutlined, ReloadOutlined } from '@ant-design/icons';
 import { getHerbs, type Herb, type PaginatedHerbs } from '../api/herbApi';
 import StatusTag from '../components/StatusTag';
 import { TOXICITY_COLOR } from '../constants';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { request } from '../api/client';
 
 const { Title } = Typography;
 
@@ -45,14 +48,23 @@ export default function HerbList() {
   const isMobile = useIsMobile();
   const [herbs, setHerbs] = useState<Herb[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string | undefined>(undefined);
   const [selectedHerb, setSelectedHerb] = useState<Herb | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
+  const [aliasDraft, setAliasDraft] = useState('');
+  const [aliasSource, setAliasSource] = useState('');
+  const [savingAliases, setSavingAliases] = useState(false);
+  const isAdmin = (() => {
+    try { return JSON.parse(localStorage.getItem('user') || '{}').role === 'admin'; }
+    catch { return false; }
+  })();
 
   const loadData = async (params?: { page?: number; pageSize?: number; category?: string; search?: string }) => {
     setLoading(true);
+    setLoadError(false);
     try {
       const data: PaginatedHerbs = await getHerbs({
         page: params?.page ?? pagination.current,
@@ -67,7 +79,7 @@ export default function HerbList() {
         total: data.total,
       });
     } catch {
-      // error handled by api client
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -156,6 +168,17 @@ export default function HerbList() {
       </div>
       {loading ? (
         <Skeleton active />
+      ) : loadError ? (
+        <Alert
+          type="error"
+          showIcon
+          message="中药数据加载失败，请检查网络"
+          action={
+            <Button icon={<ReloadOutlined />} onClick={() => loadData({ page: 1 })}>
+              重试
+            </Button>
+          }
+        />
       ) : herbs.length === 0 ? (
         <Empty description="暂无中药数据" />
       ) : (
@@ -177,6 +200,8 @@ export default function HerbList() {
           onRow={(record) => ({
             onClick: () => {
               setSelectedHerb(record);
+              setAliasDraft(Array.isArray(record.aliases) ? record.aliases.join('、') : record.aliases || '');
+              setAliasSource('');
               setDrawerOpen(true);
             },
             style: { cursor: 'pointer' },
@@ -191,9 +216,15 @@ export default function HerbList() {
         destroyOnClose
       >
         {selectedHerb && (
+          <>
           <Descriptions column={1} bordered>
             <Descriptions.Item label="分类">
               {selectedHerb.category}
+            </Descriptions.Item>
+            <Descriptions.Item label="别名">
+              {Array.isArray(selectedHerb.aliases)
+                ? selectedHerb.aliases.join('、')
+                : selectedHerb.aliases || '建议值：无；来源：没有可核验的别名词典；置信度：无。需人工查证后维护。'}
             </Descriptions.Item>
             <Descriptions.Item label="性味">
               {selectedHerb.nature}，{selectedHerb.flavor}
@@ -220,6 +251,57 @@ export default function HerbList() {
               {selectedHerb.description}
             </Descriptions.Item>
           </Descriptions>
+          {isAdmin && (
+            <div style={{ marginTop: 16 }}>
+              <Alert
+                type="info"
+                showIcon
+                message="别名建议：没有可核验的自动候选"
+                description="建议值：无；来源：无已配置的权威别名词典；置信度：无。只保存管理员依据外部权威资料人工核验的别名。"
+                style={{ marginBottom: 12 }}
+              />
+              <Input.TextArea
+                aria-label="人工核验的药材别名"
+                rows={2}
+                value={aliasDraft}
+                onChange={(event) => setAliasDraft(event.target.value)}
+                placeholder="人工核验后填写，多个别名用顿号或逗号分隔"
+              />
+              <Input
+                aria-label="别名核验来源"
+                style={{ marginTop: 8 }}
+                value={aliasSource}
+                onChange={(event) => setAliasSource(event.target.value)}
+                placeholder="来源文献、药典版本或审核记录"
+              />
+              <Button
+                type="primary"
+                loading={savingAliases}
+                disabled={!aliasSource.trim()}
+                style={{ marginTop: 8, minHeight: 44 }}
+                onClick={async () => {
+                  setSavingAliases(true);
+                  try {
+                    const aliases = aliasDraft.split(/[、,，]/).map((item) => item.trim()).filter(Boolean);
+                    const result = await request<{ aliases: string[] }>(`/api/herbs/${selectedHerb.id}/aliases`, {
+                      method: 'PATCH',
+                      body: JSON.stringify({ aliases, source: aliasSource, verified: true }),
+                    });
+                    setSelectedHerb({ ...selectedHerb, aliases: result.aliases });
+                    setAliasDraft(result.aliases.join('、'));
+                    message.success('已保存人工核验的别名');
+                  } catch {
+                    message.error('保存失败，请确认管理员权限和来源信息');
+                  } finally {
+                    setSavingAliases(false);
+                  }
+                }}
+              >
+                保存人工核验别名
+              </Button>
+            </div>
+          )}
+          </>
         )}
       </Drawer>
     </div>

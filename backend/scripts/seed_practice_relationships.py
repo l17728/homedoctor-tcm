@@ -40,6 +40,7 @@ async def main():
                     (const_name,),
                 )
                 row = await rows.fetchone()
+                await rows.close()
                 target = row[0] if row else f"const-{const_name}"
                 rid = f"rel-{pid}-suit-{const_name}"
                 await db.execute(

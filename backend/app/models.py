@@ -18,13 +18,29 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 class UserRegister(BaseModel):
     username: str = Field(min_length=2, max_length=50)
-    password: str = Field(min_length=6, max_length=100)
+    password: str = Field(min_length=8, max_length=100)
     display_name: str | None = None
+
+
+class RegisterRequest(BaseModel):
+    """注册请求（含 PIPL 同意，spec §12.2）。birth_year 宽松收字符串再由路由校验。"""
+    username: str
+    password: str = Field(min_length=8, max_length=100)
+    display_name: str | None = None
+    consent_privacy: bool = False
+    consent_health_data: bool = False
+    birth_year: int | str | None = None
+    admin_bootstrap_token: str | None = Field(default=None, max_length=256)
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str = Field(max_length=100)
 
 
 class UserLogin(BaseModel):
     username: str
-    password: str
+    password: str = Field(max_length=100)
 
 
 class UserOut(BaseModel):
@@ -160,9 +176,27 @@ class MedicineOut(BaseModel):
 # Safety
 # ---------------------------------------------------------------------------
 
+def _cap_list_at_100(v: list[str]) -> list[str]:
+    """安全检查输入列表上限 100 项（中文错误信息，先于 max_length 约束触发）。"""
+    if isinstance(v, list) and len(v) > 100:
+        raise ValueError("药材/药品列表一次最多检查100项")
+    return v
+
+
 class SafetyCheckRequest(BaseModel):
-    herbs: list[str] = Field(default_factory=list, description="List of herb names")
-    medicines: list[str] = Field(default_factory=list, description="List of medicine/drug names")
+    herbs: list[str] = Field(
+        default_factory=list, max_length=100,
+        description="药材名称列表（最多100项）",
+    )
+    medicines: list[str] = Field(
+        default_factory=list, max_length=100,
+        description="药品名称列表（最多100项）",
+    )
+
+    @field_validator("herbs", "medicines", mode="before")
+    @classmethod
+    def _cap_at_100(cls, v):
+        return _cap_list_at_100(v)
 
 
 class SafetyWarning(BaseModel):
@@ -189,8 +223,14 @@ class SafetyCheckResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class SafetyCheckRequestV2(BaseModel):
-    herbs: list[str] = Field(default_factory=list, description="List of herb names")
-    medicines: list[str] = Field(default_factory=list, description="List of medicine/drug names")
+    herbs: list[str] = Field(
+        default_factory=list, max_length=100,
+        description="药材名称列表（最多100项）",
+    )
+    medicines: list[str] = Field(
+        default_factory=list, max_length=100,
+        description="药品名称列表（最多100项）",
+    )
     user_profile: dict[str, Any] | None = Field(
         default=None,
         description="User profile: is_pregnant, age, weight_kg, constitution",
@@ -199,6 +239,11 @@ class SafetyCheckRequestV2(BaseModel):
         default=None,
         description="Map of herb_name → dosage in grams",
     )
+
+    @field_validator("herbs", "medicines", mode="before")
+    @classmethod
+    def _cap_at_100(cls, v):
+        return _cap_list_at_100(v)
 
 
 class SafetyWarningV2(BaseModel):
@@ -529,9 +574,22 @@ class PrescriptionRequest(BaseModel):
     patient_name: str = Field(default="—", max_length=100)
     patient_age: str | None = Field(default=None, max_length=20)
     patient_gender: str | None = Field(default=None, max_length=10)
+    patient_contact: str | None = Field(default=None, max_length=100)
+    constitution: str | None = Field(default=None, max_length=50)
+    stock_items: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     prescriber: str | None = Field(default=None, max_length=100)
     notes: str | None = Field(default=None, max_length=2000)
     usage_instructions: str | None = Field(default=None, max_length=1000)
+    mask_fields: list[str] = Field(default_factory=list, max_length=5)
+
+    @field_validator("mask_fields")
+    @classmethod
+    def validate_mask_fields(cls, value: list[str]) -> list[str]:
+        supported = {"name", "age", "contact", "constitution", "stock"}
+        unknown = set(value) - supported
+        if unknown:
+            raise ValueError("mask_fields 包含不支持的字段")
+        return list(dict.fromkeys(value))
 
 
 class HealthReportRequest(BaseModel):

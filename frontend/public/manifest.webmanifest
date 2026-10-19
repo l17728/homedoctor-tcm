@@ -1,0 +1,9 @@
+{
+  "name": "家庭医生·您的养生助手",
+  "short_name": "家庭医生",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1677ff"
+}

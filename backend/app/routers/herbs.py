@@ -10,13 +10,22 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 
+from app.auth import require_admin
+from app.audit import log_audit
 from app.database import DbAdapter, get_db
 from app.pinyin_data import to_pinyin, to_pinyin_abbrev
 from app.repository import HerbRepository
 from app.routers.formulas import _parse_formula, extract_herb_names
 
 router = APIRouter(prefix="/api/herbs", tags=["herbs"])
+
+
+class HerbAliasesUpdate(BaseModel):
+    aliases: list[str] = Field(default_factory=list, max_length=30)
+    source: str = Field(min_length=3, max_length=300)
+    verified: bool
 
 
 def _parse_herb(row: dict[str, Any]) -> dict[str, Any]:
@@ -159,3 +168,37 @@ async def get_herb_formulas(herb_id: str, db: DbAdapter = Depends(get_db)):
         "formulas": related[:20],
         "common_combinations": [{"name": h, "count": c} for h, c in common_pairs],
     }
+
+
+@router.patch("/{herb_id}/aliases")
+async def update_herb_aliases(
+    herb_id: str,
+    body: HerbAliasesUpdate,
+    db: DbAdapter = Depends(get_db),
+    current_user: dict = Depends(require_admin),
+):
+    """Store only administrator-verified aliases; no model-generated values are written."""
+    if not body.verified:
+        raise HTTPException(status_code=422, detail="别名需先人工核验后保存")
+    herb = await db.query_one("SELECT name, aliases FROM herbs WHERE id = ?", (herb_id,))
+    if not herb:
+        raise HTTPException(status_code=404, detail="未找到该药材")
+    aliases: list[str] = []
+    seen = {str(herb["name"]).strip()}
+    for raw in body.aliases:
+        alias = raw.strip()
+        if not alias or alias in seen:
+            continue
+        seen.add(alias)
+        aliases.append(alias)
+    await db.execute("UPDATE herbs SET aliases = ? WHERE id = ?", (",".join(aliases), herb_id))
+    await log_audit(
+        db,
+        tenant_id=current_user.get("family_id") or "default",
+        user_id=current_user["id"],
+        action="update",
+        entity_type="herb_aliases",
+        entity_id=herb_id,
+        changes={"aliases": aliases, "source": body.source.strip(), "verified": True},
+    )
+    return {"id": herb_id, "aliases": aliases, "source": body.source.strip(), "verified": True}

@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   api:
     build:
@@ -9,14 +7,37 @@ services:
       - "8000:8000"
     volumes:
       - app-data:/app/data
+      # 备份外置：独立 bind mount，与主库 named volume 分离（见 docs/DEPLOYMENT.md「备份外置」）
+      - ./backups:/app/backups
     environment:
       - DATABASE_URL=sqlite:///app/data/homedoctor.db
       - HOMEDOCTOR_DATABASE_URL=data/homedoctor.db
       - HOMEDOCTOR_SECRET_KEY=${HOMEDOCTOR_SECRET_KEY:?must set HOMEDOCTOR_SECRET_KEY}
+      - HOMEDOCTOR_DB_ENCRYPTION_KEY=${HOMEDOCTOR_DB_ENCRYPTION_KEY:-}
+      - HOMEDOCTOR_PREVIOUS_SECRET_KEY=${HOMEDOCTOR_PREVIOUS_SECRET_KEY:-}
+      - HOMEDOCTOR_PREVIOUS_DB_ENCRYPTION_KEY=${HOMEDOCTOR_PREVIOUS_DB_ENCRYPTION_KEY:-}
       - HOMEDOCTOR_LLM_API_KEY=${HOMEDOCTOR_LLM_API_KEY:?must set HOMEDOCTOR_LLM_API_KEY}
       - HOMEDOCTOR_LLM_MODEL=Kimi-K2.6
       - EXTRA_ALLOWED_ORIGINS=http://124.156.193.122:3000,http://124.156.193.122:8000
+      - ADMIN_USERS=${ADMIN_USERS:-deck}
+      - HOMEDOCTOR_ADMIN_BOOTSTRAP_TOKEN=${ADMIN_BOOTSTRAP_TOKEN:-}
+      - HOMEDOCTOR_PUSH_VAPID_PUBLIC_KEY=${PUSH_VAPID_PUBLIC_KEY:-}
+      - HOMEDOCTOR_PUSH_VAPID_PRIVATE_KEY=${PUSH_VAPID_PRIVATE_KEY:-}
+      - HOMEDOCTOR_PUSH_VAPID_SUBJECT=${PUSH_VAPID_SUBJECT:-mailto:admin@localhost}
+      # Trust X-Forwarded-For only from these proxy addresses/networks.
+      - HOMEDOCTOR_TRUSTED_PROXY_IPS=${HOMEDOCTOR_TRUSTED_PROXY_IPS:-127.0.0.1,::1}
+      - HOMEDOCTOR_NOTIFY_WEBHOOK=${HOMEDOCTOR_NOTIFY_WEBHOOK:-}
+      # 备份输出目录（./backups bind mount 对应的容器内路径）。
+      # 应用内备份路由写入独立 backups bind mount。
+      - HOMEDOCTOR_BACKUP_DIR=/app/backups
     restart: unless-stopped
+    mem_limit: 6g
+    cpus: 2.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 30s
@@ -33,6 +54,17 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # nginx:alpine 自带 busybox wget，可执行 --spider 探活
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   app-data:

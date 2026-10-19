@@ -81,6 +81,21 @@ EMERGENCY_KEYWORDS: list[str] = [
     "人事不省",
     "吐血",
     "血尿",
+    # --- Added: cardiac / respiratory / pediatric / obstetric (spec §14.6 review) ---
+    "心绞痛",
+    "心梗",
+    "心肌梗死",
+    "心脏骤停",
+    "哮喘发作",
+    "口吐白沫",
+    "止不住血",
+    "血止不住",
+    "婴儿不哭不动",
+    "小儿面色发紫",
+    "面色青紫",
+    "胎动消失",
+    "羊水破了",
+    "破水",
 ]
 
 # Colloquial / variant phrases mapped to canonical emergency keywords.
@@ -94,6 +109,34 @@ SYNONYM_MAP: dict[str, list[str]] = {
 
 # Warning message returned when emergency keywords are detected
 EMERGENCY_WARNING = "⚠️ 您描述的症状可能需要紧急就医，请拨打120急救电话"
+
+# --- Psychological crisis category (spec §14.6 last row) ---
+# This category is NOT a 120 emergency: it needs a dedicated gentle response
+# with the psychological-aid hotline (12356), checked BEFORE AI processing
+# together with the medical emergency keywords.
+PSYCHOLOGICAL_CRISIS_KEYWORDS: list[str] = [
+    "想死",
+    "活着没意思",
+    "自杀",
+    "不想活了",
+    "自残",
+    "轻生",
+]
+
+PSYCHOLOGICAL_CRISIS_WARNING = (
+    "💙 您此刻可能承受着很大的痛苦，您并不孤单，我们一直在。\n"
+    "请立即联系心理援助热线 **12356**（24小时免费），或拨打 **北京心理危机研究与干预中心 010-82951332**。\n"
+    "如果您正处于紧急危险中，请拨打 110 或 120。愿意的话，也请告诉家人或朋友，让他们陪在您身边。"
+)
+
+
+def check_psychological_crisis(text: str) -> list[str]:
+    """Check text for psychological-crisis keywords (spec §14.6).
+
+    Returns the matched keywords (empty if none). Checked alongside
+    ``check_emergency_keywords`` — always before any AI processing.
+    """
+    return [kw for kw in PSYCHOLOGICAL_CRISIS_KEYWORDS if kw in text]
 
 
 def check_emergency_keywords(text: str) -> list[str]:

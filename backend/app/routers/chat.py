@@ -9,30 +9,44 @@ Endpoints:
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.auth import get_current_user
 from app.config import settings
 from app.database import DbAdapter, get_db
+from app.upload_utils import read_upload_limited
 from app.entity_filter import scan_and_link
 from app.knowledge_reader import build_graph_context
 from app.llm import (
     DISCLAIMER,
+    _extract_herb_names_with_db,
     chat_completion,
     chat_completion_stream,
     chat_completion_with_image,
     encode_image,
     has_api_key,
 )
-from app.safety_keywords import EMERGENCY_WARNING, check_emergency_keywords
+from app.safety_engine import run_safety_check
+from app.safety_keywords import (
+    EMERGENCY_WARNING,
+    PSYCHOLOGICAL_CRISIS_WARNING,
+    check_emergency_keywords,
+    check_psychological_crisis,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+# 历史消息输入上限：超出时截断保留最近 20 条（防止上下文过长/滥用）
+MAX_CHAT_HISTORY = 20
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +119,7 @@ def _generate_mock_reply(
     message: str,
     matched_keywords: list[str],
     constitution: dict[str, Any] | None = None,
+    crisis_keywords: list[str] | None = None,
 ) -> dict[str, Any]:
     """Generate a mock AI response (MVP placeholder).
 
@@ -120,6 +135,18 @@ def _generate_mock_reply(
             "reasoning_trace": [
                 {"step": "safety_keyword_check", "result": "emergency_detected",
                  "keywords": matched_keywords},
+            ],
+        }
+
+    # Psychological crisis: dedicated gentle response, NOT a 120 emergency
+    if crisis_keywords:
+        return {
+            "reply": PSYCHOLOGICAL_CRISIS_WARNING,
+            "safety_warning": PSYCHOLOGICAL_CRISIS_WARNING,
+            "model_used": "safety-layer",
+            "reasoning_trace": [
+                {"step": "psychological_crisis_check", "result": "crisis_detected",
+                 "keywords": crisis_keywords},
             ],
         }
 
@@ -174,6 +201,38 @@ def _parse_conversation(row: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+async def _precheck_combination_safety(
+    db: DbAdapter, message: str
+) -> tuple[str | None, list[str], list[str]]:
+    """配伍安全前置检查（backend review P2-8，spec §15.3 第1层）。
+
+    对用户消息中提取的药材名快速跑 run_safety_check 的硬规则层；
+    出现 critical/high 警告时返回 (警告文案, 提到的药材, 警告标题)，
+    否则返回 (None, [], [])。任何内部异常都不阻断对话（非阻塞设计）。
+    """
+    try:
+        herbs = await _extract_herb_names_with_db(message, db)
+    except Exception as exc:
+        logger.warning("chat herb extraction failed: %s", exc)
+        return None, [], []
+    if not herbs:
+        return None, [], []
+
+    try:
+        result = await run_safety_check(db=db, herb_names=herbs, medicine_names=[])
+    except Exception as exc:
+        logger.warning("chat safety precheck failed: %s", exc)
+        return None, [], []
+
+    blocking = [w for w in result.warnings if w.severity in ("critical", "high")]
+    if not blocking:
+        return None, [], []
+
+    lines = [f"【{w.title}】{w.detail}" for w in blocking]
+    warning_text = "⚠ 配伍安全警告：" + "；".join(lines)
+    return warning_text, herbs, [w.title for w in blocking]
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -191,6 +250,7 @@ async def chat(
     forwarding to the AI model.
     """
     matched_keywords = check_emergency_keywords(body.message)
+    crisis_keywords = check_psychological_crisis(body.message)
 
     if matched_keywords:
         return {
@@ -203,13 +263,29 @@ async def chat(
             ],
         }
 
+    if crisis_keywords:
+        return {
+            "reply": PSYCHOLOGICAL_CRISIS_WARNING,
+            "safety_warning": PSYCHOLOGICAL_CRISIS_WARNING,
+            "model_used": "safety-layer",
+            "reasoning_trace": [
+                {"step": "psychological_crisis_check", "result": "crisis_detected",
+                 "keywords": crisis_keywords},
+            ],
+        }
+
     constitution = await _get_user_constitution(db, current_user["id"])
+
+    # 配伍安全前置检查（P2-8）：对消息中提到的药材先跑五层安全硬规则
+    safety_warning_text, mentioned_herbs, warning_titles = (
+        await _precheck_combination_safety(db, body.message)
+    )
 
     knowledge_ctx = await build_graph_context(db, body.message)
 
-    messages = [{"role": "user", "content": body.message}]
-    if body.history:
-        messages = [*body.history, {"role": "user", "content": body.message}]
+    # 历史消息截断：最多保留最近 20 条
+    history = body.history[-MAX_CHAT_HISTORY:] if body.history else []
+    messages = [*history, {"role": "user", "content": body.message}]
 
     if has_api_key():
         reply_text = await chat_completion(messages, constitution, knowledge_ctx)
@@ -221,9 +297,20 @@ async def chat(
         if not reply_text.endswith(DISCLAIMER):
             reply_text = f"{reply_text}\n\n{DISCLAIMER}"
 
+    # 有配伍警告时，在回复最前面拼接警告段落
+    if safety_warning_text:
+        reply_text = f"{safety_warning_text}\n\n{reply_text}"
+
     reasoning: list[dict[str, Any]] = [
         {"step": "safety_keyword_check", "result": "passed"},
     ]
+    if safety_warning_text:
+        reasoning.append({
+            "step": "safety_precheck",
+            "result": "blocking_warning",
+            "herbs": mentioned_herbs,
+            "warnings": warning_titles,
+        })
     if knowledge_ctx:
         reasoning.append({
             "step": "knowledge_graph_context",
@@ -250,7 +337,7 @@ async def chat(
 
     return {
         "reply": reply_text,
-        "safety_warning": None,
+        "safety_warning": safety_warning_text,
         "model_used": settings.LLM_MODEL if has_api_key() else "mock-v1",
         "reasoning_trace": reasoning,
     }
@@ -264,22 +351,33 @@ async def chat_stream(
 ):
     """Streaming SSE endpoint for real-time AI response display."""
     matched_keywords = check_emergency_keywords(body.message)
+    crisis_keywords = check_psychological_crisis(body.message)
 
     if matched_keywords:
         async def emergency_stream():
             yield f"data: {json.dumps({'content': EMERGENCY_WARNING, 'done': True})}\n\n"
         return StreamingResponse(emergency_stream(), media_type="text/event-stream")
 
+    if crisis_keywords:
+        async def crisis_stream():
+            yield f"data: {json.dumps({'content': PSYCHOLOGICAL_CRISIS_WARNING, 'done': True})}\n\n"
+        return StreamingResponse(crisis_stream(), media_type="text/event-stream")
+
     constitution = await _get_user_constitution(db, current_user["id"])
+
+    # 配伍安全前置检查（P2-8）：流式路径同样先跑硬规则
+    safety_warning_text, _, _ = await _precheck_combination_safety(db, body.message)
 
     knowledge_ctx = await build_graph_context(db, body.message)
 
-    messages = [{"role": "user", "content": body.message}]
-    if body.history:
-        messages = [*body.history, {"role": "user", "content": body.message}]
+    # 历史消息截断：最多保留最近 20 条
+    history = body.history[-MAX_CHAT_HISTORY:] if body.history else []
+    messages = [*history, {"role": "user", "content": body.message}]
 
     async def generate():
         full_response = ""
+        if safety_warning_text:
+            yield f"data: {json.dumps({'content': safety_warning_text + chr(10) + chr(10)})}\n\n"
         async for chunk in chat_completion_stream(messages, constitution, knowledge_ctx):
             full_response += chunk
             yield f"data: {json.dumps({'content': chunk})}\n\n"
@@ -325,12 +423,7 @@ async def chat_with_image(
             detail=f"不支持的图片格式：{image.content_type}。请上传 JPG/PNG/WebP/GIF。",
         )
 
-    raw = await image.read()
-    if len(raw) > MAX_IMAGE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail="图片大小不能超过 10MB。",
-        )
+    raw = await read_upload_limited(image, MAX_IMAGE_SIZE, "图片大小不能超过 10MB。")
 
     matched_keywords = check_emergency_keywords(message)
     if matched_keywords:
@@ -378,8 +471,8 @@ async def chat_with_image(
 
 @router.get("/history")
 async def list_conversations(
-    page: int = 1,
-    pageSize: int = 20,
+    page: int = Query(1, ge=1, description="页码（从1开始）"),
+    pageSize: int = Query(20, ge=1, le=100, description="每页条数（1-100）"),
     q: str | None = None,
     db: DbAdapter = Depends(get_db),
     current_user: dict = Depends(get_current_user),

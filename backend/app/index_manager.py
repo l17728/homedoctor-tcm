@@ -13,6 +13,7 @@ Design (AGENTS.md §1.3 递归收敛, §1.4 结构化是权威):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -93,8 +94,8 @@ async def build_index_for_entity(
 
     embedded = 0
     model = get_embedding_model()
-    if model.available:
-        vectors = model.embed(chunk_texts)
+    if await asyncio.to_thread(lambda: model.available):
+        vectors = await asyncio.to_thread(model.embed, chunk_texts)
         if vectors:
             for cid, vec in zip(chunk_ids, vectors):
                 await store_embedding(db, cid, vec)
@@ -158,7 +159,9 @@ async def get_index_status(db: DbAdapter) -> dict[str, Any]:
         "total_embeddings": embeddings,
         "entities_indexed": covered,
         "coverage": (covered / total_entities) if total_entities > 0 else 0.0,
-        "embedding_available": get_embedding_model().available,
+        "embedding_available": await asyncio.to_thread(
+            lambda: get_embedding_model().available
+        ),
     }
 
 

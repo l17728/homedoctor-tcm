@@ -123,7 +123,7 @@ async def list_acupoints(
     q: str | None = Query(None, description="搜索穴名或功能"),
     meridian: str | None = Query(None, description="按经络筛选（经络名或代码）"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=200),
     db: DbAdapter = Depends(get_db),
 ) -> dict[str, Any]:
     result = await list_entities(

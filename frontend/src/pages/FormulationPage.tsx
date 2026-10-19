@@ -163,7 +163,7 @@ export default function FormulationPage() {
         {/* 快捷症状 */}
         <div style={{ marginTop: 10 }}>
           <Space wrap size={[6, 6]}>
-            <Text type="secondary" style={{ fontSize: 13 }}>
+            <Text type="secondary" style={{ fontSize: 14 }}>
               常见：
             </Text>
             {COMMON_SYMPTOMS.filter((s) => !symptoms.includes(s)).map((s) => (
@@ -499,7 +499,7 @@ function HerbCard({ herb }: { herb: HerbRecommendation }) {
             background: '#f9f0ff',
             borderRadius: 6,
             padding: '6px 10px',
-            fontSize: 13,
+            fontSize: 14,
             color: '#531dab',
           }}
         >
@@ -510,7 +510,7 @@ function HerbCard({ herb }: { herb: HerbRecommendation }) {
             <span>{herb.reason}</span>
           </Space>
         </div>
-        <div style={{ display: 'flex', gap: 12, fontSize: 13, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 12, fontSize: 14, flexWrap: 'wrap' }}>
           <span>
             <Text type="secondary">用量：</Text>
             {dosage}
@@ -597,7 +597,7 @@ function Disclaimer({ text }: { text: string }) {
   return (
     <Paragraph
       type="secondary"
-      style={{ fontSize: 13, marginTop: 16, marginBottom: 0 }}
+      style={{ fontSize: 14, marginTop: 16, marginBottom: 0 }}
     >
       <WarningOutlined style={{ marginRight: 4 }} />
       {text}

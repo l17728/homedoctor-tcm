@@ -1129,22 +1129,22 @@ async def seed(db_path: str) -> dict[str, Any]:
         await db.execute(_CREATE_TABLE)
         await db.commit()
 
-        before_row = await (
-            await db.execute(
-                "SELECT COUNT(*) AS cnt FROM knowledge_entities WHERE entity_type = 'therapy'"
-            )
-        ).fetchone()
+        before_cursor = await db.execute(
+            "SELECT COUNT(*) AS cnt FROM knowledge_entities WHERE entity_type = 'therapy'"
+        )
+        before_row = await before_cursor.fetchone()
+        await before_cursor.close()
         before_count = before_row[0] if before_row else 0
 
         for entry in ALL_THERAPIES:
             try:
                 # Title-existence check — never overwrite an existing entry.
                 title = entry["title"]
-                existing = await (
-                    await db.execute(
-                        "SELECT id FROM knowledge_entities WHERE title = ?", (title,)
-                    )
-                ).fetchone()
+                existing_cursor = await db.execute(
+                    "SELECT id FROM knowledge_entities WHERE title = ?", (title,)
+                )
+                existing = await existing_cursor.fetchone()
+                await existing_cursor.close()
 
                 if existing:
                     skipped += 1
@@ -1178,11 +1178,11 @@ async def seed(db_path: str) -> dict[str, Any]:
 
         await db.commit()
 
-        after_row = await (
-            await db.execute(
-                "SELECT COUNT(*) AS cnt FROM knowledge_entities WHERE entity_type = 'therapy'"
-            )
-        ).fetchone()
+        after_cursor = await db.execute(
+            "SELECT COUNT(*) AS cnt FROM knowledge_entities WHERE entity_type = 'therapy'"
+        )
+        after_row = await after_cursor.fetchone()
+        await after_cursor.close()
         after_count = after_row[0] if after_row else 0
 
         cat_cursor = await db.execute(
@@ -1192,6 +1192,7 @@ async def seed(db_path: str) -> dict[str, Any]:
                GROUP BY category ORDER BY category"""
         )
         cat_rows = await cat_cursor.fetchall()
+        await cat_cursor.close()
         category_breakdown = {row[0]: row[1] for row in cat_rows}
 
     stats = {

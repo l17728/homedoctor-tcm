@@ -227,12 +227,12 @@ export default function SeasonalHealthPage() {
                   </div>
                   <Tag
                     color={SEASON_COLOR[term.season]}
-                    style={{ marginTop: 4, fontSize: 11, border: 'none' }}
+                    style={{ marginTop: 4, fontSize: 14, border: 'none' }}
                   >
                     {term.season}
                   </Tag>
                   {isCurrent && (
-                    <div style={{ fontSize: 11, color: '#1890ff', marginTop: 2 }}>当前</div>
+                    <div style={{ fontSize: 14, color: '#1890ff', marginTop: 2 }}>当前</div>
                   )}
                 </div>
               </Tooltip>
@@ -270,10 +270,10 @@ export default function SeasonalHealthPage() {
                         <div style={{ fontWeight: 600, fontSize: 15 }}>
                           <Tag color="magenta" style={{ marginRight: 4 }}>{pt.name}</Tag>
                         </div>
-                        <div style={{ fontSize: 13, color: '#888', marginTop: 2 }}>
+                        <div style={{ fontSize: 14, color: '#666', marginTop: 2 }}>
                           📍 {pt.location}
                         </div>
-                        <div style={{ fontSize: 13, color: '#666', marginTop: 2 }}>
+                        <div style={{ fontSize: 14, color: '#666', marginTop: 2 }}>
                           功效：{pt.effect}
                         </div>
                       </div>
@@ -320,11 +320,11 @@ export default function SeasonalHealthPage() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           <Text strong style={{ fontSize: 16 }}>{herb.name}</Text>
-                          <div style={{ fontSize: 13, color: '#888', marginTop: 4 }}>
+                          <div style={{ fontSize: 14, color: '#666', marginTop: 4 }}>
                             {herb.reason}
                           </div>
                         </div>
-                        <RightOutlined style={{ color: '#bbb' }} />
+                        <RightOutlined style={{ color: '#666' }} />
                       </div>
                     </Card>
                   </Col>
@@ -362,7 +362,7 @@ export default function SeasonalHealthPage() {
                     onClick={() => navigate(`/formulas?search=${encodeURIComponent(formulaName)}`)}
                   >
                     <span style={{ fontSize: 15 }}>{formulaName}</span>
-                    <RightOutlined style={{ float: 'right', marginTop: 4, color: '#bbb' }} />
+                    <RightOutlined style={{ float: 'right', marginTop: 4, color: '#666' }} />
                   </Button>
                 ))}
               </div>

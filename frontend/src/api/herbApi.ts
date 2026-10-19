@@ -3,6 +3,7 @@ import { request } from './client';
 export interface Herb {
   id: string;
   name: string;
+  aliases?: string | string[] | null;
   category: string;
   nature: string;
   flavor: string;

@@ -142,11 +142,11 @@ export default function FamilyMembersPage() {
       width: 160,
       render: (_: unknown, r: FamilyMember) => (
         <Space>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(r)}>
+          <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(r)}>
             编辑
           </Button>
           <Popconfirm title="确定删除该成员吗？" onConfirm={() => handleDelete(r.id)} okText="确定" cancelText="取消">
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button type="link" danger icon={<DeleteOutlined />}>
               删除
             </Button>
           </Popconfirm>

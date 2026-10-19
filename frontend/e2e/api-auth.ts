@@ -16,7 +16,7 @@
  */
 import { test, type Page } from '@playwright/test';
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE = `http://127.0.0.1:${Number(process.env.HOMEDOCTOR_WEB_PORT ?? 3000)}`;
 
 interface BackendAuthResponse {
   access_token: string;

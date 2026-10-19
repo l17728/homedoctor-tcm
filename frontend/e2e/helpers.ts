@@ -8,7 +8,7 @@
  * - T4: Drawer close does not trigger form submit → regression coverage
  * - T5: Row action selectors match multiple columns → scope to last td
  */
-import { type Page, type Locator } from '@playwright/test';
+import { expect, type Page, type Locator } from '@playwright/test';
 
 // ---------------------------------------------------------------------------
 // Lesson T5: Always scope row actions to last <td>
@@ -71,6 +71,9 @@ export async function login(
   username: string = 'testuser',
   password: string = DEFAULT_PASSWORD,
 ): Promise<void> {
+  // Keep first-login onboarding out of unrelated feature journeys. Onboarding
+  // has its own product flow and its modal otherwise blocks sidebar clicks.
+  await page.addInitScript(() => localStorage.setItem('onboarding_completed', 'true'));
   await page.goto('/login');
   // Scope to active tab pane — AntD keeps both login/register forms in DOM
   const activePane = page.locator('.ant-tabs-tabpane-active');
@@ -91,10 +94,10 @@ export async function register(
 ): Promise<void> {
   await page.goto('/login');
   // Switch to register tab (AntD Tabs component)
-  await page.getByRole('tab', { name: chineseText('注册') }).click();
-  await page.waitForTimeout(300);
+  await page.getByRole('tab', { name: chineseText('注册') }).dispatchEvent('click');
   // Scope to active tab pane — AntD keeps both login/register forms in DOM
   const activePane = page.locator('.ant-tabs-tabpane-active');
+  await expect(activePane.getByPlaceholder('确认密码')).toBeVisible();
   await activePane.getByPlaceholder('用户名').fill(username);
   await activePane.getByPlaceholder('密码', { exact: true }).fill(password);
   await activePane.getByPlaceholder('确认密码').fill(password);
@@ -113,15 +116,23 @@ export async function register(
   }
   await activePane.getByRole('button', { name: chineseText('注册') }).click();
   await page.waitForURL('/');
+  // First-run onboarding otherwise intercepts unrelated sidebar interactions.
+  await page.evaluate(() => localStorage.setItem('onboarding_completed', 'true'));
+  await page.reload();
+  await page.waitForURL('/');
 }
 
 /**
  * Log out via the user menu dropdown.
  */
 export async function logout(page: Page): Promise<void> {
+  // Token-injection auth guard tests can land on first-run onboarding. Mark it
+  // complete and reload so its modal cannot intercept the account-menu click.
+  await page.evaluate(() => localStorage.setItem('onboarding_completed', 'true'));
+  await page.reload();
   // Click the user avatar/name to open the dropdown
   await page.getByRole('button', { name: /用户/ }).click();
-  await page.getByText(chineseText('退出')).click();
+  await page.getByRole('menuitem', { name: /退出登录/ }).click();
   await page.waitForURL('/login');
 }
 
@@ -133,7 +144,40 @@ export async function logout(page: Page): Promise<void> {
  * Navigate to a sidebar menu item by text label.
  */
 export async function navigateTo(page: Page, menuLabel: string): Promise<void> {
-  await page.getByText(menuLabel).click();
+  const normalized = menuLabel.replace(/\s/g, '');
+  const knowledgeItems = ['知识库', '中药', '方剂', '外治理疗', '经络穴位', '分类浏览', '经典读诵', '知识图谱'];
+  const medicineItems = ['药箱', '吃药提醒', '提醒', '用药套餐', '服药计划', '药箱安全检查'];
+  const healthItems = ['健康档案', '体质自测', '健康日志', '健康管理', String.fromCharCode(23395,33410,20859,29983), '季节养生'];
+  const parent = knowledgeItems.includes(normalized)
+    ? '知识探索'
+    : medicineItems.includes(normalized)
+      ? '用药管理'
+      : healthItems.includes(normalized)
+        ? '健康管理'
+      : null;
+  const targetLabel = normalized === '提醒' ? '吃药提醒' : menuLabel.trim();
+  if (parent) {
+    const parentItem = page.getByRole('menuitem', { name: new RegExp(parent) }).first();
+    const targetItem = page.locator('.ant-menu-item').filter({ hasText: new RegExp(`^${targetLabel}$`) }).last();
+    if (!(await targetItem.isVisible().catch(() => false))) {
+      await parentItem.click();
+      await expect(targetItem).toBeVisible();
+    }
+    await targetItem.dispatchEvent('click');
+    return;
+  }
+
+  const label = normalized === 'AI助手' ? /AI\s?助手/ : new RegExp(`^${targetLabel}$`);
+  await page.locator('.ant-menu-item').filter({ hasText: label }).last().click();
+}
+
+/** Answer one option for every visible constitution question. */
+export async function answerVisibleConstitutionQuestions(page: Page): Promise<void> {
+  const cards = page.locator('.ant-card').filter({ has: page.locator('.ant-radio-group') });
+  const count = await cards.count();
+  for (let i = 0; i < count; i++) {
+    await cards.nth(i).locator('.ant-radio-wrapper').first().click();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -150,24 +194,38 @@ export async function selectAntdOption(
   triggerLocator: Locator,
   optionText: string,
 ): Promise<void> {
-  await triggerLocator.dispatchEvent('click');
-  await page.waitForTimeout(300); // Give AntD time to render the dropdown portal
+  await triggerLocator.click();
 
-  // Try role-based option first
-  const option = page.getByRole('option', { name: optionText }).first();
-  const isVisible = await option.isVisible().catch(() => false);
-
-  if (isVisible) {
-    await option.scrollIntoViewIfNeeded();
-    await option.click();
-  } else {
-    // Fallback: click by text inside the dropdown container
-    const dropdown = page.locator('.ant-select-dropdown').last();
-    const textOption = dropdown.getByText(optionText, { exact: true }).first();
-    await textOption.waitFor({ state: 'visible', timeout: 5000 });
-    await textOption.scrollIntoViewIfNeeded();
-    await textOption.click();
+  // AntD places the active listbox in a portal. Query rendered option elements
+  // directly because popup roles can be inconsistently exposed when closed
+  // Select portals remain mounted.
+  const triggerRole = await triggerLocator.getAttribute('role');
+  const combobox = triggerRole === 'combobox'
+    ? triggerLocator
+    : triggerLocator.locator('[role="combobox"]').first();
+  const options = page.locator(
+    '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option',
+  );
+  await expect.poll(async () => {
+    for (let i = 0; i < await options.count(); i++) {
+      const candidate = options.nth(i);
+      if ((await candidate.textContent())?.trim() === optionText && await candidate.isVisible()) return true;
+    }
+    return false;
+  }).toBe(true);
+  let option: Locator | undefined;
+  for (let i = 0; i < await options.count(); i++) {
+    const candidate = options.nth(i);
+    if ((await candidate.textContent())?.trim() === optionText && await candidate.isVisible()) {
+      option = candidate;
+      break;
+    }
   }
+  if (!option) throw new Error(`Visible Select option not found: ${optionText}`);
+  // AntD renders dropdowns in a portal and Playwright's normal click can fail
+  // viewport checks even when the option is present. Dispatch on the scoped option.
+  await option.dispatchEvent('click');
+  await expect(combobox).toHaveAttribute('aria-expanded', 'false');
 }
 
 /**
@@ -179,11 +237,13 @@ export function firstToast(page: Page): Locator {
 }
 
 // ---------------------------------------------------------------------------
-// AntD TimePicker.RangePicker helper
+// AntD TimePicker helper (supports the current multi-time reminder control and
+// older RangePicker based forms).
 // ---------------------------------------------------------------------------
 
 /**
- * Fill an AntD TimePicker.RangePicker by selecting cells from the dropdown panel.
+ * Set a reminder time. The current reminder form uses one TimePicker per slot;
+ * older forms used a TimePicker.RangePicker.
  *
  * AntD's fill() on the input does NOT set the form value — the picker requires
  * actual panel interaction. This helper opens the panel and clicks the hour/minute
@@ -200,18 +260,24 @@ export async function fillTimeRangePicker(
   hour: string = '08',
   minute: string = '00',
 ): Promise<void> {
-  const picker = drawer.locator('.ant-picker-range').first();
   const timeStr = `${hour}:${minute}`;
 
-  await picker.locator('input').nth(0).click();
-  await page.waitForTimeout(300);
-  await page.keyboard.type(timeStr);
-  await page.waitForTimeout(200);
-  await page.keyboard.press('Tab');
-  await page.waitForTimeout(300);
+  const rangePicker = drawer.locator('.ant-picker-range').first();
+  if (await rangePicker.count()) {
+    await rangePicker.locator('input').nth(0).click();
+    await page.waitForTimeout(300);
+    await page.keyboard.type(timeStr);
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(200);
+    await page.keyboard.type(timeStr);
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(200);
+    return;
+  }
 
-  await page.keyboard.type(timeStr);
-  await page.waitForTimeout(200);
-  await page.keyboard.press('Tab');
-  await page.waitForTimeout(300);
+  const input = drawer.locator('.ant-picker:not(.ant-picker-range) input').first();
+  await input.fill(timeStr);
+  await input.press('Enter');
+  await input.press('Tab');
+  await expect(input).toHaveValue(timeStr);
 }

@@ -42,6 +42,7 @@ from fastapi import (
 
 from app.auth import get_current_user
 from app.database import DbAdapter, get_db
+from app.upload_utils import read_upload_limited
 from app.knowledge_parser import (
     DOCUMENT_EXTENSIONS,
     ParseResult,
@@ -76,7 +77,7 @@ def _ext(filename: str) -> str:
 
 
 def _validate_upload(file: UploadFile) -> None:
-    """Validate extension + size before reading the file body."""
+    """Validate the extension; payload size is enforced while streaming reads."""
     ext = _ext(file.filename or "")
     if ext not in DOCUMENT_EXTENSIONS:
         raise HTTPException(
@@ -202,15 +203,7 @@ async def _process_one(
     """
     _validate_upload(file)
 
-    raw = await file.read()
-    if len(raw) > MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=(
-                f"文件过大：{len(raw)} 字节，"
-                f"上限 {MAX_UPLOAD_BYTES} 字节（20MB）"
-            ),
-        )
+    raw = await read_upload_limited(file, MAX_UPLOAD_BYTES, "文件过大，上限 20MB")
     if not raw:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import ExitStack
 from datetime import datetime
 from typing import Optional
 
@@ -28,6 +29,12 @@ def _get(client: httpx.Client, path: str, params: dict | None = None) -> dict:
         raise typer.Exit(1)
 
 
+def _get_with_params(path: str, params: dict | None = None) -> dict:
+    """Convenience GET for grouped domain commands."""
+    with httpx.Client() as client:
+        return _get(client, path, {k: v for k, v in (params or {}).items() if v is not None})
+
+
 def _post(client: httpx.Client, path: str, data: dict | None = None) -> dict:
     """POST request with error handling."""
     try:
@@ -42,11 +49,20 @@ def _post(client: httpx.Client, path: str, data: dict | None = None) -> dict:
         raise typer.Exit(1)
 
 
-def _get_authed(client: httpx.Client, path: str, token: str, params: dict | None = None) -> dict:
+def _get_authed(
+    client: httpx.Client,
+    path: str,
+    token: str,
+    params: dict | None = None,
+    *,
+    raw: bool = False,
+) -> dict | bytes:
     """GET request with Bearer token."""
     try:
         r = client.get(f"{BASE_URL}{path}", params=params, headers={"Authorization": f"Bearer {token}"})
         r.raise_for_status()
+        if raw:
+            return r.content
         return r.json()
     except httpx.ConnectError:
         typer.echo("❌ 无法连接到服务，请确认服务已启动")
@@ -56,14 +72,36 @@ def _get_authed(client: httpx.Client, path: str, token: str, params: dict | None
         raise typer.Exit(1)
 
 
-def _post_authed(client: httpx.Client, path: str, token: str, data: dict | None = None) -> dict:
+def _post_authed(client: httpx.Client, path: str, token: str, data: dict | None = None, *, raw: bool = False) -> dict | bytes:
     """POST request with Bearer token."""
     try:
         r = client.post(f"{BASE_URL}{path}", json=data, headers={"Authorization": f"Bearer {token}"})
         r.raise_for_status()
+        if raw:
+            return r.content
         return r.json()
     except httpx.ConnectError:
         typer.echo("❌ 无法连接到服务，请确认服务已启动")
+        raise typer.Exit(1)
+
+
+def _put_authed(client: httpx.Client, path: str, token: str, data: dict | None = None) -> dict:
+    try:
+        r = client.put(f"{BASE_URL}{path}", json=data, headers={"Authorization": f"Bearer {token}"})
+        r.raise_for_status()
+        return r.json()
+    except httpx.HTTPError as e:
+        typer.echo(f"❌ 请求失败: {e}")
+        raise typer.Exit(1)
+
+
+def _delete_authed(client: httpx.Client, path: str, token: str) -> dict:
+    try:
+        r = client.delete(f"{BASE_URL}{path}", headers={"Authorization": f"Bearer {token}"})
+        r.raise_for_status()
+        return r.json()
+    except httpx.HTTPError as e:
+        typer.echo(f"❌ 请求失败: {e}")
         raise typer.Exit(1)
     except httpx.HTTPStatusError as e:
         typer.echo(f"❌ 请求失败: {e.response.status_code} {e.response.text}")
@@ -80,6 +118,53 @@ def health():
     with httpx.Client() as client:
         result = _get(client, "/api/health")
     typer.echo(f"✅ 服务状态: {result['status']} | 版本: {result['version']}")
+
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+@app.command("notifications:list")
+def notifications_list(token: str = typer.Option(..., "--token")):
+    """列出当前用户通知。"""
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/notifications", token)
+    typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+@app.command("notifications:read")
+def notifications_read(notification_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    """将通知标记为已读。"""
+    with httpx.Client() as client:
+        result = _post_authed(client, f"/api/notifications/{notification_id}/read", token)
+    typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+@app.command("auth:logout")
+def auth_logout(token: str = typer.Option(..., "--token", help="当前访问令牌")):
+    """撤销当前访问令牌。"""
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/auth/logout", token)
+    typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+# ---------------------------------------------------------------------------
+# Additional high-frequency commands
+# ---------------------------------------------------------------------------
+@app.command("auth:me")
+def auth_me(token: str = typer.Option(..., "--token")):
+    """鏌ョ湅褰撳墠璁よ瘉鐢ㄦ埛銆"""
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/auth/me", token)
+    _print_json(result)
+
+
+@app.command("auth:consent-status")
+def auth_consent_status(token: str = typer.Option(..., "--token")):
+    """鏌ョ湅褰撳墠璐﹀彿鐨勫悓鎰忕姸鎬併"""
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/auth/consent-status", token)
+    _print_json(result)
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +207,25 @@ def herbs_detail(herb_id: str = typer.Argument(..., help="中药ID")):
     typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+@app.command("herbs:formulas")
+def herbs_formulas(herb_id: str = typer.Argument(..., help="中药ID")):
+    """列出包含指定中药的方剂。"""
+    with httpx.Client() as client:
+        result = _get(client, f"/api/herbs/{herb_id}/formulas")
+    _print_json(result)
+
+
+@app.command("herbs:compare")
+def herbs_compare(
+    herb_a: str = typer.Argument(..., help="第一味中药ID"),
+    herb_b: str = typer.Argument(..., help="第二味中药ID"),
+):
+    """对比两味中药的属性和配伍信息。"""
+    with httpx.Client() as client:
+        result = _get(client, f"/api/comparisons/herbs/{herb_a}/{herb_b}")
+    _print_json(result)
+
+
 # ---------------------------------------------------------------------------
 # Formulas
 # ---------------------------------------------------------------------------
@@ -145,6 +249,47 @@ def formulas_detail(formula_id: str = typer.Argument(..., help="方剂ID")):
     with httpx.Client() as client:
         result = _get(client, f"/api/formulas/{formula_id}")
     typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+@app.command("formulas:tree")
+def formulas_tree(formula_id: str = typer.Argument(..., help="方剂ID")):
+    """查看方剂的演化关系树。"""
+    with httpx.Client() as client:
+        result = _get(client, f"/api/formulas/{formula_id}/tree")
+    _print_json(result)
+
+
+@app.command("formulas:roles")
+def formulas_roles(formula_id: str = typer.Argument(..., help="方剂ID")):
+    """查看方剂中药味的君臣佐使分类。"""
+    with httpx.Client() as client:
+        result = _get(client, f"/api/formulas/{formula_id}/roles")
+    _print_json(result)
+
+
+@app.command("formulas:safety")
+def formulas_safety(
+    formula_id: str = typer.Argument(..., help="方剂ID"),
+    token: str = typer.Option(..., "--token", help="当前访问令牌"),
+):
+    """检查方剂安全性并输出适合语音播报的摘要。"""
+    with httpx.Client() as client:
+        check = _get_authed(client, f"/api/formulas/{formula_id}/safety-check", token)
+        speech = _get_authed(client, f"/api/formulas/{formula_id}/safety-text", token, raw=True)
+    _print_json({"safety_check": check})
+    typer.echo(speech.decode("utf-8"))
+
+
+@app.command("formulas:compare")
+def formulas_compare(formula_ids: str = typer.Argument(..., help="至少两个方剂ID，以逗号分隔")):
+    """对比多首方剂的组成、功效和安全信息。"""
+    ids = [value.strip() for value in formula_ids.split(",") if value.strip()]
+    if len(ids) < 2:
+        typer.echo("至少需要两个方剂ID")
+        raise typer.Exit(2)
+    with httpx.Client() as client:
+        result = _post(client, "/api/comparisons/formulas", data={"formula_ids": ids})
+    _print_json(result)
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +319,63 @@ def medicines_add(
 
 
 # ---------------------------------------------------------------------------
+# Additional medicine operations
+@app.command("medicines:detail")
+def medicines_detail(medicine_id: str = typer.Argument(...)):
+    """鏌ョ湅瀹跺涵鑽涓殑鑽搧璇︽儏銆"""
+    with httpx.Client() as client:
+        result = _get(client, f"/api/medicines/{medicine_id}")
+    _print_json(result)
+
+
+@app.command("medicines:update")
+def medicines_update(
+    medicine_id: str = typer.Argument(...),
+    payload: str = typer.Argument(..., help="瑕佹洿鏂扮殑 JSON 瀛楁瀵硅薄"),
+    token: str = typer.Option(..., "--token"),
+):
+    """鏇存柊瀹跺涵鑽涓殑鑽搧淇℃伅銆"""
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        typer.echo(f"JSON 鏃犳晥: {exc}")
+        raise typer.Exit(2) from exc
+    if not isinstance(data, dict):
+        typer.echo("payload 蹇呴』鏄 JSON 瀵硅薄")
+        raise typer.Exit(2)
+    with httpx.Client() as client:
+        result = _put_authed(client, f"/api/medicines/{medicine_id}", token, data)
+    _print_json(result)
+
+
+@app.command("medicines:delete")
+def medicines_delete(medicine_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    """鍒犻櫎瀹跺涵鑽涓殑鑽搧銆"""
+    with httpx.Client() as client:
+        result = _delete_authed(client, f"/api/medicines/{medicine_id}", token)
+    _print_json(result)
+
+
+@app.command("medicines:alerts")
+def medicines_alerts(token: str = typer.Option(..., "--token")):
+    """汇总药品质量、临期、过期和低库存提醒。"""
+    with httpx.Client() as client:
+        quality = _get_authed(client, "/api/medicines/quality-alerts", token)
+        stock = _get_authed(client, "/api/medicines/alerts/expiring", token)
+    _print_json({"quality_alerts": quality, "stock_and_expiry_alerts": stock})
+
+
+@app.command("medicines:quality")
+def medicines_quality(
+    medicine_id: str = typer.Argument(...),
+    token: str = typer.Option(..., "--token"),
+):
+    """检查单个药品的质量与保质期状态。"""
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/medicines/{medicine_id}/quality", token)
+    _print_json(result)
+
+
 # Safety
 # ---------------------------------------------------------------------------
 
@@ -280,7 +482,7 @@ def backup_restore(
     with httpx.Client() as client:
         login = _post(client, "/api/auth/login", data={"username": username, "password": password})
         result = _post_authed(
-            client, "/api/restore", token=login["access_token"], data={"filename": filename}
+            client, "/api/backup/restore", token=login["access_token"], data={"filename": filename}
         )
     typer.echo(f"✅ {result['message']} (文件: {result.get('filename', filename)})")
 
@@ -322,6 +524,19 @@ def reminders_today(
         typer.echo(f"  {icon} {s['time']} {s['title']} [{s['status']}]")
 
 
+@app.command("reminders:history")
+def reminders_history(
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+    days: int = typer.Option(30, "--days", min=1, max=365),
+):
+    """鏌ョ湅鎻愰啋鎵ц鍘嗗彶銆"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _get_authed(client, "/api/reminders/history", login["access_token"], {"days": days})
+    _print_json(result)
+
+
 @app.command("reminders:add")
 def reminders_add(
     title: str = typer.Option(..., "--title", "-t", help="提醒标题"),
@@ -354,7 +569,7 @@ def reminders_toggle(
     with httpx.Client() as client:
         login = _post(client, "/api/auth/login", data={"username": username, "password": password})
         token = login["access_token"]
-        result = _post_authed(client, f"/api/reminders/{reminder_id}/toggle", token=token, data={})
+        result = _put_authed(client, f"/api/reminders/{reminder_id}/toggle", token=token)
     state = "启用" if result["enabled"] else "暂停"
     typer.echo(f"✅ {result['title']} 已{state}")
 
@@ -411,6 +626,18 @@ def constitution_latest(
 # ---------------------------------------------------------------------------
 # Profile (spec §4.2)
 # ---------------------------------------------------------------------------
+
+@app.command("constitution:history")
+def constitution_history(
+    username: str = typer.Option(..., "--username", "-u"),
+    password: str = typer.Option(..., "--password", "-p"),
+):
+    """查看体质测评历史记录。"""
+    with httpx.Client() as client:
+        login = _post(client, "/api/auth/login", data={"username": username, "password": password})
+        result = _get_authed(client, "/api/constitution/history", login["access_token"])
+    _print_json(result)
+
 
 @app.command("profile:get")
 def profile_get(
@@ -551,6 +778,18 @@ def _delete_authed(client: httpx.Client, path: str, token: str) -> dict:
 # Safety V2 — Five-layer safety check (spec §15.3)
 # ---------------------------------------------------------------------------
 
+@app.command("seasonal-health")
+def seasonal_health(
+    token: str = typer.Option(..., "--token"),
+    term: Optional[str] = typer.Option(None, "--term", help="节气名称；省略时查询当前节气"),
+):
+    """查看当前或指定节气的养生建议。"""
+    params = {"term": term} if term else None
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/seasonal-health", token, params)
+    _print_json(result)
+
+
 @app.command("safety:check-v2")
 def safety_check_v2(
     herbs: list[str] = typer.Option([], "--herbs", "-h", help="中药名称（可多次指定）"),
@@ -678,6 +917,14 @@ def family_members_list(
         typer.echo(f"  [{m['id'][:8]}] {m.get('name', '')} — {m.get('relation', '')} ({m.get('gender', '未设置')})")
 
 
+@app.command("family-members:current")
+def family_members_current(token: str = typer.Option(..., "--token")):
+    """查看当前选中的家庭成员。"""
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/family-members/current", token)
+    _print_json(result)
+
+
 @app.command("family-members:add")
 def family_members_add(
     name: str = typer.Option(..., "--name", "-n", help="成员姓名"),
@@ -737,6 +984,15 @@ def triage_questionnaire(
         if len(red_flags) > 10:
             typer.echo(f"  ... (共 {len(red_flags)} 项)")
     typer.echo(f"\n⚠️ {result.get('disclaimer', '')}")
+
+
+@app.command("triage:reference")
+def triage_reference():
+    """查看分诊年龄分组和需要立即就医的危险信号。"""
+    with httpx.Client() as client:
+        age_groups = _get(client, "/api/triage/age-groups")
+        red_flags = _get(client, "/api/triage/red-flags")
+    _print_json({"age_groups": age_groups, "red_flags": red_flags})
 
 
 @app.command("triage:assess")
@@ -854,6 +1110,550 @@ def schemas_get(
     with httpx.Client() as client:
         result = _get(client, f"/api/schemas/{node_type}")
     typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+# ---------------------------------------------------------------------------
+# Additional API domains (small HTTP-only commands for agent workflows)
+# ---------------------------------------------------------------------------
+
+def _print_json(value: dict) -> None:
+    typer.echo(json.dumps(value, ensure_ascii=False, indent=2))
+
+
+@app.command("knowledge:list")
+def knowledge_list(
+    entity_type: str = typer.Argument(..., help="herbs/formulas/symptoms/meridians/acupoints/therapies"),
+    query: Optional[str] = typer.Option(None, "--query", "-q"),
+    category: Optional[str] = typer.Option(None, "--category", "-c"),
+    meridian: Optional[str] = typer.Option(None, "--meridian"),
+    page: int = typer.Option(1, "--page", min=1),
+    page_size: int = typer.Option(20, "--page-size", min=1, max=100),
+):
+    """按实体类型分页浏览结构化中医知识。"""
+    params = {"q": query, "category": category, "page": page, "page_size": page_size}
+    if meridian:
+        params["meridian"] = meridian
+    if entity_type == "herbs":
+        result = _get_with_params("/api/knowledge/herbs", params)
+    elif entity_type == "formulas":
+        result = _get_with_params("/api/knowledge/formulas", params)
+    elif entity_type == "symptoms":
+        result = _get_with_params("/api/knowledge/symptoms", params)
+    elif entity_type == "meridians":
+        result = _get_with_params("/api/knowledge/meridians", params)
+    elif entity_type == "acupoints":
+        result = _get_with_params("/api/knowledge/acupoints", params)
+    elif entity_type == "therapies":
+        result = _get_with_params("/api/knowledge/therapies", params)
+    else:
+        typer.echo("entity_type 可选值: herbs/formulas/symptoms/meridians/acupoints/therapies")
+        raise typer.Exit(2)
+    _print_json(result)
+
+
+@app.command("knowledge:detail")
+def knowledge_detail(
+    entity_type: str = typer.Argument(..., help="herbs/formulas/meridians/acupoints/therapies"),
+    entity_id: str = typer.Argument(...),
+):
+    """按类型和 ID 查看中医知识实体详情。"""
+    if entity_type == "herbs":
+        result = _get_with_params(f"/api/knowledge/herbs/{entity_id}", None)
+    elif entity_type == "formulas":
+        result = _get_with_params(f"/api/knowledge/formulas/{entity_id}", None)
+    elif entity_type == "meridians":
+        result = _get_with_params(f"/api/knowledge/meridians/{entity_id}", None)
+    elif entity_type == "acupoints":
+        result = _get_with_params(f"/api/knowledge/acupoints/{entity_id}", None)
+    elif entity_type == "therapies":
+        result = _get_with_params(f"/api/knowledge/therapies/{entity_id}", None)
+    else:
+        typer.echo("entity_type 可选值: herbs/formulas/meridians/acupoints/therapies")
+        raise typer.Exit(2)
+    _print_json(result)
+
+
+@app.command("knowledge:search")
+def knowledge_search(
+    query: str = typer.Argument(..., help="搜索关键词"),
+    entity_type: Optional[str] = typer.Option(None, "--type"),
+    page: int = typer.Option(1, "--page", min=1),
+    page_size: int = typer.Option(20, "--page-size", min=1, max=100),
+):
+    """搜索中医知识实体。"""
+    result = _get_with_params("/api/knowledge/search", {
+        "q": query, "type": entity_type, "page": page, "page_size": page_size,
+    })
+    _print_json(result)
+
+
+@app.command("knowledge:categories")
+def knowledge_categories():
+    """列出知识实体类型和分类。"""
+    _print_json(_get_with_params("/api/knowledge/categories", None))
+
+
+@app.command("knowledge:browse")
+def knowledge_browse(
+    entity_type: str = typer.Argument(..., help="实体类型"),
+    category: Optional[str] = typer.Option(None, "--category", "-c"),
+    query: Optional[str] = typer.Option(None, "--query", "-q"),
+    page: int = typer.Option(1, "--page", min=1),
+    page_size: int = typer.Option(20, "--page-size", min=1, max=100),
+):
+    """按实体类型、分类或关键词浏览知识库。"""
+    result = _get_with_params("/api/knowledge/browse", {
+        "type": entity_type, "category": category, "q": query,
+        "page": page, "page_size": page_size,
+    })
+    _print_json(result)
+
+
+@app.command("knowledge-hub:search")
+def knowledge_hub_search(
+    query: Optional[str] = typer.Option(None, "--query", "-q"),
+    entity_type: Optional[str] = typer.Option(None, "--type"),
+    category: Optional[str] = typer.Option(None, "--category"),
+    tag: Optional[str] = typer.Option(None, "--tag"),
+    page: int = typer.Option(1, "--page", min=1),
+    page_size: int = typer.Option(20, "--page-size", min=1, max=100),
+):
+    """搜索知识工作台实体。"""
+    result = _get_with_params("/api/knowledge-hub/search", {
+        "q": query, "type": entity_type, "category": category, "tag": tag,
+        "page": page, "page_size": page_size,
+    })
+    _print_json(result)
+
+
+@app.command("knowledge-hub:catalog")
+def knowledge_hub_catalog(limit: int = typer.Option(10, "--limit", min=1, max=100)):
+    """查看知识工作台类型、关系类型、近期和热门实体。"""
+    _print_json({
+        "types": _get_with_params("/api/knowledge-hub/types", None),
+        "relationship_types": _get_with_params("/api/knowledge-hub/relationship-types", None),
+        "recent": _get_with_params("/api/knowledge-hub/recent", {"limit": limit}),
+        "popular": _get_with_params("/api/knowledge-hub/popular", {"limit": limit}),
+    })
+
+
+@app.command("knowledge-hub:entity")
+def knowledge_hub_entity(
+    entity_id: str = typer.Argument(...),
+    direction: str = typer.Option("both", "--direction"),
+):
+    """查看知识工作台实体及其关系。"""
+    _print_json({
+        "entity": _get_with_params(f"/api/knowledge-hub/entities/{entity_id}", None),
+        "relationships": _get_with_params(
+            f"/api/knowledge-hub/entities/{entity_id}/relationships", {"direction": direction}
+        ),
+    })
+
+
+@app.command("rag:search")
+def rag_search(query: str = typer.Argument(...), top_k: int = typer.Option(10, "--top-k", min=1, max=100)):
+    """执行知识库 RAG 检索。"""
+    _print_json(_get_with_params("/api/rag/search", {"q": query, "top_k": top_k}))
+
+
+@app.command("rag:intent")
+def rag_intent(query: str = typer.Argument(...)):
+    """识别知识检索意图。"""
+    _print_json(_get_with_params("/api/rag/intent", {"q": query}))
+
+
+@app.command("rag:index-status")
+def rag_index_status():
+    """查看知识索引状态。"""
+    _print_json(_get_with_params("/api/rag/index/status", None))
+
+
+@app.command("api:request")
+def api_request(
+    method: str = typer.Argument(..., help="HTTP 方法：GET/POST/PUT/PATCH/DELETE"),
+    path: str = typer.Argument(..., help="带真实资源 ID 的 API 路径，例如 /api/auth/me"),
+    token: Optional[str] = typer.Option(None, "--token", help="可选 Bearer token"),
+    query: Optional[str] = typer.Option(None, "--query", help="查询参数 JSON 对象"),
+    body: Optional[str] = typer.Option(None, "--body", help="请求体 JSON"),
+    form: Optional[str] = typer.Option(None, "--form", help="表单字段 JSON 对象（可与 --file 同用）"),
+    file_paths: list[str] = typer.Option([], "--file", help="上传文件路径；多文件接口可重复传入"),
+    file_field: str = typer.Option("file", "--file-field", help="上传文件的表单字段名"),
+    output: Optional[str] = typer.Option(None, "--output", help="将非 JSON 响应保存到文件"),
+):
+    """调用任意已公开的 API 路由，覆盖专用命令尚未封装的端点。"""
+    method = method.upper()
+    if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+        typer.echo("HTTP 方法必须为 GET、POST、PUT、PATCH 或 DELETE")
+        raise typer.Exit(2)
+    if not path.startswith("/api/") or ".." in path.split("/"):
+        typer.echo("路径必须是 /api/ 下的站内 API 路径")
+        raise typer.Exit(2)
+    try:
+        params = json.loads(query) if query else None
+        payload = json.loads(body) if body else None
+        form_data = json.loads(form) if form else None
+    except json.JSONDecodeError as exc:
+        typer.echo(f"JSON 参数无效: {exc}")
+        raise typer.Exit(2) from exc
+    if params is not None and not isinstance(params, dict):
+        typer.echo("--query 必须是 JSON 对象")
+        raise typer.Exit(2)
+    if form_data is not None and not isinstance(form_data, dict):
+        typer.echo("--form 必须是 JSON 对象")
+        raise typer.Exit(2)
+    if form_data is not None and payload is not None:
+        typer.echo("--form 与 --body 不能同时使用")
+        raise typer.Exit(2)
+
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        with httpx.Client() as client:
+            request_options = {"params": params, "headers": headers}
+            if file_paths:
+                with ExitStack() as stack:
+                    uploads = [stack.enter_context(open(file_name, "rb")) for file_name in file_paths]
+                    request_options["data"] = form_data or {}
+                    request_options["files"] = [
+                        (file_field, (upload.name, upload)) for upload in uploads
+                    ]
+                    response = client.request(method, f"{BASE_URL}{path}", **request_options)
+            elif form_data is not None:
+                request_options["data"] = form_data
+                response = client.request(method, f"{BASE_URL}{path}", **request_options)
+            else:
+                request_options["json"] = payload
+                response = client.request(method, f"{BASE_URL}{path}", **request_options)
+            response.raise_for_status()
+    except httpx.ConnectError:
+        typer.echo("无法连接到服务，请确认服务已启动 (python -m uvicorn app.main:app)")
+        raise typer.Exit(1)
+    except httpx.HTTPStatusError as exc:
+        typer.echo(f"请求失败: {exc.response.status_code} {exc.response.text}")
+        raise typer.Exit(1)
+
+    if output:
+        with open(output, "wb") as file:
+            file.write(response.content)
+        typer.echo(f"响应已保存到 {output}")
+        return
+    try:
+        typer.echo(json.dumps(response.json(), ensure_ascii=False, indent=2))
+    except ValueError:
+        typer.echo(response.text)
+
+
+@app.command("medication-plans:list")
+def medication_plans_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/medication-plans", token)
+    _print_json(result)
+
+
+@app.command("medication-plans:create")
+def medication_plans_create(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/medication-plans", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("medication-plans:detail")
+def medication_plans_detail(plan_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/medication-plans/{plan_id}", token)
+    _print_json(result)
+
+
+@app.command("health-logs:list")
+def health_logs_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/health-logs", token)
+    _print_json(result)
+
+
+@app.command("health-logs:create")
+def health_logs_create(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/health-logs", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("health-logs:latest")
+def health_logs_latest(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/health-logs/latest", token)
+    _print_json(result)
+
+
+@app.command("medical-visits:list")
+def medical_visits_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/visits", token)
+    _print_json(result)
+
+
+@app.command("medical-visits:detail")
+def medical_visits_detail(visit_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/visits/{visit_id}", token)
+    _print_json(result)
+
+
+@app.command("reports:list")
+def reports_list(
+    token: str = typer.Option(..., "--token"),
+    period: str = typer.Option("30d", "--period", help="统计周期：7d、30d 或 90d"),
+):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/reports/health-trend", token, {"period": period})
+    _print_json(result)
+
+
+@app.command("reports:constitution")
+def reports_constitution(token: str = typer.Option(..., "--token")):
+    """生成体质调理报告。"""
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/reports/constitution", token)
+    _print_json(result)
+
+
+@app.command("reports:pre-visit")
+def reports_pre_visit(token: str = typer.Option(..., "--token")):
+    """生成就诊准备摘要。"""
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/reports/pre-visit", token)
+    _print_json(result)
+
+
+@app.command("reports:generate")
+def reports_generate(payload: str = typer.Argument(..., help="JSON 请求体"), output: str = typer.Option("health-report.pdf", "--output"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/reports/generate-pdf", token, json.loads(payload), raw=True)
+    with open(output, "wb") as file:
+        file.write(result)
+    typer.echo(f"已保存 PDF：{output}")
+
+
+@app.command("prescriptions:generate")
+def prescriptions_generate(payload: str = typer.Argument(..., help="JSON 请求体"), output: str = typer.Option("prescription.pdf", "--output"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/prescriptions/generate", token, json.loads(payload), raw=True)
+    with open(output, "wb") as file:
+        file.write(result)
+    typer.echo(f"已保存 PDF：{output}")
+
+
+@app.command("prescriptions:health-report")
+def prescriptions_health_report(payload: str = typer.Argument(..., help="JSON 请求体"), output: str = typer.Option("health-summary.pdf", "--output"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/prescriptions/health-report", token, json.loads(payload), raw=True)
+    with open(output, "wb") as file:
+        file.write(result)
+    typer.echo(f"已保存 PDF：{output}")
+
+
+@app.command("share-cards:list")
+def share_cards_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/share-cards/list", token)
+    _print_json(result)
+
+
+@app.command("share-cards:detail")
+def share_cards_detail(card_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/share-cards/{card_id}", token)
+    _print_json(result)
+
+
+@app.command("remote-assist:invite")
+def remote_assist_invite(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/remote-assist/invite", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("remote-assist:summary")
+def remote_assist_summary(user_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/remote-assist/{user_id}/summary", token)
+    _print_json(result)
+
+
+@app.command("remote-assist:weekly-report")
+def remote_assist_weekly_report(user_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/remote-assist/{user_id}/weekly-report", token)
+    _print_json(result)
+
+
+@app.command("therapies:list")
+def therapies_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/therapies", token)
+    _print_json(result)
+
+
+@app.command("therapies:categories")
+def therapies_categories():
+    """列出外治理疗分类。"""
+    with httpx.Client() as client:
+        result = _get(client, "/api/therapies/categories")
+    _print_json(result)
+
+
+@app.command("therapies:search")
+def therapies_search(
+    query: str = typer.Argument(..., help="搜索关键词"),
+    category: Optional[str] = typer.Option(None, "--category", "-c"),
+):
+    """按关键词查找外治理疗，并可按分类筛选。"""
+    params = {"q": query}
+    if category:
+        params["category"] = category
+    with httpx.Client() as client:
+        result = _get(client, "/api/therapies/search", params=params)
+    _print_json(result)
+
+
+@app.command("therapies:detail")
+def therapies_detail(therapy_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/therapies/{therapy_id}", token)
+    _print_json(result)
+
+
+@app.command("therapies:safety")
+def therapies_safety(therapy_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/therapies/{therapy_id}/safety", token)
+    _print_json(result)
+
+
+@app.command("classics:list")
+def classics_list():
+    with httpx.Client() as client:
+        result = _get(client, "/api/classics")
+    _print_json(result)
+
+
+@app.command("classics:detail")
+def classics_detail(classic_id: str = typer.Argument(...)):
+    with httpx.Client() as client:
+        result = _get(client, f"/api/classics/{classic_id}")
+    _print_json(result)
+
+
+@app.command("bookmarks:list")
+def bookmarks_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/bookmarks", token)
+    _print_json(result)
+
+
+@app.command("bookmarks:add")
+def bookmarks_add(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/bookmarks", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("bookmarks:detail")
+def bookmarks_detail(bookmark_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/bookmarks/{bookmark_id}", token)
+    _print_json(result)
+
+
+@app.command("formulations:recommend")
+def formulations_recommend(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/formulations/recommend", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("formulations:from-inventory")
+def formulations_from_inventory(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/formulations/from-inventory", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("favorites:list")
+def favorites_list(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/favorites", token)
+    _print_json(result)
+
+
+@app.command("favorites:add")
+def favorites_add(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/favorites", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("favorites:detail")
+def favorites_detail(entry_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, f"/api/favorites/{entry_id}", token)
+    _print_json(result)
+
+
+@app.command("favorites:check")
+def favorites_check(
+    entry_type: str = typer.Argument(...),
+    source_id: str = typer.Argument(...),
+    token: str = typer.Option(..., "--token"),
+):
+    """检查知识条目是否已加入收藏。"""
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/favorites/check", token, {
+            "entry_type": entry_type, "source_id": source_id,
+        })
+    _print_json(result)
+
+
+@app.command("knowledge-import:recent")
+def knowledge_import_recent(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/knowledge-import/recent", token)
+    _print_json(result)
+
+
+@app.command("knowledge-import:url")
+def knowledge_import_url(url: str = typer.Argument(..., help="要导入的网页地址"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/knowledge-hub/import-url", token, {"url": url})
+    _print_json(result)
+
+
+@app.command("knowledge-import:delete")
+def knowledge_import_delete(entry_id: str = typer.Argument(...), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _delete_authed(client, f"/api/knowledge-import/{entry_id}", token)
+    _print_json(result)
+
+
+@app.command("extractor:auto-extract")
+def extractor_auto_extract(payload: str = typer.Argument(..., help="JSON 请求体"), token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _post_authed(client, "/api/extractor/auto-extract", token, json.loads(payload))
+    _print_json(result)
+
+
+@app.command("extractor:recent")
+def extractor_recent(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/extractor/recent", token)
+    _print_json(result)
+
+
+@app.command("dashboard:get")
+def dashboard_get(token: str = typer.Option(..., "--token")):
+    with httpx.Client() as client:
+        result = _get_authed(client, "/api/dashboard/stats", token)
+    _print_json(result)
 
 
 if __name__ == "__main__":

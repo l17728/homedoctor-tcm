@@ -28,6 +28,8 @@ data/
 *.db-journal
 *.sqlite
 *.sqlite3
+backups/
+*.db.enc
 
 # IDE
 .vscode/
@@ -61,3 +63,6 @@ docker-compose.override.yml
 .secrets
 frontend/tsconfig.tsbuildinfo
 .playwright-mcp/
+# Local pytest scratch workspaces
+backend/.tmp-review/
+backend/.tmp-tests/

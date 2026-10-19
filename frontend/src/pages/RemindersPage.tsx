@@ -19,6 +19,7 @@ import {
   Tag,
   Radio,
   Tooltip,
+  Alert,
 } from 'antd';
 import {
   PlusOutlined,
@@ -28,6 +29,8 @@ import {
   CheckCircleOutlined,
   HistoryOutlined,
   UndoOutlined,
+  ReloadOutlined,
+  CloseOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
@@ -111,7 +114,7 @@ function MultiTimePicker({ value = [], onChange }: MultiTimePickerProps) {
               format="HH:mm"
               minuteStep={5}
               style={{ flex: 1 }}
-              onChange={(time) => handleChange(idx, time)}
+              onChange={(time: dayjs.Dayjs | null) => handleChange(idx, time)}
               allowClear={false}
             />
             <Button
@@ -121,7 +124,8 @@ function MultiTimePicker({ value = [], onChange }: MultiTimePickerProps) {
               onClick={() => handleRemove(idx)}
               disabled={times.length <= 1}
               aria-label="删除该时间"
-            />
+              style={{ minHeight: 44, paddingInline: 12 }}
+            >删除</Button>
           </Space>
         ))}
         <Button
@@ -144,6 +148,7 @@ export default function RemindersPage() {
   const [history, setHistory] = useState<CheckInLog[]>([]);
   const [historySlots, setHistorySlots] = useState<HistorySlot[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Reminder | null>(null);
   const [form] = Form.useForm<FormValues>();
@@ -152,6 +157,7 @@ export default function RemindersPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const [list, today, hist] = await Promise.all([
         getReminders(),
@@ -163,7 +169,7 @@ export default function RemindersPage() {
       setHistory(hist?.items ?? []);
       setHistorySlots(hist?.slots ?? []);
     } catch {
-      // handled
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -179,6 +185,7 @@ export default function RemindersPage() {
     form.setFieldsValue({
       linkType: 'none',
       frequency: 'daily',
+      times: [dayjs().hour(8).minute(0).second(0)],
       enabled: true,
       startDate: dayjs(),
     });
@@ -237,8 +244,11 @@ export default function RemindersPage() {
       }
       setDrawerOpen(false);
       loadData();
-    } catch {
-      // validation error
+    } catch (err) {
+      // antd 表单校验错误为普通对象（含 errorFields），不弹提示；API 失败（Error）才提示
+      if (err instanceof Error) {
+        message.error('保存失败，请检查网络后重试');
+      }
     }
   };
 
@@ -316,7 +326,7 @@ export default function RemindersPage() {
       title: '状态',
       key: 'enabled',
       render: (_: unknown, r: Reminder) => (
-        <Switch checked={r.enabled} size="small" onChange={() => handleToggle(r.id)} />
+        <Switch checked={r.enabled} onChange={() => handleToggle(r.id)} />
       ),
     },
     {
@@ -326,11 +336,11 @@ export default function RemindersPage() {
       width: 160,
       render: (_: unknown, r: Reminder) => (
         <Space>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(r)}>
+          <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(r)}>
             编辑
           </Button>
           <Popconfirm title="确定删除该提醒吗？" onConfirm={() => handleDelete(r.id)} okText="确定" cancelText="取消">
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+            <Button type="link" danger icon={<DeleteOutlined />}>
               删除
             </Button>
           </Popconfirm>
@@ -350,6 +360,17 @@ export default function RemindersPage() {
 
       {loading ? (
         <Skeleton active />
+      ) : loadError ? (
+        <Alert
+          type="error"
+          showIcon
+          message="提醒加载失败，请检查网络"
+          action={
+            <Button icon={<ReloadOutlined />} onClick={() => loadData()}>
+              重试
+            </Button>
+          }
+        />
       ) : (
         <>
           <Radio.Group
@@ -389,19 +410,19 @@ export default function RemindersPage() {
                              {slot.time}
                            </Tag>
                            <span style={{ fontSize: 16 }}>{slot.title}</span>
-                           {slot.dosage && <span style={{ color: '#888' }}>{slot.dosage}</span>}
+                           {slot.dosage && <span style={{ color: '#666' }}>{slot.dosage}</span>}
                          </div>
                          <Space>
-                           {slot.status === '待服' && (
-                             <Button
-                               type="primary"
-                               size="small"
-                               icon={<CheckCircleOutlined />}
-                               onClick={() => handleCheckIn(slot.reminder_id, slot.time)}
-                             >
-                               打卡
-                             </Button>
-                           )}
+                            {slot.status === '待服' && (
+                              <Button
+                                type="primary"
+                                icon={<CheckCircleOutlined />}
+                                style={{ minHeight: 44 }}
+                                onClick={() => handleCheckIn(slot.reminder_id, slot.time)}
+                              >
+                                打卡
+                              </Button>
+                            )}
                            <StatusTag status={slot.status} colorMap={REMINDER_STATUS_COLOR} />
                          </Space>
                       </div>
@@ -426,7 +447,7 @@ export default function RemindersPage() {
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <Tag color={log.taken ? 'green' : 'red'} style={{ fontSize: 13 }}>
+                          <Tag color={log.taken ? 'green' : 'red'} style={{ fontSize: 14 }}>
                             {log.date}
                           </Tag>
                           <span style={{ fontSize: 15 }}>
@@ -485,12 +506,12 @@ export default function RemindersPage() {
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <Tag style={{ fontSize: 13 }}>{slot.date}</Tag>
+                          <Tag style={{ fontSize: 14 }}>{slot.date}</Tag>
                           <Tag color="blue" style={{ fontSize: 14, padding: '2px 8px' }}>
                             {slot.time}
                           </Tag>
                           <span style={{ fontSize: 16 }}>{slot.title}</span>
-                          {slot.dosage && <span style={{ color: '#888', fontSize: 14 }}>{slot.dosage}</span>}
+                          {slot.dosage && <span style={{ color: '#666', fontSize: 14 }}>{slot.dosage}</span>}
                         </div>
                         <Space wrap>
                           {slot.status === '已服' && slot.retroactive && (
@@ -508,10 +529,9 @@ export default function RemindersPage() {
                             >
                               <Button
                                 type="default"
-                                size="small"
                                 icon={<UndoOutlined />}
                                 loading={isRetroLoading}
-                                style={{ borderColor: '#faad14', color: '#faad14' }}
+                                style={{ borderColor: '#faad14', color: '#faad14', minHeight: 44 }}
                               >
                                 补打
                               </Button>
@@ -539,6 +559,12 @@ export default function RemindersPage() {
           <Button type="primary" onClick={handleSubmit}>
             提交
           </Button>
+        }
+        footer={
+          <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button icon={<CloseOutlined />} onClick={() => setDrawerOpen(false)} style={{ minHeight: 48 }}>取消</Button>
+            <Button type="primary" icon={<CheckCircleOutlined />} onClick={handleSubmit} style={{ minHeight: 48 }}>保存</Button>
+          </Space>
         }
       >
         <Form form={form} layout="vertical">

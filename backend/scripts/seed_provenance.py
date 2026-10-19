@@ -17,6 +17,7 @@ async def main():
             "SELECT id, title FROM knowledge_entities WHERE status='active' AND tenant_id IS NULL"
         )
         entities = await cursor.fetchall()
+        await cursor.close()
 
         count = 0
         for eid, title in entities:
@@ -38,6 +39,7 @@ async def main():
 
         cursor2 = await db.execute("SELECT COUNT(*) FROM knowledge_provenance")
         total = (await cursor2.fetchone())[0]
+        await cursor2.close()
         print(f"Seeded {count} provenance records (trust_level=S). Total: {total}")
 
 

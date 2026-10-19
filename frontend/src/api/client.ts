@@ -31,9 +31,10 @@ export async function request<T>(
 
   const response = await fetch(url, { ...options, headers });
 
-  if (response.status === 401) {
+  if (response.status === 401 && token) {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('current_member_id');
     window.location.href = '/login';
     throw new ApiError(401, '未授权，请重新登录');
   }
@@ -72,9 +73,10 @@ export async function requestUpload<T>(
 
   const response = await fetch(url, { method: 'POST', headers, body });
 
-  if (response.status === 401) {
+  if (response.status === 401 && token) {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('current_member_id');
     window.location.href = '/login';
     throw new ApiError(401, '未授权，请重新登录');
   }

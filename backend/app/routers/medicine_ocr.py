@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.auth import get_current_user
 from app.database import DbAdapter, get_db
+from app.upload_utils import read_upload_limited
 from app.knowledge_parser import parse_image
 
 logger = logging.getLogger(__name__)
@@ -187,18 +188,12 @@ async def ocr_recognize(
             ),
         )
 
-    raw = await file.read()
+    raw = await read_upload_limited(file, _MAX_BYTES, "文件过大，大小上限 10MB")
     if not raw:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="文件内容为空",
         )
-    if len(raw) > _MAX_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"文件过大：{len(raw)} 字节，上限 {_MAX_BYTES} 字节（10MB）",
-        )
-
     # Write to temp file for tesseract subprocess
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=ext, prefix="ocr_")
     try:

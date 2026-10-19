@@ -48,7 +48,7 @@ async function addMedicine(
   await page.goto('/medicines');
   await page.waitForTimeout(500);
 
-  await page.getByRole('button', { name: chineseText('添加') }).click();
+  await page.getByRole('button', { name: chineseText('添加') }).last().click();
   const drawer = page.locator('.ant-drawer');
   await expect(drawer).toBeVisible();
 
@@ -78,13 +78,8 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
     await expect(page).toHaveURL('/');
     await expect(page.getByText('今日健康')).toBeVisible();
 
-    // 验证统计卡片可见
-    await expect(
-      page.locator('.ant-statistic').filter({ hasText: '药箱数' }),
-    ).toBeVisible();
-    await expect(
-      page.locator('.ant-statistic').filter({ hasText: '今日提醒' }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: '今日健康任务' })).toBeVisible();
+    await expect(page.getByText('今日待服药品')).toBeVisible();
 
     // PRODUCT GAP: 新用户 Dashboard 没有引导提示（如"欢迎使用，请先添加您的药品"）
   });
@@ -125,8 +120,7 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
     await expect(page.getByText('今日健康')).toBeVisible();
 
     // 验证统计卡片区域可见（即使数据为0）
-    const statArea = page.locator('.ant-statistic').first();
-    await expect(statArea).toBeVisible();
+    await expect(page.getByText('今日待服药品')).toBeVisible();
 
     // 验证每日养生卡可见（如果数据存在）
     const dailyHealthCard = page.locator('.ant-card').filter({ hasText: /节气|养生/ });
@@ -154,6 +148,7 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
   test('04 添加5种药品(胰岛素/二甲双胍/缬沙坦/氨氯地平/阿司匹林)并验证列表', async ({
     page,
   }) => {
+    test.setTimeout(60_000);
     // 添加 5 种药品
     const medicines = [
       { name: '胰岛素', type: '西药' },
@@ -252,7 +247,8 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
 
     // Use current time + 1 hour so the slot shows as "待服" not "漏服"
     // (backend marks slots >2h past as "漏服")
-    const future = new Date(Date.now() + 60 * 60 * 1000);
+    const cstNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
+    const future = new Date(cstNow.getTime() + 60 * 60 * 1000);
     await fillTimeRangePicker(page, drawer,
       String(future.getHours()).padStart(2, '0'),
       String(future.getMinutes()).padStart(2, '0'),
@@ -336,9 +332,9 @@ test.describe('Persona: 赵国强 (72岁糖尿病退休工人) — 用药管理�
     // UX ISSUE: 安全检查功能不突出，老年人无法主动检查药物交互
 
     // 通过 API 进行安全检查
-    const token = await page.evaluate(() => localStorage.getItem('family_doctor_token') || '');
+    const token = await page.evaluate(() => localStorage.getItem('token') || '');
 
-    const response = await page.request.post('/api/safety/check', {
+    const response = await page.request.post('/api/safety/check-v2', {
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,

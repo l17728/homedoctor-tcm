@@ -76,7 +76,7 @@ test.describe('Remote Assist — Invite Modal', () => {
     await page.getByRole('button', { name: /邀请家属/ }).click();
     await page.getByRole('button', { name: /发送邀请/ }).click();
 
-    await expect(page.getByText(/请输入用户名/)).toBeVisible();
+    await expect(page.locator('.ant-form-item-has-error').getByText(/请输入用户名/)).toBeVisible();
   });
 });
 

@@ -7,7 +7,10 @@ import asyncio, json, os, aiosqlite
 
 DB = os.environ.get("HOMEDOCTOR_DATABASE_URL", "data/homedoctor.db")
 
-API_KEY = "URpUJXRfNpfO5OHmF-zalcvvfcAxGRvCl4FYfwdIeklNawnXuCVdzhQ0q_xzQR4Huo-ZqDr8BZUXL7lhqApNyw"
+# SECURITY: never hardcode keys in the repo — read from the environment
+# (same variable the app uses). Model presets are skipped until one is set;
+# a blank credential must never be stored in the database.
+API_KEY = os.environ.get("HOMEDOCTOR_LLM_API_KEY", "")
 ENDPOINT = "https://api.modelarts-maas.com/openai/v1/chat/completions"
 
 MODELS = [
@@ -27,6 +30,9 @@ MODELS = [
 
 
 async def main():
+    if not API_KEY:
+        print("HOMEDOCTOR_LLM_API_KEY is unset; skipping optional AI model presets")
+        return
     async with aiosqlite.connect(DB) as db:
         for m in MODELS:
             await db.execute(

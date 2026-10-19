@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from app.auth import get_current_user
 from app.database import DbAdapter, get_db
+from app.upload_utils import read_upload_limited
 from app.repository import current_tenant_id, current_member_id
 
 router = APIRouter(prefix="/api/visits", tags=["medical-visits"])
@@ -178,9 +179,7 @@ async def ocr_lab_report(
     import tempfile
     import os
 
-    content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="文件过大（>10MB）")
+    content = await read_upload_limited(file, 10 * 1024 * 1024, "文件过大（>10MB）")
 
     suffix = ".png"
     if file.content_type and "jpeg" in file.content_type:

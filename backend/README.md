@@ -207,10 +207,6 @@ python3 -m pytest tests/ -k "safety" -v
 ```bash
 python3 cli.py --help
 
-# 用户管理
-python3 cli.py users:list
-python3 cli.py users:create --username USER --password PASS
-
 # 中药
 python3 cli.py herbs:list --page 1
 python3 cli.py herbs:search --query "黄芪"
@@ -222,7 +218,20 @@ python3 cli.py formulas:detail --id FORMULA_ID
 
 # 安全
 python3 cli.py safety:check --herbs "附子" --herbs "半夏"
+
+# 任意 API 路由（适用于尚无领域专用命令的端点）
+python3 cli.py api:request GET /api/auth/me --token "$TOKEN"
+python3 cli.py api:request POST /api/constitution/assess --body '{"answers":[]}'
+python3 cli.py auth:logout --token "$TOKEN"
+python3 cli.py api:request POST /api/knowledge-import/upload --token "$TOKEN" --file source.pdf --file-field file
+# 多文件端点可重复传入 --file，并按路由字段名设置 --file-field（例如 files）
 ```
+
+CLI 以专用领域命令作为常用入口，并提供 `api:request METHOD PATH` 覆盖所有
+OpenAPI 中 `/api/` 路由。它只连接配置的本机服务地址，不访问数据库；可用
+`--token` 传 Bearer token、`--query` 和 `--body` 传 JSON，`--form`/`--file` 处理表单
+与上传，`--output` 保存非 JSON 响应。`tests/test_cli_smoke.py` 会将 OpenAPI 每个方法/路径与专用命令或该通用命令的
+覆盖能力对照；当前 OpenAPI 没有排除的 API 路由，框架默认路由不属于 `/api/`。
 
 ## 环境变量
 

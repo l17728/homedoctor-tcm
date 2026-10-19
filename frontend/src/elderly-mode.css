@@ -99,3 +99,32 @@
 .elderly-mode .ant-progress-text {
   font-size: 18px;
 }
+
+.elderly-mode .ant-picker,
+.elderly-mode .ant-collapse,
+.elderly-mode .ant-descriptions,
+.elderly-mode .ant-list,
+.elderly-mode .ant-statistic,
+.elderly-mode .ant-timeline {
+  font-size: 18px;
+}
+
+.elderly-mode .ant-pagination {
+  font-size: 16px;
+}
+
+.elderly-mode .ant-form-item-explain-error {
+  font-size: 16px;
+}
+
+.elderly-mode .ant-modal-confirm-body {
+  font-size: 18px;
+}
+
+.elderly-mode .ant-modal-confirm-btns .ant-btn {
+  min-height: 44px;
+}
+
+body:not(.elderly-mode) .ant-table .ant-btn {
+  min-height: 44px;
+}

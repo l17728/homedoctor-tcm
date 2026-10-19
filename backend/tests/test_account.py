@@ -17,22 +17,14 @@ from httpx import AsyncClient
 
 from app.database import SqliteAdapter
 
-# ---------------------------------------------------------------------------
-# Register the account router for testing.
-# In production, main.py includes this router. The task says not to modify
-# main.py, so we register it here at test-module import time (idempotent).
-# ---------------------------------------------------------------------------
-import app.main as _main_mod
-from app.routers import account as _account_router_mod
-
-if not any(
-    getattr(r, "path", "").startswith("/api/account") for r in _main_mod.app.routes
-):
-    _main_mod.app.include_router(_account_router_mod.router)
-
 
 async def _seed_user_data(db: SqliteAdapter, user_id: str, family_id: str) -> None:
-    """Insert test rows into every user-owned table for the given user."""
+    """Insert test rows into every user-owned table for the given user.
+
+    Covers all tables of the account deletion plan: user_id-keyed, sharer/
+    viewer-keyed (family_shares), tenant-keyed private knowledge entities
+    and their children (chunks/embeddings/provenance/conflicts/relations).
+    """
     await db.execute(
         "INSERT INTO conversations (id, user_id, title, model_id, messages, reasoning_trace) "
         "VALUES (?, ?, ?, ?, ?, ?)",
@@ -77,6 +69,110 @@ async def _seed_user_data(db: SqliteAdapter, user_id: str, family_id: str) -> No
         "INSERT INTO medication_logs (id, family_member_id, date, medicine_id) "
         "VALUES (?, ?, ?, ?)",
         (str(uuid.uuid4()), member_id, "2026-01-15", "some-medicine-id"),
+    )
+
+    # --- PIPL gap: health / visit / plan / share data -------------------
+    await db.execute(
+        "INSERT INTO health_logs (id, user_id, log_date, systolic, diastolic) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), user_id, "2026-01-15", 130, 85),
+    )
+    await db.execute(
+        "INSERT INTO medical_visits (id, user_id, visit_date, hospital, diagnosis) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), user_id, "2026-01-10", "市医院", "高血压"),
+    )
+    plan_id = str(uuid.uuid4())
+    await db.execute(
+        "INSERT INTO medication_plans (id, user_id, name, status) "
+        "VALUES (?, ?, ?, ?)",
+        (plan_id, user_id, "降压套餐", "active"),
+    )
+    await db.execute(
+        "INSERT INTO plan_items (id, plan_id, medicine_name) VALUES (?, ?, ?)",
+        (str(uuid.uuid4()), plan_id, "硝苯地平"),
+    )
+    await db.execute(
+        "INSERT INTO share_cards (id, user_id, family_id, card_type, card_data) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), user_id, family_id, "health_summary", "{}"),
+    )
+    # family_shares — user is sharer in one row, viewer in another
+    await db.execute(
+        "INSERT INTO family_shares (id, sharer_id, viewer_id, role) VALUES (?, ?, ?, ?)",
+        (str(uuid.uuid4()), user_id, str(uuid.uuid4()), "家属查看"),
+    )
+    await db.execute(
+        "INSERT INTO family_shares (id, sharer_id, viewer_id, role) VALUES (?, ?, ?, ?)",
+        (str(uuid.uuid4()), str(uuid.uuid4()), user_id, "家属查看"),
+    )
+
+    # --- tenant-private knowledge entities + children -------------------
+    ent1, ent2 = str(uuid.uuid4()), str(uuid.uuid4())
+    for eid in (ent1, ent2):
+        await db.execute(
+            "INSERT INTO knowledge_entities (id, entity_type, source_table, title, tenant_id, source_type) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (eid, "herb", "knowledge_entities", "私有实体", family_id, "user"),
+        )
+    chunk_id = str(uuid.uuid4())
+    await db.execute(
+        "INSERT INTO knowledge_chunks (id, entity_id, chunk_text) VALUES (?, ?, ?)",
+        (chunk_id, ent1, "私有实体内容分块"),
+    )
+    await db.execute(
+        "INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES (?, ?)",
+        (chunk_id, "[0.1]"),
+    )
+    await db.execute(
+        "INSERT INTO knowledge_provenance (id, entity_id, source_type, imported_by) "
+        "VALUES (?, ?, ?, ?)",
+        (str(uuid.uuid4()), ent1, "url", user_id),
+    )
+    await db.execute(
+        "INSERT INTO knowledge_conflicts (id, entity_id, field, conflict_type) "
+        "VALUES (?, ?, ?, ?)",
+        (str(uuid.uuid4()), ent1, "功效", "contradiction"),
+    )
+    await db.execute(
+        "INSERT INTO entity_relationships (id, source_entity_id, target_entity_id, relationship_type, tenant_id) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), ent1, ent2, "配伍", family_id),
+    )
+
+    # --- misc user_id-keyed tables --------------------------------------
+    classic_id, chapter_id = str(uuid.uuid4()), str(uuid.uuid4())
+    await db.execute(
+        "INSERT INTO classics (id, title) VALUES (?, ?)",
+        (classic_id, "黄帝内经"),
+    )
+    await db.execute(
+        "INSERT INTO classic_chapters (id, classic_id, chapter_number, title, original_text) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (chapter_id, classic_id, 1, "上古天真论", "昔在黄帝……"),
+    )
+    await db.execute(
+        "INSERT INTO classic_annotations (id, user_id, classic_id, chapter_id, start_offset, end_offset, selected_text, content) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), user_id, classic_id, chapter_id, 0, 4, "上古天真", "注解内容"),
+    )
+    await db.execute(
+        "INSERT INTO classic_study_notes (id, user_id, classic_id, chapter_id, content) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), user_id, classic_id, chapter_id, "学习笔记"),
+    )
+    await db.execute(
+        "INSERT INTO knowledge_feedback (id, entity_id, user_id, rating) "
+        "VALUES (?, ?, ?, ?)",
+        (str(uuid.uuid4()), ent1, user_id, "like"),
+    )
+    await db.execute(
+        "INSERT INTO user_interest_profiles (user_id, interest_domain) VALUES (?, ?)",
+        (user_id, "补气"),
+    )
+    await db.execute(
+        "INSERT INTO user_notes (id, entity_id, user_id, content) VALUES (?, ?, ?, ?)",
+        (str(uuid.uuid4()), ent1, user_id, "个人笔记"),
     )
 
     # audit_log — a prior audit entry that should be deleted
@@ -140,6 +236,48 @@ async def test_delete_account_returns_confirmation(
 
 
 @pytest.mark.asyncio
+async def test_delete_account_rolls_back_all_rows_when_a_delete_fails(
+    client: AsyncClient, auth_headers: dict, db: SqliteAdapter, monkeypatch
+):
+    """A mid-plan failure must preserve user data and the pre-delete audit chain."""
+    user = await db.query_one(
+        "SELECT id, family_id FROM users WHERE username = 'testuser'"
+    )
+    assert user is not None
+    user_id, family_id = user["id"], user["family_id"]
+    health_log_id = str(uuid.uuid4())
+    await db.execute(
+        "INSERT INTO health_logs (id, user_id, log_date, systolic) VALUES (?, ?, ?, ?)",
+        (health_log_id, user_id, "2026-01-15", 125),
+    )
+    before_audit_count = await db.query_one(
+        "SELECT COUNT(*) AS n FROM audit_log WHERE tenant_id = ?", (family_id,)
+    )
+
+    real_execute = db.execute
+
+    async def fail_on_reminder_delete(sql, params=()):
+        if sql.lstrip().upper().startswith("DELETE FROM REMINDERS"):
+            raise RuntimeError("simulated database write failure")
+        return await real_execute(sql, params)
+
+    monkeypatch.setattr(db, "execute", fail_on_reminder_delete)
+    with pytest.raises(RuntimeError, match="simulated database write failure"):
+        await client.delete("/api/account", headers=auth_headers)
+    monkeypatch.setattr(db, "execute", real_execute)
+
+    assert await db.query_one("SELECT id FROM users WHERE id = ?", (user_id,))
+    assert await db.query_one(
+        "SELECT id FROM health_logs WHERE id = ?", (health_log_id,)
+    )
+    after_audit_count = await db.query_one(
+        "SELECT COUNT(*) AS n FROM audit_log WHERE tenant_id = ?", (family_id,)
+    )
+    assert after_audit_count["n"] == before_audit_count["n"]
+    assert db.in_transaction is False
+
+
+@pytest.mark.asyncio
 async def test_delete_account_requires_auth(db: SqliteAdapter):
     """DELETE /api/account without token returns 401."""
     import app.database as db_mod
@@ -176,6 +314,15 @@ async def test_delete_removes_all_user_data(
         ("constitution_assessments", "user_id"),
         ("user_profiles", "user_id"),
         ("reminders", "user_id"),
+        ("health_logs", "user_id"),
+        ("medical_visits", "user_id"),
+        ("medication_plans", "user_id"),
+        ("share_cards", "user_id"),
+        ("classic_annotations", "user_id"),
+        ("classic_study_notes", "user_id"),
+        ("knowledge_feedback", "user_id"),
+        ("user_interest_profiles", "user_id"),
+        ("user_notes", "user_id"),
         ("family_members", "user_id"),
     ]:
         row = await db.query_one(
@@ -183,6 +330,12 @@ async def test_delete_removes_all_user_data(
             (user_id,),
         )
         assert row["cnt"] > 0, f"{table} should have data before deletion"
+
+    row = await db.query_one(
+        "SELECT COUNT(*) AS cnt FROM family_shares WHERE sharer_id = ? OR viewer_id = ?",
+        (user_id, user_id),
+    )
+    assert row["cnt"] > 0
 
     med_row = await db.query_one(
         "SELECT COUNT(*) AS cnt FROM medicines WHERE tenant_id = ?",
@@ -209,6 +362,15 @@ async def test_delete_removes_all_user_data(
         ("constitution_assessments", "user_id"),
         ("user_profiles", "user_id"),
         ("reminders", "user_id"),
+        ("health_logs", "user_id"),
+        ("medical_visits", "user_id"),
+        ("medication_plans", "user_id"),
+        ("share_cards", "user_id"),
+        ("classic_annotations", "user_id"),
+        ("classic_study_notes", "user_id"),
+        ("knowledge_feedback", "user_id"),
+        ("user_interest_profiles", "user_id"),
+        ("user_notes", "user_id"),
         ("family_members", "user_id"),
     ]:
         row = await db.query_one(
@@ -216,6 +378,25 @@ async def test_delete_removes_all_user_data(
             (user_id,),
         )
         assert row["cnt"] == 0, f"{table} should be empty after deletion"
+
+    # family_shares — gone in BOTH roles (sharer and viewer)
+    row = await db.query_one(
+        "SELECT COUNT(*) AS cnt FROM family_shares WHERE sharer_id = ? OR viewer_id = ?",
+        (user_id, user_id),
+    )
+    assert row["cnt"] == 0
+
+    # tenant-private knowledge entities + children all removed
+    row = await db.query_one(
+        "SELECT COUNT(*) AS cnt FROM knowledge_entities WHERE tenant_id = ?",
+        (family_id,),
+    )
+    assert row["cnt"] == 0
+    row = await db.query_one(
+        "SELECT COUNT(*) AS cnt FROM entity_relationships WHERE tenant_id = ?",
+        (family_id,),
+    )
+    assert row["cnt"] == 0
 
     # medicines (tenant-scoped)
     med_row = await db.query_one(
@@ -366,6 +547,10 @@ async def test_other_users_data_preserved(
         ("constitution_assessments", "user_id"),
         ("user_profiles", "user_id"),
         ("reminders", "user_id"),
+        ("health_logs", "user_id"),
+        ("medical_visits", "user_id"),
+        ("medication_plans", "user_id"),
+        ("share_cards", "user_id"),
         ("family_members", "user_id"),
     ]:
         row = await db.query_one(
@@ -373,6 +558,13 @@ async def test_other_users_data_preserved(
             (user_b["id"],),
         )
         assert row["cnt"] > 0, f"{table} for user B should be intact"
+
+    # user B's tenant-private knowledge entities are intact
+    row = await db.query_one(
+        "SELECT COUNT(*) AS cnt FROM knowledge_entities WHERE tenant_id = ?",
+        (user_b["family_id"],),
+    )
+    assert row["cnt"] > 0
 
     # user B's medicines (tenant-scoped)
     med_row = await db.query_one(
@@ -440,3 +632,93 @@ async def test_preview_after_seeding_shows_counts(
     assert counts["medicines"] == 1
     assert counts["family_members"] == 1
     assert counts["medication_logs"] == 1
+    # PIPL gap tables now visible in preview
+    assert counts["health_logs"] == 1
+    assert counts["medical_visits"] == 1
+    assert counts["medication_plans"] == 1
+    assert counts["plan_items"] == 1
+    assert counts["share_cards"] == 1
+    assert counts["family_shares"] == 2  # sharer + viewer roles
+    assert counts["knowledge_entities"] == 2  # tenant-private only
+    assert counts["knowledge_chunks"] == 1
+    assert counts["chunk_embeddings"] == 1
+    assert counts["knowledge_provenance"] == 1
+    assert counts["knowledge_conflicts"] == 1
+    assert counts["entity_relationships"] == 1
+    assert counts["classic_annotations"] == 1
+    assert counts["classic_study_notes"] == 1
+    assert counts["knowledge_feedback"] == 1
+    assert counts["user_interest_profiles"] == 1
+    assert counts["user_notes"] == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_preview_matches_actual_deletion(
+    client: AsyncClient, auth_headers: dict, db: SqliteAdapter
+):
+    """Preview counts == per-table deleted row counts == post-delete reality.
+
+    PIPL §12.2: the preview shown to the user before erasure must exactly
+    match what is actually deleted — no hidden tables, no missing rows.
+    Also asserts the backup-retention disclosure note (spec §12.2).
+    """
+    user_row = await db.query_one(
+        "SELECT id, family_id FROM users WHERE username = 'testuser'"
+    )
+    await _seed_user_data(db, user_row["id"], user_row["family_id"])
+
+    # A global (tenant NULL) knowledge entity must NOT be counted or deleted
+    await db.execute(
+        "INSERT INTO knowledge_entities (id, entity_type, source_table, title, source_type) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), "herb", "herbs", "全局共享实体", "system"),
+    )
+
+    # 1. Preview before deletion
+    preview_resp = await client.get("/api/account/preview", headers=auth_headers)
+    assert preview_resp.status_code == 200
+    preview = preview_resp.json()
+    assert preview["note"] == "加密备份文件含历史数据，将于30天内随备份轮换删除"
+    counts = preview["data_counts"]
+    assert counts["knowledge_entities"] == 2  # global entity NOT counted
+
+    # 2. Delete
+    del_resp = await client.delete("/api/account", headers=auth_headers)
+    assert del_resp.status_code == 200
+    body = del_resp.json()
+    assert body["note"] == "加密备份文件含历史数据，将于30天内随备份轮换删除"
+    assert body["deleted_counts"]["users"] == 1
+    assert body["total_deleted"] == sum(body["deleted_counts"].values())
+
+    # 3. Preview counts == deleted counts, key by key
+    for key, preview_cnt in counts.items():
+        assert body["deleted_counts"][key] == preview_cnt, (
+            f"{key}: preview={preview_cnt} deleted={body['deleted_counts'][key]}"
+        )
+
+    # 4. Post-delete reality: the PIPL gap tables are all empty
+    user_id, family_id = user_row["id"], user_row["family_id"]
+    for table, col in [
+        ("health_logs", "user_id"),
+        ("medical_visits", "user_id"),
+        ("medication_plans", "user_id"),
+        ("share_cards", "user_id"),
+        ("favorites", "user_id"),  # bookmarks 表（/api/bookmarks 落库于 favorites）
+        ("family_members", "user_id"),
+    ]:
+        row = await db.query_one(
+            f"SELECT COUNT(*) AS cnt FROM {table} WHERE {col} = ?",
+            (user_id,),
+        )
+        assert row["cnt"] == 0, f"{table} must be empty after erasure"
+
+    row = await db.query_one(
+        "SELECT COUNT(*) AS cnt FROM family_shares WHERE sharer_id = ? OR viewer_id = ?",
+        (user_id, user_id),
+    )
+    assert row["cnt"] == 0, "family_shares must be empty in both roles"
+
+    row = await db.query_one(
+        "SELECT COUNT(*) AS cnt FROM knowledge_entities WHERE tenant_id IS NULL AND title = '全局共享实体'"
+    )
+    assert row["cnt"] == 1, "global (tenant NULL) knowledge must NOT be deleted"

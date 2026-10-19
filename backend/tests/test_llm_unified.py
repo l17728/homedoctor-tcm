@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.database import SqliteAdapter, init_db, seed_safety_rules, seed_test_data
 from app.llm_unified import llm_chat, llm_collective_review, llm_collective_review_opencode
+from app.model_registry import create_model, get_default_models, list_models, _select_consensus
 
 
 @pytest_asyncio.fixture
@@ -163,15 +164,56 @@ class TestLlmCollectiveReviewOpencode:
         assert result["model_count"] == 0
 
     @pytest.mark.asyncio
-    async def test_timeout_handling(self):
+    async def test_timeout_handling(self, monkeypatch):
+        from app.config import settings
+        monkeypatch.setattr(settings, "ENABLE_OPENCODE_REVIEW", True)
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_proc:
             mock_proc.side_effect = asyncio.TimeoutError()
             result = await llm_collective_review_opencode("test", models=["model-1"])
             assert result["valid_count"] == 0
 
     @pytest.mark.asyncio
-    async def test_exception_handling(self):
+    async def test_exception_handling(self, monkeypatch):
+        from app.config import settings
+        monkeypatch.setattr(settings, "ENABLE_OPENCODE_REVIEW", True)
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_proc:
             mock_proc.side_effect = RuntimeError("not found")
             result = await llm_collective_review_opencode("test", models=["model-1"])
             assert result["valid_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_disabled_by_default_does_not_spawn_subprocess(self, monkeypatch):
+        from app.config import settings
+        monkeypatch.setattr(settings, "ENABLE_OPENCODE_REVIEW", False)
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_proc:
+            result = await llm_collective_review_opencode("untrusted prompt", models=["model-1"])
+        mock_proc.assert_not_called()
+        assert result["error"] == "opencode 评审未启用"
+
+
+@pytest.mark.asyncio
+async def test_model_api_key_is_encrypted_at_rest_and_masked(llm_db, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "SECRET_KEY", "test-encryption-key")
+    raw_key = "sk-super-secret-123"
+    model_id = await create_model(
+        llm_db, name="test", provider="test", model_id="test-model",
+        api_endpoint="https://example.test", api_key=raw_key,
+        is_default=True, capabilities=["text"],
+    )
+    stored = await llm_db.query_one("SELECT api_key FROM ai_models WHERE id = ?", (model_id,))
+    assert raw_key not in stored["api_key"]
+    assert stored["api_key"].startswith("hde1:")
+    public = next(row for row in await list_models(llm_db) if row["id"] == model_id)
+    internal = next(row for row in await get_default_models(llm_db) if row["id"] == model_id)
+    assert public["api_key"] == "sk-***"
+    assert internal["api_key"] == raw_key
+
+
+def test_consensus_uses_largest_similarity_cluster_not_longest_answer():
+    chosen, agreement = _select_consensus(
+        ["共同意见：注意休息并咨询医生。", "共同意见：注意休息并咨询医生，避免自行用药。", "完全不同的很长回答" * 30],
+        total=3,
+    )
+    assert chosen.startswith("共同意见")
+    assert agreement == pytest.approx(2 / 3)

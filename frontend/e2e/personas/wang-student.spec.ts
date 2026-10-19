@@ -34,7 +34,7 @@ test.describe('Persona: 王浩 — 高二学生 (17岁)', () => {
 
     // Sidebar should show main navigation items
     await expect(page.getByText('知识库').first()).toBeVisible();
-    await expect(page.getByText('AI 助手').first()).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /AI助手/ })).toBeVisible();
 
     // UX ISSUE: 注册流程已经很简单（用户名+密码），但缺少第三方登录(微信/QQ)
     // PRODUCT GAP: 缺少"为家人代管"功能——学生帮奶奶注册但需要两个账号

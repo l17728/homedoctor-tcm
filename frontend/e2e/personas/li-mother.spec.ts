@@ -16,13 +16,14 @@
  * 这些测试从李芳的视角模拟真实操作流程:
  *   注册 → 搜索方剂 → 安全检查 → 管理药箱 → 收藏 → 提醒 → 体质自测
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator } from '@playwright/test';
 import {
   register,
   logout,
   chineseText,
   firstToast,
   fillTimeRangePicker,
+  answerVisibleConstitutionQuestions,
 } from '../helpers';
 
 test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
@@ -37,11 +38,10 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
     await expect(page).toHaveURL('/');
     await expect(page.getByText('今日健康')).toBeVisible();
 
-    // 验证4个统计卡片可见（中药数/方剂数/药箱数/今日提醒）
-    await expect(page.getByText('中药数')).toBeVisible();
-    await expect(page.getByText('方剂数')).toBeVisible();
-    await expect(page.getByText('药箱数')).toBeVisible();
-    await expect(page.getByText('今日提醒')).toBeVisible();
+    // Dashboard exposes knowledge counts as a compact summary and medication
+    // work as today's tasks (rather than four standalone statistic cards).
+    await expect(page.getByText(/知识库：\d+味中药/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: '今日健康任务' })).toBeVisible();
 
     // 验证快速操作按钮可见
     await expect(page.getByRole('button', { name: /添加药品/ })).toBeVisible();
@@ -199,8 +199,22 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
     await page.goto('/medicines');
 
     // 添加第一个药品：布洛芬
-    const addButton = page.getByRole('button', { name: chineseText('添加') });
-    if (await addButton.isVisible().catch(() => false)) {
+    const addButtons = page.locator('button').filter({ hasText: chineseText('添加') });
+    await expect.poll(async () => {
+      for (let i = 0; i < await addButtons.count(); i++) {
+        if (await addButtons.nth(i).isVisible()) return true;
+      }
+      return false;
+    }, { timeout: 10_000 }).toBe(true);
+    let addButton: Locator | undefined;
+    for (let i = await addButtons.count() - 1; i >= 0; i--) {
+      const candidate = addButtons.nth(i);
+      if (await candidate.isVisible()) {
+        addButton = candidate;
+        break;
+      }
+    }
+    if (addButton) {
       await addButton.click();
       const drawer = page.locator('.ant-drawer');
       await expect(drawer).toBeVisible();
@@ -427,7 +441,7 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
     await register(page, username);
 
     await page.goto('/reminders');
-    await expect(page.getByText('吃药提醒')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '吃药提醒' })).toBeVisible();
 
     // 点击添加提醒
     await page.getByRole('button', { name: /添加提醒/ }).click();
@@ -514,11 +528,7 @@ test.describe('Persona: 李芳 — 职场二孩妈妈', () => {
     }
 
     // 回答第一页的题目
-    const radios = page.locator('.ant-card .ant-radio-wrapper');
-    const radioCount = await radios.count();
-    for (let i = 0; i < radioCount; i++) {
-      await radios.nth(i).click();
-    }
+    await answerVisibleConstitutionQuestions(page);
 
     // 点击下一页
     await page.getByRole('button', { name: /下一页/ }).click();

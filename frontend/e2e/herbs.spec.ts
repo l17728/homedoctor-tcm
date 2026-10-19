@@ -18,12 +18,13 @@ test.describe('Herb List — Navigation & Layout', () => {
   });
 
   test('should navigate to herb list page', async ({ page }) => {
-    await page.getByText('知识库').first().click();
-    await page.getByText('中药').click();
+    const knowledgeGroup = page.locator('.ant-menu-submenu').filter({ hasText: '知识探索' });
+    await knowledgeGroup.locator('.ant-menu-submenu-title').click();
+    await knowledgeGroup.getByRole('menuitem', { name: '中药' }).click();
 
     await page.waitForURL('/herbs');
     await expect(page).toHaveURL('/herbs');
-    await expect(page.getByText(/中药/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: '中药知识库' })).toBeVisible();
   });
 
   test('should show page header with title', async ({ page }) => {
@@ -54,7 +55,7 @@ test.describe('Herb List — Navigation & Layout', () => {
     await page.goto('/herbs');
 
     // Table should exist
-    const table = page.locator('.ant-table');
+    const table = page.getByRole('table');
     await expect(table).toBeVisible();
 
     // Common herb table columns
@@ -80,9 +81,12 @@ test.describe('Herb List — Search & Filter', () => {
 
     // Results should mention the searched herb (if data exists)
     // Or show empty state if no match
-    const hasResults = await page.getByText('黄芪').isVisible().catch(() => false);
-    const hasEmpty = await page.getByText(/暂无|没有找到/).isVisible().catch(() => false);
-    expect(hasResults || hasEmpty).toBeTruthy();
+    const hasResults = page.getByRole('row', { name: /黄芪/ });
+    const hasEmpty = page.locator('.ant-empty');
+    await expect.poll(async () => (
+      await hasResults.isVisible().catch(() => false)
+      || await hasEmpty.isVisible().catch(() => false)
+    )).toBeTruthy();
   });
 
   test('should clear search results when search is emptied', async ({
@@ -99,7 +103,7 @@ test.describe('Herb List — Search & Filter', () => {
     await searchInput.press('Enter');
 
     // Table should show all items again (or empty state)
-    const table = page.locator('.ant-table');
+    const table = page.getByRole('table');
     await expect(table).toBeVisible();
   });
 });
@@ -161,17 +165,10 @@ test.describe('Herb List — Empty State', () => {
     await register(page, `user_${Date.now()}`);
   });
 
-  test('should show empty state when no herbs exist', async ({ page }) => {
+  test('should render the knowledge list for a new user', async ({ page }) => {
     await page.goto('/herbs');
-
-    // For a new user, herb list may be empty or show seeded data
-    const table = page.locator('.ant-table');
-    const emptyState = page.getByText(/暂无|没有/);
-
-    // Either table with data or empty state should be visible
-    const hasTable = await table.isVisible().catch(() => false);
-    const hasEmpty = await emptyState.isVisible().catch(() => false);
-    expect(hasTable || hasEmpty).toBeTruthy();
+    await expect(page.getByRole('heading', { name: '中药知识库' })).toBeVisible();
+    await expect(page.getByRole('searchbox', { name: '搜索' })).toBeVisible();
   });
 });
 

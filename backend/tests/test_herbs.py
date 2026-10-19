@@ -1,6 +1,34 @@
 """Tests for herbs endpoints: list, detail, search."""
 
 import pytest
+
+
+@pytest.mark.asyncio
+async def test_alias_update_requires_admin_and_verified_source(client, auth_headers, db):
+    denied = await client.patch("/api/herbs/herb-001/aliases", json={
+        "aliases": ["绵芪"], "source": "药典", "verified": True,
+    }, headers=auth_headers)
+    assert denied.status_code == 403
+
+    unverified = await client.patch("/api/herbs/herb-001/aliases", json={
+        "aliases": ["未核验别名"], "source": "药典来源待确认", "verified": False,
+    })
+    assert unverified.status_code == 422
+
+    saved = await client.patch("/api/herbs/herb-001/aliases", json={
+        "aliases": ["绵芪", "黄芪", "绵芪"],
+        "source": "中国药典 2020 年版",
+        "verified": True,
+    })
+    assert saved.status_code == 200
+    assert saved.json()["aliases"] == ["绵芪"]
+    row = await db.query_one("SELECT aliases FROM herbs WHERE id = ?", ("herb-001",))
+    assert row["aliases"] == "绵芪"
+    audit = await db.query_one(
+        "SELECT changes FROM audit_log WHERE entity_type = 'herb_aliases' AND entity_id = ?",
+        ("herb-001",),
+    )
+    assert "中国药典 2020 年版" in audit["changes"]
 from httpx import AsyncClient
 
 
@@ -80,3 +108,9 @@ async def test_search_herbs_by_alias(client: AsyncClient):
     assert data["total"] >= 1
     names = [h["name"] for h in data["items"]]
     assert "黄芪" in names
+
+
+@pytest.mark.asyncio
+async def test_search_herbs_fts_operators_are_treated_as_text(client: AsyncClient):
+    response = await client.get("/api/herbs/search", params={"q": '" OR *'})
+    assert response.status_code == 200
