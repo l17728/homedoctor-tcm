@@ -15,7 +15,7 @@ import {
   Tooltip,
   Popconfirm,
 } from 'antd';
-import type { Graph, NodeData, EdgeData, IElementEvent } from '@antv/g6';
+import type { Graph, NodeData, EdgeData, IElementEvent } from '@antv/g6/esm/exports';
 import {
   ReloadOutlined,
   SearchOutlined,
@@ -363,7 +363,7 @@ export default function KnowledgeGraphPage() {
   useEffect(() => {
     if (!containerRef.current || graphRef.current) return;
     let graph: Graph;
-    import('@antv/g6').then(({ Graph: G6Graph }) => {
+    import('./knowledgeGraphRuntime').then(({ Graph: G6Graph }) => {
       if (!containerRef.current || graphRef.current) return;
       graph = new G6Graph({
         container: containerRef.current,

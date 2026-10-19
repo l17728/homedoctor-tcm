@@ -60,34 +60,10 @@ GENERIC_ONLY_ROUTE_EXCEPTIONS: dict[str, set[tuple[str, str]]] = {
     ("GET", "/api/kg/graph"),
     ("GET", "/api/kg/node/{}"),
     ("GET", "/api/kg/snapshot/{}/{}"),
-    ("GET", "/api/knowledge-hub/entities/{}"),
-    ("GET", "/api/knowledge-hub/entities/{}/relationships"),
-    ("GET", "/api/knowledge-hub/popular"),
-    ("GET", "/api/knowledge-hub/recent"),
-    ("GET", "/api/knowledge-hub/relationship-types"),
-    ("GET", "/api/knowledge-hub/search"),
-    ("GET", "/api/knowledge-hub/types"),
-    ("GET", "/api/knowledge/acupoints"),
-    ("GET", "/api/knowledge/acupoints/{}"),
-    ("GET", "/api/knowledge/browse"),
-    ("GET", "/api/knowledge/categories"),
-    ("GET", "/api/knowledge/formulas"),
-    ("GET", "/api/knowledge/formulas/{}"),
     ("GET", "/api/knowledge/graph/{}"),
-    ("GET", "/api/knowledge/herbs"),
-    ("GET", "/api/knowledge/herbs/{}"),
-    ("GET", "/api/knowledge/meridians"),
-    ("GET", "/api/knowledge/meridians/{}"),
-    ("GET", "/api/knowledge/search"),
-    ("GET", "/api/knowledge/symptoms"),
-    ("GET", "/api/knowledge/therapies"),
-    ("GET", "/api/knowledge/therapies/{}"),
     ("GET", "/api/knowledge/{}/append/history"),
     ("GET", "/api/knowledge/{}/feedback"),
     ("GET", "/api/knowledge/{}/note"),
-    ("GET", "/api/rag/index/status"),
-    ("GET", "/api/rag/intent"),
-    ("GET", "/api/rag/search"),
     ("POST", "/api/ai-classify/auto-tag"),
     ("POST", "/api/ai-classify/duplicates"),
     ("POST", "/api/ai-classify/merge"),
@@ -127,7 +103,6 @@ GENERIC_ONLY_ROUTE_EXCEPTIONS: dict[str, set[tuple[str, str]]] = {
     ("POST", "/api/classics/{}/chapters/{}/ask"),
     ("POST", "/api/classics/{}/chapters/{}/translate"),
     ("POST", "/api/classics/{}/summarize"),
-    ("POST", "/api/favorites/check"),
     ("POST", "/api/share-cards/generate"),
     ("POST", "/api/share-cards/monthly-report"),
     ("PUT", "/api/bookmarks/{}"),
@@ -156,14 +131,7 @@ GENERIC_ONLY_ROUTE_EXCEPTIONS: dict[str, set[tuple[str, str]]] = {
     ("DELETE", "/api/health-logs/{}"),
     ("DELETE", "/api/medication-plans/{}"),
     ("DELETE", "/api/visits/{}"),
-    ("GET", "/api/comparisons/herbs/{}/{}"),
     ("GET", "/api/health-logs/{}"),
-    ("GET", "/api/medicines/alerts/expiring"),
-    ("GET", "/api/medicines/quality-alerts"),
-    ("GET", "/api/medicines/{}/quality"),
-    ("GET", "/api/reports/constitution"),
-    ("GET", "/api/reports/pre-visit"),
-    ("POST", "/api/comparisons/formulas"),
     ("POST", "/api/comparisons/herbs"),
     ("POST", "/api/formulations/joint-recommend"),
     ("POST", "/api/formulations/tea-recipe"),
@@ -183,7 +151,6 @@ GENERIC_ONLY_ROUTE_EXCEPTIONS: dict[str, set[tuple[str, str]]] = {
     ("DELETE", "/api/family-members/{}"),
     ("DELETE", "/api/personal/edges/{}"),
     ("DELETE", "/api/remote-assist/invite/{}"),
-    ("GET", "/api/family-members/current"),
     ("GET", "/api/personal/edges"),
     ("GET", "/api/personal/graph"),
     ("GET", "/api/personal/symptoms"),
@@ -203,20 +170,9 @@ GENERIC_ONLY_ROUTE_EXCEPTIONS: dict[str, set[tuple[str, str]]] = {
     # Low-frequency auxiliary operations remain callable through the generic HTTP command.
     "miscellaneous": {
     ("DELETE", "/api/models/{}"),
-    ("GET", "/api/constitution/history"),
-    ("GET", "/api/formulas/{}/roles"),
-    ("GET", "/api/formulas/{}/safety-check"),
-    ("GET", "/api/formulas/{}/safety-text"),
-    ("GET", "/api/formulas/{}/tree"),
-    ("GET", "/api/herbs/{}/formulas"),
     ("GET", "/api/models"),
     ("GET", "/api/reminders/{}"),
-    ("GET", "/api/seasonal-health"),
     ("GET", "/api/smart-search"),
-    ("GET", "/api/therapies/categories"),
-    ("GET", "/api/therapies/search"),
-    ("GET", "/api/triage/age-groups"),
-    ("GET", "/api/triage/red-flags"),
     ("PATCH", "/api/herbs/{}/aliases"),
     ("POST", "/api/chat/conversations"),
     ("POST", "/api/chat/save-card"),
@@ -245,6 +201,7 @@ _CALL_RE = re.compile(
     r'_(get|post|put|delete)(?:_authed)?\(\s*client\s*,\s*f?"([^"]+)"',
     re.S,
 )
+_GROUPED_GET_RE = re.compile(r'_get_with_params\(\s*f?"([^"]+)"', re.S)
 
 
 def _normalize(path: str) -> str:
@@ -262,6 +219,8 @@ def _extract_cli_calls() -> list[tuple[str, str, str]]:
         for match in _CALL_RE.finditer(source):
             verb, path = match.group(1), match.group(2)
             result.append((name, METHOD_BY_HELPER[verb], _normalize(path)))
+        for match in _GROUPED_GET_RE.finditer(source):
+            result.append((name, "GET", _normalize(match.group(1))))
         # api:request is the discoverable HTTP-only fallback for routes that do
         # not yet have a domain-specific command. Its method and /api/ path are
         # runtime arguments, so represent its declared coverage explicitly.
@@ -342,7 +301,7 @@ def test_every_openapi_api_route_has_a_cli_command(openapi_routes: set[tuple[str
     assert len(exceptions) == sum(map(len, GENERIC_ONLY_ROUTE_EXCEPTIONS.values())), (
         "generic-only exception is duplicated across rationale groups"
     )
-    assert (len(api_routes), len(explicit), len(missing)) == (262, 82, 180), (
+    assert (len(api_routes), len(explicit), len(missing)) == (262, 126, 136), (
         "CLI coverage inventory changed: "
         f"OpenAPI operations={len(api_routes)}, domain-command operations={len(explicit)}, "
         f"generic-only operations={len(missing)}. Review the route diff and update the exact "
@@ -366,10 +325,54 @@ def test_high_frequency_cli_commands_cover_routes(openapi_routes: set[tuple[str,
     expected = {
         ("auth:me", "GET", "/api/auth/me"),
         ("auth:consent-status", "GET", "/api/auth/consent-status"),
+        ("herbs:formulas", "GET", "/api/herbs/{}/formulas"),
+        ("herbs:compare", "GET", "/api/comparisons/herbs/{}/{}"),
+        ("formulas:tree", "GET", "/api/formulas/{}/tree"),
+        ("formulas:roles", "GET", "/api/formulas/{}/roles"),
+        ("formulas:safety", "GET", "/api/formulas/{}/safety-check"),
+        ("formulas:safety", "GET", "/api/formulas/{}/safety-text"),
+        ("formulas:compare", "POST", "/api/comparisons/formulas"),
         ("medicines:detail", "GET", "/api/medicines/{}"),
         ("medicines:update", "PUT", "/api/medicines/{}"),
         ("medicines:delete", "DELETE", "/api/medicines/{}"),
+        ("medicines:alerts", "GET", "/api/medicines/quality-alerts"),
+        ("medicines:alerts", "GET", "/api/medicines/alerts/expiring"),
+        ("medicines:quality", "GET", "/api/medicines/{}/quality"),
         ("reminders:history", "GET", "/api/reminders/history"),
+        ("constitution:history", "GET", "/api/constitution/history"),
+        ("family-members:current", "GET", "/api/family-members/current"),
+        ("triage:reference", "GET", "/api/triage/age-groups"),
+        ("triage:reference", "GET", "/api/triage/red-flags"),
+        ("therapies:categories", "GET", "/api/therapies/categories"),
+        ("therapies:search", "GET", "/api/therapies/search"),
+        ("reports:constitution", "GET", "/api/reports/constitution"),
+        ("reports:pre-visit", "GET", "/api/reports/pre-visit"),
+        ("seasonal-health", "GET", "/api/seasonal-health"),
+        ("favorites:check", "POST", "/api/favorites/check"),
+        ("knowledge:list", "GET", "/api/knowledge/herbs"),
+        ("knowledge:list", "GET", "/api/knowledge/formulas"),
+        ("knowledge:list", "GET", "/api/knowledge/symptoms"),
+        ("knowledge:list", "GET", "/api/knowledge/meridians"),
+        ("knowledge:list", "GET", "/api/knowledge/acupoints"),
+        ("knowledge:list", "GET", "/api/knowledge/therapies"),
+        ("knowledge:detail", "GET", "/api/knowledge/herbs/{}"),
+        ("knowledge:detail", "GET", "/api/knowledge/formulas/{}"),
+        ("knowledge:detail", "GET", "/api/knowledge/meridians/{}"),
+        ("knowledge:detail", "GET", "/api/knowledge/acupoints/{}"),
+        ("knowledge:detail", "GET", "/api/knowledge/therapies/{}"),
+        ("knowledge:search", "GET", "/api/knowledge/search"),
+        ("knowledge:categories", "GET", "/api/knowledge/categories"),
+        ("knowledge:browse", "GET", "/api/knowledge/browse"),
+        ("knowledge-hub:search", "GET", "/api/knowledge-hub/search"),
+        ("knowledge-hub:catalog", "GET", "/api/knowledge-hub/types"),
+        ("knowledge-hub:catalog", "GET", "/api/knowledge-hub/relationship-types"),
+        ("knowledge-hub:catalog", "GET", "/api/knowledge-hub/recent"),
+        ("knowledge-hub:catalog", "GET", "/api/knowledge-hub/popular"),
+        ("knowledge-hub:entity", "GET", "/api/knowledge-hub/entities/{}"),
+        ("knowledge-hub:entity", "GET", "/api/knowledge-hub/entities/{}/relationships"),
+        ("rag:search", "GET", "/api/rag/search"),
+        ("rag:intent", "GET", "/api/rag/intent"),
+        ("rag:index-status", "GET", "/api/rag/index/status"),
     }
     assert all((method, path) in openapi_routes for _, method, path in expected)
     assert expected <= calls
