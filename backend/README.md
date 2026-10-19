@@ -170,7 +170,7 @@ scheduler.py — asyncio 24h 循環
 
 ```bash
 # 全量
-python3 -m pytest tests/ -q                    # 1888 tests, 84%+ coverage
+python3 -m pytest tests/ -q                    # 2,000+ tests, 84%+ coverage
 
 # 覆盖率报告
 python3 -m pytest tests/ --cov=app --cov-report=term-missing
@@ -227,8 +227,8 @@ python3 cli.py api:request POST /api/knowledge-import/upload --token "$TOKEN" --
 # 多文件端点可重复传入 --file，并按路由字段名设置 --file-field（例如 files）
 ```
 
-CLI 以专用领域命令作为常用入口，并提供 `api:request METHOD PATH` 覆盖所有
-OpenAPI 中 `/api/` 路由。它只连接配置的本机服务地址，不访问数据库；可用
+CLI 提供专用领域命令作为常用入口，覆盖 262 个 OpenAPI API 操作中的 126 个；
+`api:request METHOD PATH` 可调用全部 `/api/` 路由。它只连接配置的本机服务地址，不访问数据库；可用
 `--token` 传 Bearer token、`--query` 和 `--body` 传 JSON，`--form`/`--file` 处理表单
 与上传，`--output` 保存非 JSON 响应。`tests/test_cli_smoke.py` 会将 OpenAPI 每个方法/路径与专用命令或该通用命令的
 覆盖能力对照；当前 OpenAPI 没有排除的 API 路由，框架默认路由不属于 `/api/`。

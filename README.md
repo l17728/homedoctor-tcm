@@ -65,7 +65,7 @@
 | Agent 系統 | 8步知識管道 + 巡檢Agent(24h定時) + 信任分級SABC(自動升降級) + 多AI評審 + 記憶系統 |
 | 可觀測性 | 4中間件日誌 + RequestAuditMiddleware（全局請求追踪）+ 118模塊logger |
 | 部署 | Docker Compose + Nginx 反向代理 |
-| 測試 | pytest（1888 後端，84%+覆蓋率）+ Playwright E2E（37文件） |
+| 測試 | pytest（2,000+ 後端，84%+覆蓋率）+ Playwright E2E（37文件） |
 
 ## 快速开始
 
@@ -81,9 +81,9 @@
 
 | 指标 | 数量 |
 |------|------|
-| API 路由 | 254 |
+| API 路由 | 262 |
 | 数据库表 | 45 |
-| 后端测试 | 1888 |
+| 后端测试 | 2,000+ |
 | 前端页面 | 35 |
 | E2E 测试文件 | 37 |
 | 代码覆盖率 | 84%+ |
@@ -197,14 +197,14 @@
 
 ```bash
 cd backend && python3 cli.py --help
-# 40+ 命令：herbs/formulas/safety/reminders/constitution/profile/chat/
-# triage/account/schemas/favorites/family-members/medication-plans 等
+# 126/262 个 API 操作有专用领域命令；其余操作可通过 api:request 调用
+# 命令分组：herbs/formulas/safety/reminders/constitution/profile/chat/triage 等
 ```
 
 ## 测试
 
 ```bash
-cd backend && python3 -m pytest tests/ -v    # 1888+ 个测试（以 pytest --collect-only 为准）
+cd backend && python3 -m pytest tests/ -v    # 2,000+ 个测试（以 pytest --collect-only 为准）
 cd frontend && npx playwright test            # E2E 测试
 ```
 
@@ -245,7 +245,7 @@ v0.8.0 — 架構重構 + 自成長系統 + 可觀測性
 
 ### 變更日誌
 
-- **v0.8.0** — agent_tools.py 拆分(1058→87行) / database.py 拆分(1523→31行) / 信任自動升級(B→A→S) / 巡檢定時調度 / 中間件日誌 + 請求追踪 / 1888測試 84%+覆蓋率
+- **v0.8.0** — agent_tools.py 拆分(1058→87行) / database.py 拆分(1523→31行) / 信任自動升級(B→A→S) / 巡檢定時調度 / 中間件日誌 + 請求追踪 / 2,000+測試 84%+覆蓋率
 - **v0.7.0** — 养生功法 + 中药炮制品 + 经络穴位 + RAG语义搜索 + Phase 2统一模型 + 图谱上下文
 - **v0.6.0** — AI 健康问答 SSE 流式 + 安全引擎五层 + 体质自测 + 经典读诵
 - **v0.5.0** — 知识图谱 + 配伍引擎 + 家庭药箱 + 用药管理

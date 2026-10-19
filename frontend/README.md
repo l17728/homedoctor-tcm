@@ -131,7 +131,7 @@ ChatPage 集成 Web Speech API：
 npm run build
 # → dist/assets/index-[hash].js   (29KB gzip: 10KB) — 入口
 # → dist/assets/antd-vendor.js    (1.27MB gzip: 394KB) — Ant Design（1年缓存）
-# → dist/assets/g6-vendor.js      (1.41MB gzip: 408KB) — 图谱库（仅图谱页加载）
+# → dist/assets/knowledgeGraphRuntime-[hash].js (943KB gzip: 270KB) — G6 按需扩展（仅图谱页加载）
 # → dist/assets/react-vendor.js   (161KB gzip: 53KB)
 # → dist/assets/markdown-vendor.js(118KB gzip: 36KB)
 # → dist/assets/[PageName].js     (3-30KB each) — 路由级懒加载
@@ -144,7 +144,7 @@ npm run build
 | 优化 | 效果 |
 |------|------|
 | nginx gzip 压缩 | 所有 JS/CSS 传输时压缩 |
-| G6 vendor 分离 | 1.4MB 图谱库仅访问知识图谱页时加载 |
+| G6 按需注册 | 仅加载图谱页使用的节点、边、布局、交互和小地图扩展；运行时约 943KB（gzip 270KB），较原包体缩小约 33%（gzip 34%） |
 | manualChunks 函数化 | rc-* 子包正确归入 antd-vendor |
 | React.lazy 路由分块 | 35 个页面各自独立 chunk |
 | 静态资源 1 年缓存 | vendor chunk 永久缓存（immutable） |
